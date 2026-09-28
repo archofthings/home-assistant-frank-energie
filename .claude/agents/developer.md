@@ -22,6 +22,9 @@ Rules:
   `pytest-homeassistant-custom-component`; reuse `tests/conftest.py` and `tests/utils.py`): happy paths,
   main edge cases and error paths. Mock the Frank Energie API — never call the real API. Keep it proportionate;
   the tester checks coverage and adds regression tests afterwards.
+- Test budget: one test for the main behaviour plus only the edge/error cases the spec names; use
+  `pytest.mark.parametrize` instead of copying tests; no tests for simple mappings, constants or text files.
+  While working run only the relevant test file; run the full suite once before committing.
 - When your task passes flake8 and pytest (including your new tests), commit it locally on the current feature branch:
   stage only the files you changed for this task (`git add <paths>`, never `-A`/`.`; never stage `.claude/` or
   `CLAUDE.md`, the orchestrator commits those), one logical change per commit, imperative subject line. Never commit on `main`,

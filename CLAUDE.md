@@ -25,6 +25,16 @@
 5. Delegate review to `reviewer` with the spec. Send Critical/Warning items back to `developer`.
 6. Summarise to me: what changed, test results, review verdict, anything I need to decide.
 
+## Test budget
+Keep tests lean; they are read and run by every agent, so size costs tokens.
+- Per change: one test for the main behaviour, plus tests only for edge/error cases the spec explicitly names.
+- Prefer `pytest.mark.parametrize` over copied tests; no tests for simple mappings, constants or text files
+  (one translations test checks all files).
+- `tester` only runs for larger features; revert checks only for bug fixes.
+- `reviewer` flags missing tests only when important behaviour is untested (no "nice to have" gaps).
+- While working, run only the relevant test file; run the full suite once before committing.
+- Small fixes: no tester step; the orchestrator checks the result instead of a full review.
+
 ## When to skip the pipeline
 Small, single-file changes (typo, constant, one-line fix): do it directly, then run flake8 and pytest.
 

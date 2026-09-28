@@ -29,6 +29,10 @@ For the changes described:
    Never commit on `main`, never amend or rewrite history, never push. Do not commit failing tests.
    If a commit is blocked by a permission check, stop and report it; do not retry.
 
+- Test budget: add at most a few tests, only for important untested behaviour; prefer parametrizing existing
+  tests over new ones. Revert checks only for bug fixes. Run only the relevant test files while working and
+  the full suite once before committing.
+
 - Never search the whole filesystem (no `find /`, `locate`, or recursive scans outside the repo). Locate installed packages via the project venv instead, e.g. `<venv>/bin/python -c "import python_frank_energie, os; print(os.path.dirname(python_frank_energie.__file__))"` or `<venv>/bin/pip show -f <package>`. Don't leave background commands running when you finish.
 
 Finish with: coverage gaps found, tests added, revert check results, pass/fail summary, each failure with test name, error and suspected cause, commit hash(es).
