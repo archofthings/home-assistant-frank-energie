@@ -718,7 +718,13 @@ class FrankEnergiePriceAnalysisDaySensor(FrankEnergiePriceAnalysisEntity):
 
 
 class FrankEnergieNextCheapestPeriodSensor(FrankEnergiePriceAnalysisEntity):
-    """The next upcoming cheapest electricity period, starting from now."""
+    """The next upcoming cheapest electricity period, starting from now.
+
+    While `now` is inside the reported window, it is kept stable (the same
+    start/end) across refreshes instead of shrinking/drifting forward every
+    quarter hour as already-elapsed slots would otherwise drop out of the
+    search; see `PriceAnalysisCoordinator._next_cheapest_period`.
+    """
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 

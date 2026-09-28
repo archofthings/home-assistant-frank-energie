@@ -249,6 +249,72 @@ async def test_next_cheapest_period_sensor(
     assert state.attributes["minutes"] == 30
 
 
+async def test_next_cheapest_period_stays_stable_while_running(
+    hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch
+):
+    """next_cheapest_period keeps the same start/end while `now` is inside it, instead of drifting (W3).
+
+    Without this, each quarter-hour refresh would drop the already-elapsed
+    slot(s) at the window's start from consideration (`not_before` moves
+    forward with `now`), shrinking and eventually replacing the reported
+    window while it is still running.
+    """
+    entry = await setup_price_analysis_entry(
+        hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch
+    )
+
+    expected_start = local_midnight() + timedelta(minutes=15 * CHEAP_SLOT_1)
+    state = state_for_key(hass, entry, "sensor", "next_cheapest_period")
+    assert state.state == timestamp_state(expected_start)
+
+    # Move to 10:15, still inside the 10:00-10:30 window, and let the
+    # coordinator's quarter-hour timer trigger a refresh.
+    freezer.move_to("2026-01-15 10:15:00+01:00")
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, entry, "sensor", "next_cheapest_period")
+    assert state.state == timestamp_state(expected_start)
+    assert state.attributes["minutes"] == 30
+
+
+async def test_options_flow_submit_keeps_next_cheapest_period_available(
+    hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch
+):
+    """Regression (C1): submitting the options flow must not break the analysis entities.
+
+    `NumberSelector` always returns a float; without casting
+    cheapest_period_minutes back to an int before saving, the stored float
+    made `find_cheapest_period()` raise `TypeError` (a float used in
+    `range()`/slicing), leaving `next_cheapest_period` (and the other
+    analysis entities) permanently unavailable after any options save.
+    """
+    entry = await setup_price_analysis_entry(
+        hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch
+    )
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+            const.CONF_CHEAP_PRICE_THRESHOLD: 0.15,
+            const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.35,
+            const.CONF_CHEAPEST_PERIOD_MINUTES: 30,
+            const.CONF_SOLAR_THRESHOLD_KWH: 1.0,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert entry.options[const.CONF_CHEAPEST_PERIOD_MINUTES] == 30
+    assert isinstance(entry.options[const.CONF_CHEAPEST_PERIOD_MINUTES], int)
+
+    state = state_for_key(hass, entry, "sensor", "next_cheapest_period")
+    assert state is not None
+    assert state.state != "unavailable"
+
+
 async def test_next_cheapest_period_crosses_midnight(
     hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch
 ):

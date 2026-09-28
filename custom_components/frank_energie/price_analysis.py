@@ -107,6 +107,11 @@ class PriceAnalysisCoordinator(DataUpdateCoordinator[AnalysisResult | None]):
         """Initialize the price analysis coordinator."""
         self.entry = entry
         self.price_coordinator = price_coordinator
+        # Cache for the "sticky" next_cheapest_period window (see
+        # _next_cheapest_period below): the window found on the previous
+        # update, and the exact slot list it was computed from.
+        self._cached_next_window: Window | None = None
+        self._cached_next_window_slots: list[Price] | None = None
 
         super().__init__(
             hass,
@@ -181,7 +186,7 @@ class PriceAnalysisCoordinator(DataUpdateCoordinator[AnalysisResult | None]):
         )
 
         now = dt_util.utcnow()
-        next_cheapest_period = find_cheapest_period(electricity.all, cheapest_minutes, not_before=now)
+        next_cheapest_period = self._next_cheapest_period(electricity.all, cheapest_minutes, now)
         current_level = _current_level(today_classified + tomorrow_classified, now)
 
         return AnalysisResult(
@@ -193,3 +198,25 @@ class PriceAnalysisCoordinator(DataUpdateCoordinator[AnalysisResult | None]):
             expensive_threshold=expensive,
             solar_threshold_kwh=solar_threshold,
         )
+
+    def _next_cheapest_period(self, slots: list[Price], cheapest_minutes: int, now: datetime) -> Window | None:
+        """Return the upcoming cheapest period, kept stable while `now` is still inside it.
+
+        Without this, `next_cheapest_period` would drift forward on every
+        quarter-hour refresh while it's running: the already-elapsed slot(s)
+        at its start would drop out of `find_cheapest_period`'s `not_before`
+        window each time, shortening (and shifting) the reported window. The
+        previous update's window is reused as-is as long as it is still
+        upcoming/ongoing (`start <= now < end`) and `slots` -- the electricity
+        price data it was computed from -- hasn't changed; a new search only
+        happens once the window has ended, or the price data itself changes
+        (e.g. tomorrow's prices become available).
+        """
+        cached = self._cached_next_window
+        if cached is not None and self._cached_next_window_slots == slots and cached.start <= now < cached.end:
+            return cached
+
+        window = find_cheapest_period(slots, cheapest_minutes, not_before=now)
+        self._cached_next_window = window
+        self._cached_next_window_slots = slots
+        return window
