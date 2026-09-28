@@ -22,7 +22,7 @@ SERVICE_GET_PRICES = "get_prices"
 
 SERVICE_GET_PRICES_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_CONFIG_ENTRY_ID): str,
+        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
         vol.Optional(ATTR_START): cv.datetime,
         vol.Optional(ATTR_END): cv.datetime,
     }
@@ -81,7 +81,7 @@ async def _async_get_prices(call: ServiceCall) -> ServiceResponse:
     start = dt_util.as_utc(call.data[ATTR_START]) if ATTR_START in call.data else None
     end = dt_util.as_utc(call.data[ATTR_END]) if ATTR_END in call.data else None
 
-    if start is not None and end is not None and start > end:
+    if start is not None and end is not None and start >= end:
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="invalid_period",

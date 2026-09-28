@@ -8,7 +8,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.frank_energie import const
 from custom_components.frank_energie.services import SERVICE_GET_PRICES
-from tests.utils import build_market_prices
+from tests.utils import build_market_prices, build_market_prices_from_local_midnight
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -295,6 +295,73 @@ async def test_get_prices_naive_datetime_interpreted_as_ha_local_time(
     assert prices == pytest.approx([0.20, 0.30, 0.40])
 
 
+async def test_get_prices_naive_start_on_dst_fall_back_day(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """A naive `start` on the Europe/Amsterdam DST 'fall back' day (2026-10-25) uses the correct UTC offset.
+
+    2026-10-25 is 25 hours long in local time (clocks are set back an hour at
+    03:00 CEST). A naive 01:30 that day is unambiguous and still CEST
+    (+02:00); if it were (mis)interpreted with a fixed +01:00 offset instead,
+    the wrong slot would be excluded from the filtered result.
+    """
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-10-25 00:00:00+02:00")
+
+    local_midnight_dt = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    electricity_prices = [float(i) for i in range(25)]  # 25 hourly slots on the 25-hour fall-back day
+    gas_prices = [1.0] * 25
+
+    today = build_market_prices_from_local_midnight(
+        local_midnight_dt, electricity_prices, gas_prices, resolution_minutes=60
+    )
+    tomorrow = build_market_prices_from_local_midnight(
+        local_midnight_dt + timedelta(days=1), [0.3] * 24, [1.2] * 24, resolution_minutes=60
+    )
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        if start_date == local_midnight_dt.date():
+            return today
+        return tomorrow
+
+    mock_frank_energie_class.prices.side_effect = prices_side_effect
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Naive local 01:30 (unambiguous, still CEST/+02:00, before the 03:00->02:00 rollback).
+    naive_start = datetime(2026, 10, 25, 1, 30)
+    assert naive_start.tzinfo is None
+    # Bound `end` to today's last slot, so tomorrow's (unrelated) slots don't need asserting on too.
+    end = today.electricity.price_data[-1].date_till
+
+    response = await call_get_prices(hass, config_entry_id=config_entry.entry_id, start=naive_start, end=end)
+
+    prices = [item["price"] for item in response["electricity"]]
+    assert prices == pytest.approx(electricity_prices[1:])
+
+
+# --------------------------------------------------------------------------
+# coordinator.data is None (e.g. before the first successful refresh)
+# --------------------------------------------------------------------------
+
+
+async def test_get_prices_returns_empty_lists_when_coordinator_data_is_none(
+    hass, mock_frank_energie_class, config_entry
+):
+    """When coordinator.data is None, get_prices returns empty electricity/gas lists rather than raising."""
+    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[const.DOMAIN][config_entry.entry_id][const.CONF_COORDINATOR]
+    coordinator.data = None
+
+    response = await call_get_prices(hass, config_entry_id=config_entry.entry_id)
+
+    assert response == {"electricity": [], "gas": []}
+
+
 # --------------------------------------------------------------------------
 # Errors
 # --------------------------------------------------------------------------
@@ -355,6 +422,23 @@ async def test_get_prices_start_after_end_raises_invalid_period(hass, mock_frank
 
     today = local_midnight()
     start = today + timedelta(hours=2)
+    end = today + timedelta(hours=1)
+
+    with pytest.raises(ServiceValidationError) as exc_info:
+        await call_get_prices(hass, config_entry_id=config_entry.entry_id, start=start, end=end)
+
+    assert exc_info.value.translation_domain == const.DOMAIN
+    assert exc_info.value.translation_key == "invalid_period"
+
+
+async def test_get_prices_start_equal_end_raises_invalid_period(hass, mock_frank_energie_class, config_entry):
+    """start == end also raises ServiceValidationError with translation_key invalid_period (an empty period)."""
+    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    today = local_midnight()
+    start = today + timedelta(hours=1)
     end = today + timedelta(hours=1)
 
     with pytest.raises(ServiceValidationError) as exc_info:

@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, timedelta, tzinfo
 from typing import TypedDict
-from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -222,11 +221,17 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         return self.entry.options.get(CONF_PRICES_TIMEZONE, PRICES_TIMEZONE_UTC)
 
     @property
-    def prices_tzinfo(self) -> ZoneInfo:
-        """Return the ZoneInfo to localize price times with, per the prices_timezone option."""
+    def prices_tzinfo(self) -> tzinfo:
+        """Return the tzinfo to localize price times with, per the prices_timezone option.
+
+        Uses Home Assistant's own cached default time zone for
+        "home_assistant" (set once via hass.config.async_set_time_zone(), so
+        this never does blocking I/O when called from the event loop) and the
+        UTC singleton for "utc".
+        """
         if self.prices_timezone == PRICES_TIMEZONE_HOME_ASSISTANT:
-            return ZoneInfo(self.hass.config.time_zone)
-        return ZoneInfo("UTC")
+            return dt_util.get_default_time_zone()
+        return dt_util.UTC
 
     @property
     def user_country(self) -> str | None:

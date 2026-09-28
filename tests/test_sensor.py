@@ -362,6 +362,48 @@ async def test_unload_entry_cancels_update_timers(
 
 
 # --------------------------------------------------------------------------
+# _tz_name: PriceData.asdict(timezone=...) needs a string name, not a tzinfo
+# object; datetime.timezone.utc (unlike ZoneInfo) has no `.key`.
+# --------------------------------------------------------------------------
+
+
+def test_tz_name_returns_key_for_zoneinfo():
+    """A ZoneInfo instance (e.g. Home Assistant's configured time zone) returns its `.key`."""
+    from zoneinfo import ZoneInfo
+
+    assert sensor._tz_name(ZoneInfo("Europe/Amsterdam")) == "Europe/Amsterdam"
+
+
+def test_tz_name_falls_back_to_utc_for_datetime_timezone_utc():
+    """datetime.timezone.utc (no `.key` attribute) falls back to the literal "UTC", not a crash."""
+    assert sensor._tz_name(dt_util.UTC) == "UTC"
+
+
+async def test_prices_attribute_does_not_crash_with_home_assistant_option_and_utc_default_timezone(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """Regression test: prices_timezone="home_assistant" must not crash when the default time zone is plain UTC.
+
+    Home Assistant's own DEFAULT_TIME_ZONE starts out as the
+    datetime.timezone.utc singleton (before any async_set_time_zone() call),
+    which has no `.key` attribute, unlike a ZoneInfo instance.
+    """
+    freezer.move_to("2026-01-15 10:00:00+00:00")
+    dt_util.set_default_time_zone(dt_util.UTC)
+    hass.config_entries.async_update_entry(
+        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
+    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[], tomorrow_gas=[])
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    prices = state_for_key(hass, config_entry, "elec_markup").attributes["prices"]
+    assert prices
+    assert prices[0]["from"].utcoffset() == timedelta(0)
+
+
+# --------------------------------------------------------------------------
 # Recorder exclusion / error handling (unit tests, no hass setup needed)
 # --------------------------------------------------------------------------
 

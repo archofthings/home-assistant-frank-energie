@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import tzinfo
 from typing import Any, Callable
-from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -66,6 +66,16 @@ def _price_attr(price, name: str) -> StateType:
     return getattr(price, name)
 
 
+def _tz_name(tz: tzinfo) -> str:
+    """Return the IANA zone name for `tz`, for PriceData.asdict(timezone=...).
+
+    ZoneInfo instances (e.g. Home Assistant's configured time zone) expose a
+    `.key`; the UTC singleton (datetime.timezone.utc) does not, so fall back
+    to the literal "UTC" in that case.
+    """
+    return getattr(tz, "key", "UTC")
+
+
 def _next_price(price_data: PriceData) -> Price | None:
     """Return the first price slot of `price_data` that starts after now.
 
@@ -85,7 +95,7 @@ class FrankEnergieEntityDescription(SensorEntityDescription):
     authenticated: bool = False
     service_name: str | None = SERVICE_NAME_PRICES
     value_fn: Callable[[dict], StateType] = None
-    attr_fn: Callable[[dict, ZoneInfo], dict[str, StateType | list]] = lambda _data, _tz: {}
+    attr_fn: Callable[[dict, tzinfo], dict[str, StateType | list]] = lambda _data, _tz: {}
 
 
 SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
@@ -96,7 +106,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].current_hour, "total"),
-        attr_fn=lambda data, tz: {"prices": data[DATA_ELECTRICITY].asdict("total", timezone=tz.key)},
+        attr_fn=lambda data, tz: {"prices": data[DATA_ELECTRICITY].asdict("total", timezone=_tz_name(tz))},
     ),
     FrankEnergieEntityDescription(
         key="elec_market",
@@ -105,7 +115,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].current_hour, "market_price"),
-        attr_fn=lambda data, tz: {"prices": data[DATA_ELECTRICITY].asdict("market_price", timezone=tz.key)},
+        attr_fn=lambda data, tz: {"prices": data[DATA_ELECTRICITY].asdict("market_price", timezone=_tz_name(tz))},
     ),
     FrankEnergieEntityDescription(
         key="elec_tax",
@@ -115,7 +125,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].current_hour, "market_price_with_tax"),
         attr_fn=lambda data, tz: {
-            "prices": data[DATA_ELECTRICITY].asdict("market_price_with_tax", timezone=tz.key)
+            "prices": data[DATA_ELECTRICITY].asdict("market_price_with_tax", timezone=_tz_name(tz))
         },
     ),
     FrankEnergieEntityDescription(
@@ -152,7 +162,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_GAS].current_hour, "total"),
-        attr_fn=lambda data, tz: {"prices": data[DATA_GAS].asdict("total", timezone=tz.key)},
+        attr_fn=lambda data, tz: {"prices": data[DATA_GAS].asdict("total", timezone=_tz_name(tz))},
     ),
     FrankEnergieEntityDescription(
         key="gas_market",
@@ -161,7 +171,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_GAS].current_hour, "market_price"),
-        attr_fn=lambda data, tz: {"prices": data[DATA_GAS].asdict("market_price", timezone=tz.key)},
+        attr_fn=lambda data, tz: {"prices": data[DATA_GAS].asdict("market_price", timezone=_tz_name(tz))},
     ),
     FrankEnergieEntityDescription(
         key="gas_tax",
@@ -170,7 +180,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_GAS].current_hour, "market_price_with_tax"),
-        attr_fn=lambda data, tz: {"prices": data[DATA_GAS].asdict("market_price_with_tax", timezone=tz.key)},
+        attr_fn=lambda data, tz: {"prices": data[DATA_GAS].asdict("market_price_with_tax", timezone=_tz_name(tz))},
     ),
     FrankEnergieEntityDescription(
         key="gas_tax_vat",

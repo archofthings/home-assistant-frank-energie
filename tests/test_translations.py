@@ -64,6 +64,18 @@ NEW_KEYS = [
     "options.step.init.data.prices_timezone",
     "selector.prices_timezone.options.home_assistant",
     "selector.prices_timezone.options.utc",
+    # strings.json/en.json/nl.json drift fix: keys that were present in
+    # en.json/nl.json but missing from strings.json (see the "Tidy time zone
+    # lookup, action validation and translations" review round).
+    "config.step.login.title",
+    "config.step.login.data.username",
+    "config.step.login.data.password",
+    "config.step.user.title",
+    "config.step.user.data.authentication",
+    "config.error.invalid_auth",
+    "config.abort.already_configured",
+    "config.abort.reauth_successful",
+    "title",
 ]
 
 
@@ -85,3 +97,24 @@ def test_exception_messages_use_the_entry_id_placeholder():
         for key in ("entry_not_found", "entry_not_loaded"):
             message = _get(data, f"exceptions.{key}.message")
             assert "{entry_id}" in message, f"{locale_file.name}: exceptions.{key}.message missing {{entry_id}}"
+
+
+# --------------------------------------------------------------------------
+# single_instance_allowed: present in strings.json (source template) and now
+# in nl.json; intentionally not added to en.json in this round (see spec).
+# --------------------------------------------------------------------------
+
+SINGLE_INSTANCE_ALLOWED_LOCALE_FILES = [
+    INTEGRATION_DIR / "strings.json",
+    INTEGRATION_DIR / "translations" / "nl.json",
+]
+
+
+@pytest.mark.parametrize("locale_file", SINGLE_INSTANCE_ALLOWED_LOCALE_FILES, ids=lambda p: p.name)
+def test_single_instance_allowed_exists_and_is_non_empty(locale_file):
+    """config.abort.single_instance_allowed must exist and be non-empty in strings.json and nl.json."""
+    data = _load(locale_file)
+    value = _get(data, "config.abort.single_instance_allowed")
+
+    assert isinstance(value, str)
+    assert value.strip() != ""
