@@ -49,8 +49,8 @@
         "description": "Choose the notation used for the 'from'/'till' times in the price sensors' attributes and the get_prices action, and configure the electricity price analysis (cheap/expensive thresholds, the cheapest period length and, optionally, a solar production forecast).",
         "data": {
           "prices_timezone": "Time zone for price times",
-          "cheap_price_threshold": "Cheap price threshold",
-          "expensive_price_threshold": "Expensive price threshold",
+          "cheap_price_threshold": "Cheap price below (€/kWh)",
+          "expensive_price_threshold": "Expensive price above (€/kWh)",
           "cheapest_period_minutes": "Cheapest period length",
           "solar_forecast_entry": "Solar forecast",
           "solar_threshold_kwh": "Solar threshold"

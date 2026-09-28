@@ -49,8 +49,8 @@
                 "description": "Kies de notatie voor de 'van'/'tot'-tijden in de attributen van de prijssensoren en de actie get_prices, en stel de prijsanalyse voor elektriciteit in (grenzen voor goedkoop/duur, de lengte van de goedkoopste periode en, optioneel, een zonprognose).",
                 "data": {
                     "prices_timezone": "Tijdzone voor prijstijden",
-                    "cheap_price_threshold": "Grens goedkope prijs",
-                    "expensive_price_threshold": "Grens dure prijs",
+                    "cheap_price_threshold": "Goedkoop onder (€/kWh)",
+                    "expensive_price_threshold": "Duur boven (€/kWh)",
                     "cheapest_period_minutes": "Lengte goedkoopste periode",
                     "solar_forecast_entry": "Zonprognose",
                     "solar_threshold_kwh": "Zon-drempel"
