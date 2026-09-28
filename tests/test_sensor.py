@@ -6,46 +6,17 @@ from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
+from homeassistant.util.async_ import get_scheduled_timer_handles
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from python_frank_energie.models import Invoice, Invoices, Me, MonthSummary
 
 from custom_components.frank_energie import const, sensor
-from custom_components.frank_energie.sensor import next_quarter_hour
 from tests.utils import build_market_prices, price_generator
-
-# NOTE: no module-level `pytestmark = pytest.mark.asyncio` here (unlike the
-# other test modules) because this file also contains plain sync tests for
-# next_quarter_hour(); pytest-asyncio's asyncio_mode=auto (see pytest.ini)
-# already detects the async def tests below without needing the marker.
-
-
-# --------------------------------------------------------------------------
-# next_quarter_hour: pure function, no hass/mocking required
-# --------------------------------------------------------------------------
-
-def test_next_quarter_hour_mid_interval():
-    now = datetime(2024, 1, 1, 10, 7, 31, 500000, tzinfo=timezone.utc)
-    assert next_quarter_hour(now) == datetime(2024, 1, 1, 10, 15, 0, tzinfo=timezone.utc)
-
-
-def test_next_quarter_hour_on_boundary():
-    now = datetime(2024, 1, 1, 10, 15, 0, tzinfo=timezone.utc)
-    assert next_quarter_hour(now) == datetime(2024, 1, 1, 10, 30, 0, tzinfo=timezone.utc)
-
-
-def test_next_quarter_hour_end_of_hour():
-    now = datetime(2024, 1, 1, 10, 59, 30, tzinfo=timezone.utc)
-    assert next_quarter_hour(now) == datetime(2024, 1, 1, 11, 0, 0, tzinfo=timezone.utc)
-
-
-def test_next_quarter_hour_end_of_day():
-    now = datetime(2024, 1, 1, 23, 50, 0, tzinfo=timezone.utc)
-    assert next_quarter_hour(now) == datetime(2024, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
-
 
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
+
 
 def entity_id_for_key(hass, entry, key: str) -> str | None:
     """Look up an entity_id by its unique_id (f'{entry.unique_id}.{key}'), independent of slugging."""
@@ -170,9 +141,9 @@ async def test_price_sensors_report_current_15min_slot(hass, mock_frank_energie_
     assert state_for_key(hass, config_entry, "elec_markup").state == "0.42"
     assert state_for_key(hass, config_entry, "gas_markup").state == "1.75"
 
-    # Advance to the next 15-minute slot and fire the entity's own scheduled update.
-    freezer.move_to("2026-01-15 10:15:01+01:00")
-    async_fire_time_changed(hass, dt_util.utcnow(), fire_all=True)
+    # Advance to the next 15-minute boundary and fire the entity's scheduled update.
+    freezer.move_to("2026-01-15 10:15:00+01:00")
+    async_fire_time_changed(hass, dt_util.utcnow())
     await hass.async_block_till_done()
 
     assert state_for_key(hass, config_entry, "elec_markup").state == "0.55"
@@ -330,22 +301,16 @@ async def test_unique_id_format(hass, mock_frank_energie_class, config_entry, fr
 # Edge case: missing month summary while authenticated
 # --------------------------------------------------------------------------
 
-async def test_month_summary_none_prevents_cost_sensors_from_being_added(
+async def test_month_summary_none_leaves_cost_sensors_unavailable(
     hass, mock_frank_energie_class, authenticated_config_entry, freezer
 ):
     """month_summary() can legitimately return None (per its own type hint).
 
-    SUSPECTED PRODUCTION BUG: FrankEnergieSensor.async_update() only catches
-    (TypeError, IndexError, ValueError) around value_fn(), but the
-    'actual_costs_until_last_meter_reading_date' / 'expected_costs_*' value_fn
-    lambdas do `data[DATA_MONTH_SUMMARY].actualCostsUntilLastMeterReadingDate`,
-    which raises AttributeError when DATA_MONTH_SUMMARY is None. Home
-    Assistant's entity platform catches that during the initial
-    update-before-add and logs "Error on device update!", but as a result the
-    entity is never added to hass at all (not even as STATE_UNAVAILABLE) -
-    the cost sensors silently disappear whenever month_summary() legitimately
-    returns None (e.g. a brand new account with no meter reading yet). This
-    test documents that behaviour rather than fixing the production code.
+    When that happens, the cost sensor value_fn lambdas raise AttributeError
+    (e.g. `data[DATA_MONTH_SUMMARY].actualCostsUntilLastMeterReadingDate` on
+    None). async_update() must catch that alongside TypeError/IndexError/
+    ValueError so the entities still get added to hass, just with a native
+    value of None (i.e. state unavailable), instead of silently disappearing.
     """
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     invoices = Invoices.empty()
@@ -354,5 +319,33 @@ async def test_month_summary_none_prevents_cost_sensors_from_being_added(
     assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    # Documenting current (buggy) behaviour: the entity never gets added.
-    assert entity_id_for_key(hass, authenticated_config_entry, "actual_costs_until_last_meter_reading_date") is None
+    for key in (
+        "actual_costs_until_last_meter_reading_date",
+        "expected_costs_until_last_meter_reading_date",
+        "expected_costs_this_month",
+    ):
+        state = state_for_key(hass, authenticated_config_entry, key)
+        assert state is not None, f"expected an entity for key={key}"
+        assert state.state == STATE_UNAVAILABLE
+
+
+async def test_unload_entry_cancels_update_timers(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """Unloading the config entry must cancel the sensors' quarter-hourly update timers."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    for handle in get_scheduled_timer_handles(hass.loop):
+        if handle.cancelled():
+            continue
+        job = getattr(handle._callback, "job", None)
+        target = getattr(job, "target", None)
+        assert getattr(target, "__qualname__", "") != "FrankEnergieSensor._handle_scheduled_update"

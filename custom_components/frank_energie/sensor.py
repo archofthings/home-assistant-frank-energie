@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from homeassistant.components.sensor import (
@@ -18,13 +17,12 @@ from homeassistant.const import (
     UnitOfEnergy,
     UnitOfVolume,
 )
-from homeassistant.core import HassJob, HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import event
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import utcnow
 
 from .const import (
     ATTR_TIME,
@@ -43,11 +41,9 @@ from .coordinator import FrankEnergieCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-
-def next_quarter_hour(now: datetime) -> datetime:
-    """Return the next 15-minute boundary after now (UTC)."""
-    boundary = now.replace(minute=(now.minute // 15) * 15, second=0, microsecond=0)
-    return boundary + timedelta(minutes=15)
+# Errors raised by value_fn/attr_fn lambdas when the underlying coordinator
+# data (e.g. month_summary()) is legitimately absent (None).
+_NO_DATA_ERRORS = (AttributeError, TypeError, IndexError, ValueError)
 
 
 @dataclass
@@ -356,9 +352,6 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
             configuration_url="https://www.frankenergie.nl/goedkoop",
         )
 
-        self._update_job = HassJob(self._handle_scheduled_update)
-        self._unsub_update = None
-
         super().__init__(coordinator)
 
     async def async_update(self) -> None:
@@ -367,35 +360,34 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
             self._attr_native_value = self.entity_description.value_fn(
                 self.coordinator.data
             )
-        except (TypeError, IndexError, ValueError):
+        except _NO_DATA_ERRORS:
             # No data available
             self._attr_native_value = None
 
-        # Cancel the currently scheduled event if there is any
-        if self._unsub_update:
-            self._unsub_update()
-            self._unsub_update = None
-
-        # Schedule the next update at the next 15-minute boundary
-        self._unsub_update = event.async_track_point_in_utc_time(
-            self.hass,
-            self._update_job,
-            next_quarter_hour(utcnow()),
+    async def async_added_to_hass(self) -> None:
+        """Register the quarter-hourly state refresh once the entity is added to hass."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            event.async_track_utc_time_change(
+                self.hass,
+                self._handle_scheduled_update,
+                minute=[0, 15, 30, 45],
+                second=0,
+            )
         )
 
-    async def _handle_scheduled_update(self, _):
+    @callback
+    def _handle_scheduled_update(self, _now) -> None:
         """Handle a scheduled update."""
-        # Only handle the scheduled update for entities which have a reference to hass,
-        # which disabled sensors don't have.
-        if self.hass is None:
-            return
-
         self.async_schedule_update_ha_state(True)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
-        return self.entity_description.attr_fn(self.coordinator.data)
+        try:
+            return self.entity_description.attr_fn(self.coordinator.data)
+        except _NO_DATA_ERRORS:
+            return {}
 
     @property
     def available(self) -> bool:
