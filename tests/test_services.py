@@ -8,43 +8,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.frank_energie import const
 from custom_components.frank_energie.services import SERVICE_GET_PRICES
-from tests.utils import build_market_prices, build_market_prices_from_local_midnight
+from tests.utils import build_market_prices_from_local_midnight, install_prices, local_midnight
 
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
-
-
-def local_midnight():
-    """Today's local midnight, as an aware datetime, honoring hass's configured timezone."""
-    return dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
-
-def install_prices(
-    mock_api,
-    today_electricity,
-    today_gas,
-    tomorrow_electricity=None,
-    tomorrow_gas=None,
-    resolution_minutes=60,
-):
-    """Configure mock_api.prices to serve today/tomorrow price data."""
-    today = local_midnight()
-    today_prices = build_market_prices(today, today_electricity, today_gas, resolution_minutes=resolution_minutes)
-    tomorrow_prices = build_market_prices(
-        today + timedelta(days=1),
-        tomorrow_electricity if tomorrow_electricity is not None else [],
-        tomorrow_gas if tomorrow_gas is not None else [],
-        resolution_minutes=resolution_minutes,
-    )
-
-    async def prices_side_effect(start_date, resolution="PT15M"):
-        if start_date == dt_util.now().date():
-            return today_prices
-        return tomorrow_prices
-
-    mock_api.prices.side_effect = prices_side_effect
-    return today_prices, tomorrow_prices
 
 
 async def call_get_prices(hass, **data):
@@ -133,12 +101,23 @@ async def test_get_prices_item_keys_and_value_mapping(hass, mock_frank_energie_c
     assert item["market_price_including_tax"] == round(market_price_field + market_price_tax_field, 5)
 
 
-async def test_get_prices_start_iso_time_has_utc_offset_by_default(
-    hass, mock_frank_energie_class, config_entry, freezer
+@pytest.mark.parametrize(
+    "options, freeze_time, expected_suffix",
+    [
+        (None, "2026-01-15 10:00:00+01:00", "+00:00"),  # legacy default: UTC, even in CET winter
+        ({const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}, "2026-01-15 10:00:00+01:00", "+01:00"),
+        ({const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}, "2026-07-15 10:00:00+02:00", "+02:00"),
+    ],
+    ids=["utc_default", "home_assistant_winter", "home_assistant_summer"],
+)
+async def test_get_prices_iso_time_offset_follows_prices_timezone_option(
+    hass, mock_frank_energie_class, config_entry, freezer, options, freeze_time, expected_suffix
 ):
-    """With no prices_timezone option (legacy entry default), ISO start/end times end in "+00:00" (UTC)."""
+    """ISO start/end times follow prices_timezone: UTC by default, else the HA tz offset (CET/CEST for Amsterdam)."""
     await hass.config.async_set_time_zone("Europe/Amsterdam")
-    freezer.move_to("2026-01-15 10:00:00+01:00")  # CET, winter
+    freezer.move_to(freeze_time)
+    if options is not None:
+        hass.config_entries.async_update_entry(config_entry, options=options)
 
     install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
 
@@ -147,51 +126,8 @@ async def test_get_prices_start_iso_time_has_utc_offset_by_default(
 
     response = await call_get_prices(hass, config_entry_id=config_entry.entry_id)
 
-    assert response["electricity"][0]["start"].endswith("+00:00")
-    assert response["electricity"][0]["end"].endswith("+00:00")
-
-
-async def test_get_prices_start_iso_time_has_amsterdam_summer_offset_with_home_assistant_option(
-    hass, mock_frank_energie_class, config_entry, freezer
-):
-    """With the "home_assistant" option, ISO times use +02:00 in summer (Europe/Amsterdam, CEST)."""
-    await hass.config.async_set_time_zone("Europe/Amsterdam")
-    freezer.move_to("2026-07-15 10:00:00+02:00")  # CEST, summer: +02:00
-    hass.config_entries.async_update_entry(
-        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
-    )
-
-    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
-
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    response = await call_get_prices(hass, config_entry_id=config_entry.entry_id)
-
-    assert response["electricity"][0]["start"].endswith("+02:00")
-    assert response["electricity"][0]["end"].endswith("+02:00")
-
-
-async def test_get_prices_start_local_iso_time_has_amsterdam_offset(
-    hass, mock_frank_energie_class, config_entry, freezer
-):
-    """ISO local times use the Europe/Amsterdam offset, not UTC."""
-    await hass.config.async_set_time_zone("Europe/Amsterdam")
-    freezer.move_to("2026-01-15 10:00:00+01:00")  # CET, winter: +01:00
-    # config_entry has no options, so prices_timezone defaults to "utc"; opt into
-    # "home_assistant" explicitly to test the local (Europe/Amsterdam) notation here.
-    hass.config_entries.async_update_entry(
-        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
-    )
-
-    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
-
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    response = await call_get_prices(hass, config_entry_id=config_entry.entry_id)
-
-    assert response["electricity"][0]["start"].endswith("+01:00")
+    assert response["electricity"][0]["start"].endswith(expected_suffix)
+    assert response["electricity"][0]["end"].endswith(expected_suffix)
 
 
 # --------------------------------------------------------------------------
@@ -199,10 +135,25 @@ async def test_get_prices_start_local_iso_time_has_amsterdam_offset(
 # --------------------------------------------------------------------------
 
 
-async def test_get_prices_overlap_window_includes_partially_overlapping_slots(
-    hass, mock_frank_energie_class, config_entry, freezer
+@pytest.mark.parametrize(
+    "start_offset, end_offset, expected_prices",
+    [
+        # Window [00:45, 01:15) partly overlaps slot 0 (00:00-01:00) and slot 1
+        # (01:00-02:00), neither of which is fully contained in the window.
+        (timedelta(minutes=45), timedelta(hours=1, minutes=15), [0.10, 0.20]),
+        # Only `start` set, inside slot 1 (01:00-02:00): slots ending at/before
+        # start are excluded, all later slots included.
+        (timedelta(hours=1, minutes=30), None, [0.20, 0.30, 0.40]),
+        # Only `end` set, inside slot 1 (01:00-02:00): slots starting at/after
+        # end are excluded, all earlier slots included.
+        (None, timedelta(hours=1, minutes=30), [0.10, 0.20]),
+    ],
+    ids=["overlap_window", "start_only", "end_only"],
+)
+async def test_get_prices_start_end_filter_overlap_semantics(
+    hass, mock_frank_energie_class, config_entry, freezer, start_offset, end_offset, expected_prices
 ):
-    """A start/end window that only partly overlaps a slot still includes that slot."""
+    """A start/end window includes any slot it (even partially) overlaps, and excludes ones it does not."""
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     freezer.move_to("2026-01-15 10:00:00+01:00")
 
@@ -214,61 +165,19 @@ async def test_get_prices_overlap_window_includes_partially_overlapping_slots(
     await hass.async_block_till_done()
 
     today = local_midnight()
-    # Window [00:45, 01:15) partly overlaps slot 0 (00:00-01:00) and slot 1 (01:00-02:00),
-    # neither of which is fully contained in the window.
-    start = today + timedelta(minutes=45)
-    end = today + timedelta(hours=1, minutes=15)
+    start = today + start_offset if start_offset is not None else None
+    end = today + end_offset if end_offset is not None else None
 
-    response = await call_get_prices(hass, config_entry_id=config_entry.entry_id, start=start, end=end)
+    call_kwargs = {"config_entry_id": config_entry.entry_id}
+    if start is not None:
+        call_kwargs["start"] = start
+    if end is not None:
+        call_kwargs["end"] = end
 
-    prices = [item["price"] for item in response["electricity"]]
-    assert prices == pytest.approx([0.10, 0.20])
-
-
-async def test_get_prices_start_only_includes_slots_ending_after_start(
-    hass, mock_frank_energie_class, config_entry, freezer
-):
-    """With only `start` set, slots ending at/before start are excluded, all later slots included."""
-    await hass.config.async_set_time_zone("Europe/Amsterdam")
-    freezer.move_to("2026-01-15 10:00:00+01:00")
-
-    install_prices(
-        mock_frank_energie_class, [0.10, 0.20, 0.30, 0.40], [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[]
-    )
-
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    today = local_midnight()
-    start = today + timedelta(hours=1, minutes=30)  # inside slot 1 (01:00-02:00)
-
-    response = await call_get_prices(hass, config_entry_id=config_entry.entry_id, start=start)
+    response = await call_get_prices(hass, **call_kwargs)
 
     prices = [item["price"] for item in response["electricity"]]
-    assert prices == pytest.approx([0.20, 0.30, 0.40])
-
-
-async def test_get_prices_end_only_includes_slots_starting_before_end(
-    hass, mock_frank_energie_class, config_entry, freezer
-):
-    """With only `end` set, slots starting at/after end are excluded, all earlier slots included."""
-    await hass.config.async_set_time_zone("Europe/Amsterdam")
-    freezer.move_to("2026-01-15 10:00:00+01:00")
-
-    install_prices(
-        mock_frank_energie_class, [0.10, 0.20, 0.30, 0.40], [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[]
-    )
-
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    today = local_midnight()
-    end = today + timedelta(hours=1, minutes=30)  # inside slot 1 (01:00-02:00)
-
-    response = await call_get_prices(hass, config_entry_id=config_entry.entry_id, end=end)
-
-    prices = [item["price"] for item in response["electricity"]]
-    assert prices == pytest.approx([0.10, 0.20])
+    assert prices == pytest.approx(expected_prices)
 
 
 async def test_get_prices_naive_datetime_interpreted_as_ha_local_time(
@@ -367,8 +276,10 @@ async def test_get_prices_returns_empty_lists_when_coordinator_data_is_none(
 # --------------------------------------------------------------------------
 
 
-async def test_get_prices_unknown_entry_id_raises_entry_not_found(hass, mock_frank_energie_class, config_entry):
-    """An unknown config_entry_id raises ServiceValidationError with translation_key entry_not_found."""
+async def test_get_prices_unknown_entry_id_raises_entry_not_found(
+    hass, mock_frank_energie_class, config_entry, enable_custom_integrations
+):
+    """An unknown config_entry_id, or one that exists but belongs to another domain, raises entry_not_found."""
     install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
@@ -379,15 +290,6 @@ async def test_get_prices_unknown_entry_id_raises_entry_not_found(hass, mock_fra
     assert exc_info.value.translation_domain == const.DOMAIN
     assert exc_info.value.translation_key == "entry_not_found"
     assert exc_info.value.translation_placeholders == {"entry_id": "does-not-exist"}
-
-
-async def test_get_prices_entry_of_another_domain_raises_entry_not_found(
-    hass, mock_frank_energie_class, config_entry, enable_custom_integrations
-):
-    """A config entry that exists but belongs to another domain also raises entry_not_found."""
-    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
 
     other_entry = MockConfigEntry(domain="other_domain", data={}, unique_id="other")
     other_entry.add_to_hass(hass)
@@ -414,32 +316,22 @@ async def test_get_prices_unloaded_entry_raises_entry_not_loaded(hass, mock_fran
     assert exc_info.value.translation_placeholders == {"entry_id": config_entry.entry_id}
 
 
-async def test_get_prices_start_after_end_raises_invalid_period(hass, mock_frank_energie_class, config_entry):
-    """start > end raises ServiceValidationError with translation_key invalid_period."""
+@pytest.mark.parametrize(
+    "start_hours, end_hours",
+    [(2, 1), (1, 1)],  # start > end; start == end (an empty period)
+    ids=["start_after_end", "start_equal_end"],
+)
+async def test_get_prices_start_not_before_end_raises_invalid_period(
+    hass, mock_frank_energie_class, config_entry, start_hours, end_hours
+):
+    """start > end, or start == end, both raise ServiceValidationError with translation_key invalid_period."""
     install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
     today = local_midnight()
-    start = today + timedelta(hours=2)
-    end = today + timedelta(hours=1)
-
-    with pytest.raises(ServiceValidationError) as exc_info:
-        await call_get_prices(hass, config_entry_id=config_entry.entry_id, start=start, end=end)
-
-    assert exc_info.value.translation_domain == const.DOMAIN
-    assert exc_info.value.translation_key == "invalid_period"
-
-
-async def test_get_prices_start_equal_end_raises_invalid_period(hass, mock_frank_energie_class, config_entry):
-    """start == end also raises ServiceValidationError with translation_key invalid_period (an empty period)."""
-    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    today = local_midnight()
-    start = today + timedelta(hours=1)
-    end = today + timedelta(hours=1)
+    start = today + timedelta(hours=start_hours)
+    end = today + timedelta(hours=end_hours)
 
     with pytest.raises(ServiceValidationError) as exc_info:
         await call_get_prices(hass, config_entry_id=config_entry.entry_id, start=start, end=end)
