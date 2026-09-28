@@ -65,10 +65,10 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         today = dt_util.now(dt_util.get_time_zone("Europe/Amsterdam")).date()
 
         try:
-            prices_today = await self.__fetch_prices_with_fallback(today)
+            prices_today = await self._fetch_prices_with_fallback(today)
 
             try:
-                prices_tomorrow = await self.__fetch_prices_with_fallback(today + timedelta(days=1))
+                prices_tomorrow = await self._fetch_prices_with_fallback(today + timedelta(days=1))
             except NoMarketPricesAvailableException as ex:
                 LOGGER.debug("No market prices available for tomorrow yet: %s", ex)
                 prices_tomorrow = None
@@ -81,21 +81,21 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             )
         except (AuthException, AuthRequiredException) as ex:
             LOGGER.debug("Authentication tokens expired, trying to renew them (%s)", ex)
-            await self.__try_renew_token()
+            await self._try_renew_token()
             # Tell we have no data, so update coordinator tries again with renewed tokens
-            return self.__stale_data_or_raise(ex)
+            return self._stale_data_or_raise(ex)
 
         except RequestException as ex:
             if str(ex).startswith("user-error:"):
                 raise ConfigEntryAuthFailed from ex
 
-            return self.__stale_data_or_raise(ex)
+            return self._stale_data_or_raise(ex)
 
         except FrankEnergieException as ex:
             # Any other library error (e.g. plain FrankEnergieException from a
             # 500 response or a validation error) should not crash the update;
             # fall back to stale data if we have any usable data cached.
-            return self.__stale_data_or_raise(ex)
+            return self._stale_data_or_raise(ex)
 
         if self.api.is_authenticated:
             self._async_persist_tokens()
@@ -136,7 +136,7 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
                 },
             )
 
-    def __stale_data_or_raise(self, ex: Exception) -> FrankEnergieData:
+    def _stale_data_or_raise(self, ex: Exception) -> FrankEnergieData:
         """Return the last known data if it is still usable, otherwise raise UpdateFailed."""
         err = UpdateFailed(ex)
 
@@ -171,7 +171,7 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
 
         return self._user_country
 
-    async def __fetch_prices_with_fallback(self, start_date: date) -> MarketPrices:
+    async def _fetch_prices_with_fallback(self, start_date: date) -> MarketPrices:
         """Fetch prices for an authenticated or unauthenticated account.
 
         For authenticated accounts this prefers the user's contract prices, and
@@ -200,10 +200,10 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             # If user_prices are available for both gas and electricity return them
             return user_prices
 
-        await self.__fill_missing_segments(user_prices, user_country, start_date)
+        await self._fill_missing_segments(user_prices, user_country, start_date)
         return user_prices
 
-    async def __fill_missing_segments(
+    async def _fill_missing_segments(
         self, user_prices: MarketPrices, user_country: str, start_date: date
     ) -> None:
         """Fill empty electricity/gas segments of `user_prices` with public prices, in place."""
@@ -223,7 +223,7 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         else:
             resolution = "PT15M"
 
-        public_prices = await self.__fetch_public_prices(user_country, start_date, resolution)
+        public_prices = await self._fetch_public_prices(user_country, start_date, resolution)
 
         if missing_gas:
             LOGGER.info("No gas prices found for user, falling back to public prices")
@@ -244,14 +244,14 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
                     f"No electricity prices available (user or public) for {start_date}"
                 )
 
-    async def __fetch_public_prices(self, user_country: str, start_date: date, resolution: str) -> MarketPrices:
+    async def _fetch_public_prices(self, user_country: str, start_date: date, resolution: str) -> MarketPrices:
         """Fetch public market prices, using the country-specific query when needed."""
         if user_country == "NL":
             return await self.api.prices(start_date, resolution=resolution)
 
         return await self.api.country_prices(user_country, start_date, resolution=resolution)
 
-    async def __try_renew_token(self):
+    async def _try_renew_token(self):
         try:
             await self.api.renew_token()
             # renew_token() updates api._auth internally; persist it via the
