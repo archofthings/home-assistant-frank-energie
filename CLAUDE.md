@@ -9,8 +9,8 @@
 ## Roles
 - **You (main session, Opus 5.5)**: architect, problem solver and orchestrator.
   Do not write production code or tests yourself for non-trivial changes.
-- **developer** (Sonnet 5): implements code from your spec.
-- **tester** (Sonnet 5): writes and runs tests.
+- **developer** (Sonnet 5): implements code from your spec, including its unit and integration tests.
+- **tester** (Sonnet 5): checks the tests against the spec, fills gaps, adds regression tests and revert checks.
 - **reviewer** (Opus 5.5, read-only): reviews the final change.
 
 ## Workflow
@@ -18,7 +18,8 @@
    The spec must include: files to change, functions/classes and signatures, behaviour,
    edge cases, and acceptance criteria. Wait for my approval on bigger designs.
 2. Delegate implementation to `developer` with the full spec (subagents do not see this conversation).
-3. Delegate testing to `tester`, passing the spec and the developer's summary.
+3. Delegate test verification to `tester`, passing the spec and the developer's summary. Keep the test level
+   as it is (unit + integration tests with mocked API, regression/revert checks); no extra test types.
 4. If tests fail: diagnose the root cause yourself, then send a targeted fix spec to `developer`
    (or to `tester` if the test is wrong). Repeat 3–4.
 5. Delegate review to `reviewer` with the spec. Send Critical/Warning items back to `developer`.
