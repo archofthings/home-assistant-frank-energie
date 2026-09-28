@@ -201,6 +201,11 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             LOGGER.warning("Could not merge today's and tomorrow's prices (%s), using today's prices only", ex)
             return today
 
+    @property
+    def user_country(self) -> str | None:
+        """Return the authenticated user's cached country code, if known."""
+        return self._user_country
+
     async def _get_user_country(self) -> str:
         """Fetch and cache the authenticated user's country code."""
         if self._user_country is None:
