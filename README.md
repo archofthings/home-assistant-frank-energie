@@ -1,73 +1,193 @@
-[![latest version](https://img.shields.io/github/tag/bajansen/home-assistant-frank_energie?include_prereleases=&sort=semver&label=Versie)](https://github.com/bajansen/home-assistant-frank_energie/releases/)
-![installations](https://img.shields.io/badge/dynamic/json?label=Installaties&query=%24.frank_energie.total&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json)
+# Frank Energie for Home Assistant
 
-# Frank Energie Custom Component voor Home Assistant
-Middels deze integratie wordt de huidige prijsinformatie van Frank Energie beschikbaar gemaakt binnen Home Assistant.
+[![Latest release](https://img.shields.io/github/v/release/archofthings/home-assistant-frank_energie?include_prereleases&sort=semver&label=release)](https://github.com/archofthings/home-assistant-frank_energie/releases)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![CI](https://img.shields.io/github/actions/workflow/status/archofthings/home-assistant-frank_energie/ci.yaml?branch=main&label=CI)](https://github.com/archofthings/home-assistant-frank_energie/actions/workflows/ci.yaml)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5.svg?logo=homeassistant)](https://www.home-assistant.io/)
+[![Installations](https://img.shields.io/badge/dynamic/json?label=installations&query=%24.frank_energie.total&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json)](https://analytics.home-assistant.io/)
 
-De waarden van de prijssensoren kunnen bijvoorbeeld gebruikt worden om apparatuur te schakelen op basis van de huidige energieprijs.
+A Home Assistant custom integration that brings [Frank Energie](https://www.frankenergie.nl/) electricity and gas prices into Home Assistant, with optional account data such as your monthly costs and invoices.
 
-## Installatie
-Plaats de map `frank_energie` uit de map `custom_components` binnen deze repo in de `custom_components` map van je Home Assistant installatie.
+Use the price sensors to run appliances, charge a car or battery, or heat water when energy is cheapest.
 
-### HACS
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+> [!NOTE]
+> This is a maintained fork of [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie). In 2026 Frank Energie changed its API, which broke the original integration. This fork moves to the new API (`python-frank-energie` 2026.9.20) and to Frank Energie's **15-minute prices**.
 
-Installatie via HACS is mogelijk door deze repository toe te voegen als [custom repository](https://hacs.xyz/docs/faq/custom_repositories) met de categorie 'Integratie'.
+## Contents
 
-### Configuratie
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Sensors](#sensors)
+- [Using the price list](#using-the-price-list)
+- [Charts](#charts)
+- [Upgrading from the original integration](#upgrading-from-the-original-integration)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Credits and license](#credits-and-license)
 
-<a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=frank_energie" class="my badge" target="_blank">
-    <img src="https://my.home-assistant.io/badges/config_flow_start.svg">
-</a>
+## Features
 
-De Frank Energie integratie kan worden toegevoegd via de 'Integraties' pagina in de instellingen.
-Vervolgens kunnen sensoren per stuk worden uitgeschakeld of verborgen indien gewenst.
+- **Current prices every 15 minutes**: all-in price, market price, price including tax, VAT, sourcing markup and energy tax, for electricity and gas.
+- **Daily statistics**: lowest, highest and average price for today.
+- **Full price list** as an attribute, covering today and (once published, usually around 13:00) tomorrow.
+- **No account needed** for public prices.
+- **Optional login** for your personal contract prices, plus your monthly cost and invoice sensors.
+- **Your delivery address is detected automatically** when you log in.
+- **Keeps working through API hiccups**: if an update fails, the last prices stay available as long as they still cover the future. Tokens are renewed automatically, and you're only asked to log in again when that fails.
+- **Netherlands and Belgium**: public fallback prices follow your account's country.
 
-#### Let op!
+## Requirements
 
-Indien je deze plugin al gebruikte en hebt ingesteld via `configuration.yaml` dien je deze instellingen te verwijderen en Frank Energie opnieuw in te stellen middels de config flow zoals hierboven beschreven.
+- Home Assistant **2026.9** or newer
+- [HACS](https://hacs.xyz/) (recommended) for installation
+- Optional: a Frank Energie account, for personal prices and cost sensors
 
-#### Inloggen
+## Installation
 
-Bij het instellen van de integratie wordt de mogelijkheid gegeven in te loggen met je Frank Energie-account. Inloggen is geen vereiste voor werking van deze integratie maar biedt de mogelijkheid om ook klantspecifieke gegevens op te halen. Op dit moment krijg je na inloggen naast de gebruikelijke tariefsensoren ook de beschikking over sensoren voor de verwachte en daadwerkelijke verbruikskosten voor de huidige maand.
+### HACS (recommended)
 
-### Gebruik
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=archofthings&repository=home-assistant-frank_energie&category=integration)
 
-Een aantal sensors hebben een `prices` attribuut die alle bekende prijzen bevat. Dit kan worden gebruikt om zelf met een template nieuwe sensors te maken.
+Or add it by hand:
 
-Voorbeeld om de hoogst bekende prijs na het huidige uur te bepalen:
+1. In HACS, open the menu (⋮) and choose **Custom repositories**.
+2. Add `https://github.com/archofthings/home-assistant-frank_energie` with type **Integration**.
+3. Search for **Frank Energie**, download it, and restart Home Assistant.
+
+Releases are currently published as **pre-releases**. If HACS doesn't offer the newest one, open the integration in HACS, choose **Redownload**, and select the version.
+
+### Manual
+
+1. Download `frank_energie.zip` from the [latest release](https://github.com/archofthings/home-assistant-frank_energie/releases).
+2. Extract it into `config/custom_components/frank_energie/` in your Home Assistant configuration folder.
+3. Restart Home Assistant.
+
+## Configuration
+
+[![Open your Home Assistant instance and start setting up Frank Energie.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=frank_energie)
+
+1. Go to **Settings → Devices & services → Add integration** and search for **Frank Energie**.
+2. Choose whether to log in with your Frank Energie account:
+   - **Without login** you get the public market prices.
+   - **With login** you get your personal contract prices, plus the monthly cost and invoice sensors. The first site on your account that is in delivery is selected automatically, and the entry is named after its address.
+3. Individual sensors can be disabled or hidden afterwards.
+
+If your login expires and can't be renewed automatically, Home Assistant asks you to **re-authenticate** from **Settings → Devices & services**.
+
+> [!IMPORTANT]
+> The old `configuration.yaml` setup is no longer supported. Remove any `frank_energie` YAML configuration and set the integration up through the UI.
+
+## Sensors
+
+Prices are fetched every hour. Sensor states switch at every quarter hour (:00, :15, :30, :45) to the price of the current 15-minute slot.
+
+### Electricity (€/kWh)
+
+| Sensor | Enabled by default | `prices` attribute |
+|---|:---:|:---:|
+| Current electricity price (All-in) | ✅ | ✅ |
+| Current electricity market price | ✅ | ✅ |
+| Current electricity price including tax | ✅ | ✅ |
+| Current electricity VAT price | – | |
+| Current electricity sourcing markup | – | |
+| Current electricity tax only | – | |
+| Lowest energy price today | ✅ | |
+| Highest energy price today | ✅ | |
+| Average electricity price today | ✅ | |
+
+### Gas (€/m³)
+
+| Sensor | Enabled by default | `prices` attribute |
+|---|:---:|:---:|
+| Current gas price (All-in) | ✅ | ✅ |
+| Current gas market price | ✅ | ✅ |
+| Current gas price including tax | ✅ | ✅ |
+| Current gas VAT price | – | |
+| Current gas sourcing price | – | |
+| Current gas tax only | – | |
+| Lowest gas price today | ✅ | |
+| Highest gas price today | ✅ | |
+
+The lowest and highest price sensors have a `from_time` attribute with the start of that slot.
+
+### Costs (€, login required)
+
+| Sensor | Description |
+|---|---|
+| Actual monthly cost | Costs so far this month, up to the last meter reading (`Last update` attribute) |
+| Expected monthly cost until now | Expected costs up to the last meter reading |
+| Expected cost this month | Expected costs for the whole month |
+| Invoice previous period | Previous invoice (`Start date` and `Description` attributes) |
+| Invoice current period | Current invoice period |
+| Invoice upcoming period | Upcoming invoice |
+
+A sensor shows as **unavailable** when there's no data for it, for example when gas prices are missing, or there's no month summary yet for a new account.
+
+## Using the price list
+
+The all-in, market and including-tax sensors have a `prices` attribute. It lists every known 15-minute slot for today and tomorrow:
+
+```yaml
+prices:
+  - from: 2026-09-28T10:00:00+00:00
+    till: 2026-09-28T10:15:00+00:00
+    price: 0.245
+  - from: 2026-09-28T10:15:00+00:00
+    till: 2026-09-28T10:30:00+00:00
+    price: 0.240
+  # ...
 ```
-{{ state_attr('sensor.current_electricity_price_all_in', 'prices') | selectattr('from', 'gt', now()) | max(attribute='price') }}
+
+Times are in UTC and prices are rounded to 3 decimals. With tomorrow's prices included the list holds up to 200 entries, so it's **not stored in the recorder history**, to stay within Home Assistant's attribute size limit. It is always available on the live state, in templates and in dashboards.
+
+The examples below use `sensor.current_electricity_price_all_in`. Your entity ID may differ; check it under **Settings → Devices & services → Frank Energie**.
+
+Highest price still to come:
+
+```jinja
+{{ state_attr('sensor.current_electricity_price_all_in', 'prices')
+   | selectattr('from', 'gt', now()) | max(attribute='price') }}
 ```
 
-Laagste prijs vandaag:
+Lowest price today:
+
+```jinja
+{{ state_attr('sensor.current_electricity_price_all_in', 'prices')
+   | selectattr('from', 'ge', today_at('00:00'))
+   | selectattr('till', 'le', today_at('00:00') + timedelta(days=1))
+   | min(attribute='price') }}
 ```
-{{ state_attr('sensor.current_electricity_price_all_in', 'prices') | selectattr('till', 'le', now().replace(hour=23)) | min(attribute='price') }}
+
+Lowest price in the next six hours:
+
+```jinja
+{{ state_attr('sensor.current_electricity_price_all_in', 'prices')
+   | selectattr('from', 'gt', now())
+   | selectattr('till', 'lt', now() + timedelta(hours=6))
+   | min(attribute='price') }}
 ```
 
-Laagste prijs in de komende zes uren:
-```
-{{ state_attr('sensor.current_electricity_price_all_in', 'prices') | selectattr('from', 'gt', now()) | selectattr('till', 'lt', now() + timedelta(hours=6)) | min(attribute='price') }}
-```
+## Charts
 
-### Grafiek (voorbeelden)
-Middels [apex-card](https://github.com/RomRider/apexcharts-card) is het mogelijk de toekomstige prijzen te plotten:
+The price list can be plotted with [ApexCharts Card](https://github.com/RomRider/apexcharts-card).
 
-#### Voorbeeld 1 - Alle data
+### Today and tomorrow
 
-![Apex graph voorbeeld 1](/images/example_1.png "Voorbeeld 1")
+![ApexCharts example: all prices](images/example_1.png "Today and tomorrow")
 
-```yaml 
+```yaml
 type: custom:apexcharts-card
 graph_span: 48h
 span:
   start: day
 now:
   show: true
-  label: Nu
+  label: Now
 header:
   show: true
-  title: Energieprijs per uur (€/kwh)
+  title: Electricity price per 15 minutes (€/kWh)
 series:
   - entity: sensor.current_electricity_price_all_in
     show:
@@ -78,14 +198,12 @@ series:
     opacity: 0.3
     color: '#03b2cb'
     data_generator: |
-      return entity.attributes.prices.map((record, index) => {
-        return [record.from, record.price];
-      });
+      return entity.attributes.prices.map((record) => [record.from, record.price]);
 ```
 
-#### Voorbeeld 2 - Komende 10 uur
+### Next hours
 
-![Apex graph voorbeeld 2](/images/example_2.png "Voorbeeld 2")
+![ApexCharts example: next hours](images/example_2.png "Next hours")
 
 ```yaml
 type: custom:apexcharts-card
@@ -95,7 +213,7 @@ span:
   offset: '-3h'
 now:
   show: true
-  label: Nu
+  label: Now
 header:
   show: true
   show_states: true
@@ -115,7 +233,68 @@ series:
     opacity: 0.3
     color: '#03b2cb'
     data_generator: |
-      return entity.attributes.prices.map((record, index) => {
-        return [record.from, record.price];
-      });
+      return entity.attributes.prices.map((record) => [record.from, record.price]);
 ```
+
+## Upgrading from the original integration
+
+- **Home Assistant 2026.9 or newer** is required.
+- **Prices are per 15 minutes** instead of per hour. Automations and templates that assume hourly values, or 24 entries per day in `prices`, may need adjusting (a day now has 96 entries, or 92/100 on daylight-saving days).
+- **Lowest and highest price today** now pick a 15-minute slot, so they can be more extreme than the old hourly values.
+- **Existing entities keep their entity IDs and history**, because their unique IDs are unchanged.
+- **The `prices` attribute is no longer stored in history**; see [Using the price list](#using-the-price-list).
+
+## Troubleshooting
+
+**HACS shows a download error (404).** The release has no `frank_energie.zip` attached. Pick a newer release in HACS.
+
+**Sensors are unavailable.**
+- *Just after midnight:* tomorrow's prices may not have been loaded yet. They're fetched hourly and normally published around 13:00.
+- *Gas sensors:* if your contract has no gas, the gas sensors stay unavailable.
+
+**Debug logging.** Add this to `configuration.yaml` and restart:
+
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.frank_energie: debug
+    python_frank_energie: debug
+```
+
+> [!WARNING]
+> Debug logs from `python_frank_energie` can contain your address and full price data. Remove personal details before sharing logs in an issue. The integration itself never logs your tokens or password.
+
+Please report problems via [GitHub issues](https://github.com/archofthings/home-assistant-frank_energie/issues).
+
+## Development
+
+```text
+custom_components/frank_energie/
+├── __init__.py      # setup, delivery site discovery
+├── config_flow.py   # UI setup, login and reauth
+├── coordinator.py   # data fetching, fallbacks, token handling
+├── sensor.py        # sensor definitions
+└── manifest.json    # pins python-frank-energie==2026.9.20
+tests/               # pytest-homeassistant-custom-component tests (API fully mocked)
+```
+
+Run the checks locally with Python 3.14:
+
+```bash
+python3.14 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+flake8 . --count --max-complexity=10 --max-line-length=120 --statistics
+pytest
+```
+
+CI runs flake8 and pytest on every push and pull request. Publishing a GitHub release builds `frank_energie.zip` and attaches it to the release for HACS.
+
+## Credits and license
+
+- Original integration by [@bajansen](https://github.com/bajansen) and contributors.
+- API client: [python-frank-energie](https://pypi.org/project/python-frank-energie/).
+
+This project is not affiliated with or endorsed by Frank Energie.
+
+The upstream project doesn't include a license file, so no license has been added here either.
