@@ -65,39 +65,12 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         today = dt_util.now(dt_util.get_time_zone("Europe/Amsterdam")).date()
 
         try:
-            prices_today = await self._fetch_prices_with_fallback(today)
-
             try:
-                prices_tomorrow = await self._fetch_prices_with_fallback(today + timedelta(days=1))
-            except NoMarketPricesAvailableException as ex:
-                LOGGER.debug("No market prices available for tomorrow yet: %s", ex)
-                prices_tomorrow = None
-
-            data_month_summary = (
-                await self.api.month_summary(self.site_reference) if self.api.is_authenticated else None
-            )
-            data_invoices = (
-                await self.api.invoices(self.site_reference) if self.api.is_authenticated else None
-            )
-        except (AuthException, AuthRequiredException) as ex:
-            LOGGER.debug("Authentication tokens expired, trying to renew them (%s)", ex)
-            await self._try_renew_token()
-            # Tell we have no data, so update coordinator tries again with renewed tokens
-            return self._stale_data_or_raise(ex)
-
-        except RequestException as ex:
-            if str(ex).startswith("user-error:"):
-                raise ConfigEntryAuthFailed from ex
-
-            return self._stale_data_or_raise(ex)
-
-        except (FrankEnergieException, ValueError) as ex:
-            # Any other library error (e.g. plain FrankEnergieException from a
-            # 500 response, or a ValueError from library parsing/an invalid
-            # site_reference) should not crash the update; fall back to stale
-            # data if we have any usable data cached.
-            return self._stale_data_or_raise(ex)
-
+                return await self._fetch_all(today)
+            except (AuthException, AuthRequiredException) as ex:
+                return await self._handle_auth_error(ex, today)
+            except (RequestException, FrankEnergieException, ValueError) as ex:
+                return self._handle_update_error(ex)
         finally:
             # Tokens can be renewed transparently inside _query() during any of
             # the awaited calls above, including ones that ultimately raised.
@@ -106,6 +79,23 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             # _async_persist_tokens().
             if self.api.is_authenticated:
                 self._async_persist_tokens()
+
+    async def _fetch_all(self, today: date) -> FrankEnergieData:
+        """Fetch today's and tomorrow's prices, month summary and invoices, and merge them."""
+        prices_today = await self._fetch_prices_with_fallback(today)
+
+        try:
+            prices_tomorrow = await self._fetch_prices_with_fallback(today + timedelta(days=1))
+        except NoMarketPricesAvailableException as ex:
+            LOGGER.debug("No market prices available for tomorrow yet: %s", ex)
+            prices_tomorrow = None
+
+        data_month_summary = (
+            await self.api.month_summary(self.site_reference) if self.api.is_authenticated else None
+        )
+        data_invoices = (
+            await self.api.invoices(self.site_reference) if self.api.is_authenticated else None
+        )
 
         tomorrow_electricity = prices_tomorrow.electricity if prices_tomorrow else None
         tomorrow_gas = prices_tomorrow.gas if prices_tomorrow else None
@@ -116,6 +106,43 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             DATA_MONTH_SUMMARY: data_month_summary,
             DATA_INVOICES: data_invoices,
         }
+
+    async def _handle_auth_error(self, ex: Exception, today: date) -> FrankEnergieData:
+        """Handle an auth error from the first fetch attempt: renew the token and retry once.
+
+        If the renewal succeeds, _fetch_all() is retried exactly once. Any
+        error from that retry is classified the same way as the first
+        attempt's, except that an auth error on the retry does not trigger
+        another renewal; it goes straight to stale-data-or-raise so there is
+        at most one renewal and one retry per update.
+        """
+        LOGGER.debug("Authentication tokens expired, trying to renew them (%s)", ex)
+
+        if not await self._try_renew_token():
+            # Tell we have no data, so update coordinator tries again with renewed tokens
+            return self._stale_data_or_raise(ex)
+
+        try:
+            return await self._fetch_all(today)
+        except (AuthException, AuthRequiredException) as retry_ex:
+            return self._stale_data_or_raise(retry_ex)
+        except (RequestException, FrankEnergieException, ValueError) as retry_ex:
+            return self._handle_update_error(retry_ex)
+
+    def _handle_update_error(self, ex: Exception) -> FrankEnergieData:
+        """Classify a non-auth update error: report a user error, or fall back to stale data.
+
+        A RequestException whose message starts with "user-error:" indicates
+        the account/site itself needs reauth (e.g. after a site_reference from
+        a different account). Any other RequestException, plain
+        FrankEnergieException (e.g. from a 500 response) or ValueError (e.g.
+        from library parsing/an invalid site_reference) should not crash the
+        update; fall back to stale data if we have any usable data cached.
+        """
+        if isinstance(ex, RequestException) and str(ex).startswith("user-error:"):
+            raise ConfigEntryAuthFailed from ex
+
+        return self._stale_data_or_raise(ex)
 
     def _async_persist_tokens(self) -> None:
         """Persist tokens that the library renewed internally back into the config entry.
@@ -255,7 +282,8 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
 
         return await self.api.country_prices(user_country, start_date, resolution=resolution)
 
-    async def _try_renew_token(self):
+    async def _try_renew_token(self) -> bool:
+        """Attempt to renew the access token. Returns True on success, False on non-auth failure."""
         try:
             await self.api.renew_token()
             # renew_token() updates api._auth internally; persist it via the
@@ -265,6 +293,7 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             self._async_persist_tokens()
 
             LOGGER.debug("Successfully renewed token")
+            return True
 
         except (AuthException, AuthRequiredException) as ex:
             LOGGER.error("Failed to renew token: %s. Starting user reauth flow", ex)
@@ -273,7 +302,8 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         except FrankEnergieException as ex:
             # NetworkError, RequestException or a plain FrankEnergieException:
             # renewal failed for a non-auth reason. Log the message only
-            # (never tokens) and return normally so the caller continues into
+            # (never tokens) and return False so the caller continues into
             # _stale_data_or_raise(), which either serves stale data or raises
             # UpdateFailed so the next update cycle retries.
             LOGGER.debug("Failed to renew token: %s", ex)
+            return False
