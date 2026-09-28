@@ -294,7 +294,7 @@ async def test_unique_id_format(hass, mock_frank_energie_class, config_entry, fr
     entity_id = entity_id_for_key(hass, config_entry, "elec_markup")
     assert entity_id is not None
     entry = er.async_get(hass).async_get(entity_id)
-    assert entry.unique_id == f"{config_entry.unique_id}.elec_markup"
+    assert entry.unique_id == "frank_energie.elec_markup"
 
 
 # --------------------------------------------------------------------------
@@ -306,11 +306,10 @@ async def test_month_summary_none_leaves_cost_sensors_unavailable(
 ):
     """month_summary() can legitimately return None (per its own type hint).
 
-    When that happens, the cost sensor value_fn lambdas raise AttributeError
-    (e.g. `data[DATA_MONTH_SUMMARY].actualCostsUntilLastMeterReadingDate` on
-    None). async_update() must catch that alongside TypeError/IndexError/
-    ValueError so the entities still get added to hass, just with a native
-    value of None (i.e. state unavailable), instead of silently disappearing.
+    When that happens, the cost sensor value_fn lambdas explicitly return None
+    (guarding on `data[DATA_MONTH_SUMMARY] is not None`) so the entities still
+    get added to hass, just with a native value of None (i.e. state
+    unavailable), instead of silently disappearing or raising.
     """
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     invoices = Invoices.empty()

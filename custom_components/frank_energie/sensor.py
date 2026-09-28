@@ -42,8 +42,12 @@ from .coordinator import FrankEnergieCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 # Errors raised by value_fn/attr_fn lambdas when the underlying coordinator
-# data (e.g. month_summary()) is legitimately absent (None).
-_NO_DATA_ERRORS = (AttributeError, TypeError, IndexError, ValueError)
+# data is legitimately absent/empty (e.g. no price data yet). Legitimately
+# absent month_summary()/invoices data is guarded explicitly in the relevant
+# lambdas below instead of being caught here, so AttributeError is *not*
+# included: a renamed/removed library field should surface as a real error
+# instead of silently showing the entity as "unavailable".
+_NO_DATA_ERRORS = (TypeError, IndexError, ValueError)
 
 
 @dataclass
@@ -219,12 +223,16 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
-        value_fn=lambda data: data[
-            DATA_MONTH_SUMMARY
-        ].actualCostsUntilLastMeterReadingDate,
-        attr_fn=lambda data: {
-            "Last update": data[DATA_MONTH_SUMMARY].lastMeterReadingDate
-        },
+        value_fn=lambda data: (
+            data[DATA_MONTH_SUMMARY].actualCostsUntilLastMeterReadingDate
+            if data[DATA_MONTH_SUMMARY] is not None
+            else None
+        ),
+        attr_fn=lambda data: (
+            {"Last update": data[DATA_MONTH_SUMMARY].lastMeterReadingDate}
+            if data[DATA_MONTH_SUMMARY] is not None
+            else {}
+        ),
     ),
     FrankEnergieEntityDescription(
         key="expected_costs_until_last_meter_reading_date",
@@ -234,12 +242,16 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
-        value_fn=lambda data: data[
-            DATA_MONTH_SUMMARY
-        ].expectedCostsUntilLastMeterReadingDate,
-        attr_fn=lambda data: {
-            "Last update": data[DATA_MONTH_SUMMARY].lastMeterReadingDate
-        },
+        value_fn=lambda data: (
+            data[DATA_MONTH_SUMMARY].expectedCostsUntilLastMeterReadingDate
+            if data[DATA_MONTH_SUMMARY] is not None
+            else None
+        ),
+        attr_fn=lambda data: (
+            {"Last update": data[DATA_MONTH_SUMMARY].lastMeterReadingDate}
+            if data[DATA_MONTH_SUMMARY] is not None
+            else {}
+        ),
     ),
     FrankEnergieEntityDescription(
         key="expected_costs_this_month",
@@ -249,7 +261,9 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
-        value_fn=lambda data: data[DATA_MONTH_SUMMARY].expectedCosts,
+        value_fn=lambda data: (
+            data[DATA_MONTH_SUMMARY].expectedCosts if data[DATA_MONTH_SUMMARY] is not None else None
+        ),
     ),
     FrankEnergieEntityDescription(
         key="invoice_previous_period",
@@ -259,13 +273,19 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
-        value_fn=lambda data: data[DATA_INVOICES].previous_period_invoice.TotalAmount
-        if data[DATA_INVOICES].previous_period_invoice
-        else None,
-        attr_fn=lambda data: {
-            "Start date": data[DATA_INVOICES].previous_period_invoice.StartDate,
-            "Description": data[DATA_INVOICES].previous_period_invoice.PeriodDescription,
-        },
+        value_fn=lambda data: (
+            data[DATA_INVOICES].previous_period_invoice.TotalAmount
+            if data[DATA_INVOICES] and data[DATA_INVOICES].previous_period_invoice
+            else None
+        ),
+        attr_fn=lambda data: (
+            {
+                "Start date": data[DATA_INVOICES].previous_period_invoice.StartDate,
+                "Description": data[DATA_INVOICES].previous_period_invoice.PeriodDescription,
+            }
+            if data[DATA_INVOICES] and data[DATA_INVOICES].previous_period_invoice
+            else {}
+        ),
     ),
     FrankEnergieEntityDescription(
         key="invoice_current_period",
@@ -275,13 +295,19 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
-        value_fn=lambda data: data[DATA_INVOICES].current_period_invoice.TotalAmount
-        if data[DATA_INVOICES].current_period_invoice
-        else None,
-        attr_fn=lambda data: {
-            "Start date": data[DATA_INVOICES].current_period_invoice.StartDate,
-            "Description": data[DATA_INVOICES].current_period_invoice.PeriodDescription,
-        },
+        value_fn=lambda data: (
+            data[DATA_INVOICES].current_period_invoice.TotalAmount
+            if data[DATA_INVOICES] and data[DATA_INVOICES].current_period_invoice
+            else None
+        ),
+        attr_fn=lambda data: (
+            {
+                "Start date": data[DATA_INVOICES].current_period_invoice.StartDate,
+                "Description": data[DATA_INVOICES].current_period_invoice.PeriodDescription,
+            }
+            if data[DATA_INVOICES] and data[DATA_INVOICES].current_period_invoice
+            else {}
+        ),
     ),
     FrankEnergieEntityDescription(
         key="invoice_upcoming_period",
@@ -291,13 +317,19 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
-        value_fn=lambda data: data[DATA_INVOICES].upcoming_period_invoice.TotalAmount
-        if data[DATA_INVOICES].upcoming_period_invoice
-        else None,
-        attr_fn=lambda data: {
-            "Start date": data[DATA_INVOICES].upcoming_period_invoice.StartDate,
-            "Description": data[DATA_INVOICES].upcoming_period_invoice.PeriodDescription,
-        },
+        value_fn=lambda data: (
+            data[DATA_INVOICES].upcoming_period_invoice.TotalAmount
+            if data[DATA_INVOICES] and data[DATA_INVOICES].upcoming_period_invoice
+            else None
+        ),
+        attr_fn=lambda data: (
+            {
+                "Start date": data[DATA_INVOICES].upcoming_period_invoice.StartDate,
+                "Description": data[DATA_INVOICES].upcoming_period_invoice.PeriodDescription,
+            }
+            if data[DATA_INVOICES] and data[DATA_INVOICES].upcoming_period_invoice
+            else {}
+        ),
     ),
 )
 
@@ -327,6 +359,10 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
 
     _attr_attribution = ATTRIBUTION
     _attr_icon = ICON
+    # The "prices" attribute holds up to 192+ quarter-hour price slots (~17 KB
+    # once serialized), over the recorder's 16 KB attribute size limit, so
+    # exclude it from being recorded to avoid it being dropped/warned about.
+    _unrecorded_attributes = frozenset({"prices"})
 
     def __init__(
         self,
@@ -354,15 +390,23 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
 
         super().__init__(coordinator)
 
-    async def async_update(self) -> None:
-        """Get the latest data and updates the states."""
+    def _compute_native_value(self) -> StateType:
+        """Compute the native value from the entity description's value_fn."""
         try:
-            self._attr_native_value = self.entity_description.value_fn(
-                self.coordinator.data
-            )
+            return self.entity_description.value_fn(self.coordinator.data)
         except _NO_DATA_ERRORS:
             # No data available
-            self._attr_native_value = None
+            return None
+
+    async def async_update(self) -> None:
+        """Get the latest data and updates the states."""
+        self._attr_native_value = self._compute_native_value()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Recompute the native value so new coordinator data shows up immediately."""
+        self._attr_native_value = self._compute_native_value()
+        super()._handle_coordinator_update()
 
     async def async_added_to_hass(self) -> None:
         """Register the quarter-hourly state refresh once the entity is added to hass."""
