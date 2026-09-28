@@ -3,7 +3,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import pytest
-from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
+from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -55,7 +55,7 @@ def make_month_summary() -> MonthSummary:
 async def entry(hass):
     config_entry = MockConfigEntry(
         domain=const.DOMAIN,
-        data={"site_reference": "site-1"},
+        data={"site_reference": "site-1", CONF_USERNAME: "someuser"},
         unique_id="frank_energie",
     )
     config_entry.add_to_hass(hass)
@@ -66,6 +66,11 @@ async def entry(hass):
 def api():
     mock = AsyncMock()
     mock.is_authenticated = False
+    # The coordinator reads api._auth (see _async_persist_tokens); default it
+    # to None like a real, non-renewed FrankEnergie client so tests that don't
+    # care about token persistence don't accidentally write Mock objects into
+    # the config entry.
+    mock._auth = None
     return mock
 
 
@@ -237,7 +242,7 @@ async def test_today_request_exception_with_previous_data_returns_stale_data(coo
 
 async def test_today_user_error_raises_config_entry_auth_failed(coordinator, api):
     """A 'user-error:' RequestException should be treated as an auth failure."""
-    api.prices.side_effect = RequestException("user-error: auth-not-authorised")
+    api.prices.side_effect = RequestException("user-error:some-other-user-error")
 
     with pytest.raises(ConfigEntryAuthFailed):
         await coordinator._async_update_data()
@@ -250,7 +255,14 @@ async def test_auth_exception_renews_token_and_updates_entry(hass, entry, coordi
     renewed = AsyncMock()
     renewed.authToken = "new-access-token"
     renewed.refreshToken = "new-refresh-token"
-    api.renew_token.return_value = renewed
+
+    async def fake_renew_token():
+        # Mirrors the real library: renew_token() updates api._auth in place,
+        # which is what the coordinator's persistence helper reads.
+        api._auth = renewed
+        return renewed
+
+    api.renew_token.side_effect = fake_renew_token
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
@@ -258,6 +270,8 @@ async def test_auth_exception_renews_token_and_updates_entry(hass, entry, coordi
     api.renew_token.assert_awaited_once()
     assert entry.data[CONF_ACCESS_TOKEN] == "new-access-token"
     assert entry.data[CONF_TOKEN] == "new-refresh-token"
+    assert entry.data["site_reference"] == "site-1"
+    assert entry.data[CONF_USERNAME] == "someuser"
 
 
 async def test_auth_exception_renew_failure_raises_config_entry_auth_failed(coordinator, api):

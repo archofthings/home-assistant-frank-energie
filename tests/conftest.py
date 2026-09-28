@@ -23,6 +23,10 @@ def mock_api():
     """
     api = MagicMock(name="FrankEnergieApi")
     api.is_authenticated = False
+    # The coordinator reads api._auth directly (see _async_persist_tokens);
+    # default it to None like a real, non-renewed FrankEnergie client so tests
+    # don't accidentally persist Mock objects as tokens into the config entry.
+    api._auth = None
     api.prices = AsyncMock()
     api.user_prices = AsyncMock()
     api.user_country = AsyncMock()

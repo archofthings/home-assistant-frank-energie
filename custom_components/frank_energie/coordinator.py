@@ -12,7 +12,13 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 from python_frank_energie import FrankEnergie
-from python_frank_energie.exceptions import AuthException, NoMarketPricesAvailableException, RequestException
+from python_frank_energie.exceptions import (
+    AuthException,
+    AuthRequiredException,
+    FrankEnergieException,
+    NoMarketPricesAvailableException,
+    RequestException,
+)
 from python_frank_energie.models import PriceData, MonthSummary, Invoices, MarketPrices
 
 from .const import DATA_ELECTRICITY, DATA_GAS, DATA_MONTH_SUMMARY, DATA_INVOICES
@@ -71,17 +77,26 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             data_invoices = (
                 await self.api.invoices(self.site_reference) if self.api.is_authenticated else None
             )
+        except (AuthException, AuthRequiredException) as ex:
+            LOGGER.debug("Authentication tokens expired, trying to renew them (%s)", ex)
+            await self.__try_renew_token()
+            # Tell we have no data, so update coordinator tries again with renewed tokens
+            return self.__stale_data_or_raise(ex)
+
         except RequestException as ex:
             if str(ex).startswith("user-error:"):
                 raise ConfigEntryAuthFailed from ex
 
             return self.__stale_data_or_raise(ex)
 
-        except AuthException as ex:
-            LOGGER.debug("Authentication tokens expired, trying to renew them (%s)", ex)
-            await self.__try_renew_token()
-            # Tell we have no data, so update coordinator tries again with renewed tokens
+        except FrankEnergieException as ex:
+            # Any other library error (e.g. plain FrankEnergieException from a
+            # 500 response or a validation error) should not crash the update;
+            # fall back to stale data if we have any usable data cached.
             return self.__stale_data_or_raise(ex)
+
+        if self.api.is_authenticated:
+            self._async_persist_tokens()
 
         tomorrow_electricity = prices_tomorrow.electricity if prices_tomorrow else None
         tomorrow_gas = prices_tomorrow.gas if prices_tomorrow else None
@@ -92,6 +107,32 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             DATA_MONTH_SUMMARY: data_month_summary,
             DATA_INVOICES: data_invoices,
         }
+
+    def _async_persist_tokens(self) -> None:
+        """Persist tokens that the library renewed internally back into the config entry.
+
+        python_frank_energie can silently renew the access/refresh tokens inside
+        _query() when they are near expiry, updating only `api._auth` in memory.
+        The library exposes no public getter for the current tokens (the `auth`
+        property exists but logs a deprecation error on every access), so we
+        read the private `_auth` attribute here instead.
+        """
+        auth = getattr(self.api, "_auth", None)
+        if auth is None:
+            return
+
+        if (
+            auth.authToken != self.entry.data.get(CONF_ACCESS_TOKEN)
+            or auth.refreshToken != self.entry.data.get(CONF_TOKEN)
+        ):
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                data={
+                    **self.entry.data,
+                    CONF_ACCESS_TOKEN: auth.authToken,
+                    CONF_TOKEN: auth.refreshToken,
+                },
+            )
 
     def __stale_data_or_raise(self, ex: Exception) -> FrankEnergieData:
         """Return the last known data if it is still usable, otherwise raise UpdateFailed."""
@@ -148,15 +189,13 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
                 return user_prices
 
     async def __try_renew_token(self):
-
         try:
-            updated_tokens = await self.api.renew_token()
-
-            data = {
-                CONF_ACCESS_TOKEN: updated_tokens.authToken,
-                CONF_TOKEN: updated_tokens.refreshToken,
-            }
-            self.hass.config_entries.async_update_entry(self.entry, data=data)
+            await self.api.renew_token()
+            # renew_token() updates api._auth internally; persist it via the
+            # same helper used for tokens renewed transparently inside _query(),
+            # which preserves the rest of the entry's data (site_reference,
+            # username, ...).
+            self._async_persist_tokens()
 
             LOGGER.debug("Successfully renewed token")
 

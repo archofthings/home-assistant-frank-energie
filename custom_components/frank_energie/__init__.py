@@ -4,10 +4,10 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, Platform, CONF_TOKEN
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from python_frank_energie import FrankEnergie
-from python_frank_energie.exceptions import RequestException
+from python_frank_energie.exceptions import AuthException, AuthRequiredException, FrankEnergieException
 from python_frank_energie.models import DeliverySite
 
 from .const import CONF_COORDINATOR, DOMAIN
@@ -31,10 +31,15 @@ async def _async_discover_site(api: FrankEnergie) -> DeliverySite:
     """Find the first delivery site that is currently 'IN_DELIVERY'."""
     try:
         user_sites = await api.UserSites()
-    except RequestException as ex:
+    except (AuthException, AuthRequiredException) as ex:
+        raise ConfigEntryAuthFailed from ex
+    except FrankEnergieException as ex:
+        # Covers RequestException, NetworkError and any other library error.
         raise ConfigEntryNotReady("No suitable sites found for this account") from ex
 
-    delivery_sites = [site for site in user_sites.deliverySites if site.status == "IN_DELIVERY"]
+    delivery_sites = [
+        site for site in user_sites.deliverySites if site is not None and site.status == "IN_DELIVERY"
+    ]
 
     if len(delivery_sites) == 0:
         raise ConfigEntryNotReady("No suitable sites found for this account")

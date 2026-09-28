@@ -36,7 +36,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle login with credentials by user."""
         if not user_input:
             username = (
-                self._reauth_entry.data[CONF_USERNAME] if self._reauth_entry else None
+                self._reauth_entry.data.get(CONF_USERNAME) if self._reauth_entry else None
             )
 
             data_schema = vol.Schema(
