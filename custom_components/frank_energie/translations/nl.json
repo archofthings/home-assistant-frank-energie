@@ -26,5 +26,36 @@
             }
         }
     },
+    "services": {
+        "get_prices": {
+            "name": "Prijzen ophalen",
+            "description": "Geeft de gecachte elektriciteits- en gasprijzen van een Frank Energie-configuratie-item terug, zonder de Frank Energie API te benaderen.",
+            "fields": {
+                "config_entry_id": {
+                    "name": "Configuratie-item",
+                    "description": "Het Frank Energie-configuratie-item om prijzen voor op te halen."
+                },
+                "start": {
+                    "name": "Starttijd",
+                    "description": "Geef alleen prijsblokken terug die na dit tijdstip eindigen. Standaard worden alle beschikbare blokken meegenomen."
+                },
+                "end": {
+                    "name": "Eindtijd",
+                    "description": "Geef alleen prijsblokken terug die voor dit tijdstip beginnen. Standaard worden alle beschikbare blokken meegenomen."
+                }
+            }
+        }
+    },
+    "exceptions": {
+        "entry_not_found": {
+            "message": "Frank Energie-configuratie-item \"{entry_id}\" niet gevonden."
+        },
+        "entry_not_loaded": {
+            "message": "Frank Energie-configuratie-item \"{entry_id}\" is niet geladen."
+        },
+        "invalid_period": {
+            "message": "De starttijd moet voor de eindtijd liggen."
+        }
+    },
     "title": "Frank Energie"
 }

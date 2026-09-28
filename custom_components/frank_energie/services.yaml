@@ -1,0 +1,17 @@
+get_prices:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: frank_energie
+    start:
+      required: false
+      example: "2024-01-01 00:00:00"
+      selector:
+        datetime:
+    end:
+      required: false
+      example: "2024-01-02 00:00:00"
+      selector:
+        datetime:

@@ -5,6 +5,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, Platform, CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from python_frank_energie import FrankEnergie
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, FrankEnergieException
@@ -12,8 +13,17 @@ from python_frank_energie.models import DeliverySite
 
 from .const import CONF_COORDINATOR, DOMAIN
 from .coordinator import FrankEnergieCoordinator
+from .services import async_setup_services
 
 PLATFORMS = [Platform.SENSOR]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the Frank Energie component (services only; the rest is config-entry-based)."""
+    async_setup_services(hass)
+    return True
 
 
 def _build_site_title(site: DeliverySite) -> str | None:

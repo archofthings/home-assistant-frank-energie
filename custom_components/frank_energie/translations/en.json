@@ -26,5 +26,36 @@
             }
         }
     },
+    "services": {
+        "get_prices": {
+            "name": "Get prices",
+            "description": "Returns the cached electricity and gas prices for a Frank Energie config entry, without contacting the Frank Energie API.",
+            "fields": {
+                "config_entry_id": {
+                    "name": "Config entry",
+                    "description": "The Frank Energie config entry to get prices for."
+                },
+                "start": {
+                    "name": "Start time",
+                    "description": "Only return price slots ending after this time. Defaults to including all available slots."
+                },
+                "end": {
+                    "name": "End time",
+                    "description": "Only return price slots starting before this time. Defaults to including all available slots."
+                }
+            }
+        }
+    },
+    "exceptions": {
+        "entry_not_found": {
+            "message": "Frank Energie config entry \"{entry_id}\" not found."
+        },
+        "entry_not_loaded": {
+            "message": "Frank Energie config entry \"{entry_id}\" is not loaded."
+        },
+        "invalid_period": {
+            "message": "The start time must be before the end time."
+        }
+    },
     "title": "Frank Energie"
 }
