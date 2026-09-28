@@ -241,6 +241,87 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         value_fn=lambda data: data[DATA_ELECTRICITY].today_avg,
     ),
     FrankEnergieEntityDescription(
+        key="elec_next",
+        name="Next electricity price (All-in)",
+        native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
+        suggested_display_precision=2,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].next_quarter_hour, "total"),
+        attr_fn=lambda data: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].next_quarter_hour.date_from}
+            if data[DATA_ELECTRICITY].next_quarter_hour is not None
+            else {}
+        ),
+    ),
+    FrankEnergieEntityDescription(
+        key="elec_tomorrow_avg",
+        name="Average electricity price tomorrow",
+        native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
+        suggested_display_precision=2,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data[DATA_ELECTRICITY].tomorrow_average_price,
+    ),
+    FrankEnergieEntityDescription(
+        key="elec_tomorrow_min",
+        name="Lowest electricity price tomorrow",
+        native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
+        suggested_display_precision=2,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].tomorrow_min, "total"),
+        attr_fn=lambda data: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].tomorrow_min.date_from}
+            if data[DATA_ELECTRICITY].tomorrow_min is not None
+            else {}
+        ),
+    ),
+    FrankEnergieEntityDescription(
+        key="elec_tomorrow_max",
+        name="Highest electricity price tomorrow",
+        native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
+        suggested_display_precision=2,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].tomorrow_max, "total"),
+        attr_fn=lambda data: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].tomorrow_max.date_from}
+            if data[DATA_ELECTRICITY].tomorrow_max is not None
+            else {}
+        ),
+    ),
+    FrankEnergieEntityDescription(
+        key="elec_upcoming_min",
+        name="Lowest upcoming electricity price",
+        native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
+        suggested_display_precision=2,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].upcoming_min, "total"),
+        attr_fn=lambda data: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].upcoming_min.date_from}
+            if data[DATA_ELECTRICITY].upcoming_min is not None
+            else {}
+        ),
+    ),
+    FrankEnergieEntityDescription(
+        key="elec_upcoming_max",
+        name="Highest upcoming electricity price",
+        native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
+        suggested_display_precision=2,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].upcoming_max, "total"),
+        attr_fn=lambda data: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].upcoming_max.date_from}
+            if data[DATA_ELECTRICITY].upcoming_max is not None
+            else {}
+        ),
+    ),
+    FrankEnergieEntityDescription(
+        key="gas_tomorrow_avg",
+        name="Average gas price tomorrow",
+        native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
+        suggested_display_precision=2,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data[DATA_GAS].tomorrow_average_price,
+    ),
+    FrankEnergieEntityDescription(
         key="actual_costs_until_last_meter_reading_date",
         name="Actual monthly cost",
         device_class=SensorDeviceClass.MONETARY,
