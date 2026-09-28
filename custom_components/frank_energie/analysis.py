@@ -160,36 +160,27 @@ def solar_per_slot(slots: Iterable[PriceSlot], wh_hours: dict[str, float]) -> di
         return {slot.date_from: 0.0 for slot in slots}
 
     reference_tz = slots[0].date_from.tzinfo
-    forecast = []
-    for key, value in wh_hours.items():
-        start = datetime.fromisoformat(key)
-        if start.tzinfo is None:
-            start = start.replace(tzinfo=reference_tz)
-        forecast.append((start, float(value)))
-    forecast.sort(key=lambda item: item[0])
+    forecast = _parse_forecast_entries(wh_hours, reference_tz)
+    if not forecast:
+        return {slot.date_from: 0.0 for slot in slots}
 
-    if len(forecast) >= 2:
-        period_minutes = round((forecast[1][0] - forecast[0][0]).total_seconds() / 60)
-    else:
-        period_minutes = 60
-
-    result: dict[datetime, float] = {}
-    for slot in slots:
-        wh = 0.0
-        for start, value in forecast:
-            if start <= slot.date_from < start + timedelta(minutes=period_minutes):
-                wh = value
-                break
-        result[slot.date_from] = (wh / 1000) * 60 / period_minutes
-
-    return result
+    periods = _forecast_periods(forecast)
+    return {slot.date_from: _solar_kwh_for_slot(slot.date_from, periods) for slot in slots}
 
 
 def _split_contiguous_runs(slots: list[PriceSlot]) -> list[list[PriceSlot]]:
-    """Split a date_from-sorted slot list into runs where each date_from == the previous date_till."""
+    """Split a date_from-sorted slot list into runs of equal-length, back-to-back slots.
+
+    A new run starts whenever a slot's `date_from` doesn't equal the previous
+    slot's `date_till` (a gap), or its length differs from the previous
+    slot's (e.g. a DST transition, or a forecast mixing 15- and 60-minute
+    slots): `_best_window_in_run` assumes a single, uniform slot length per
+    run.
+    """
     runs: list[list[PriceSlot]] = [[slots[0]]]
     for previous, current in zip(slots, slots[1:]):
-        if current.date_from == previous.date_till:
+        same_length = (current.date_till - current.date_from) == (previous.date_till - previous.date_from)
+        if current.date_from == previous.date_till and same_length:
             runs[-1].append(current)
         else:
             runs.append([current])
