@@ -119,7 +119,8 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         LOGGER.debug("Authentication tokens expired, trying to renew them (%s)", ex)
 
         if not await self._try_renew_token():
-            # Tell we have no data, so update coordinator tries again with renewed tokens
+            # Renewal failed for a non-auth reason (network/5xx): serve stale
+            # data or raise UpdateFailed; the next cycle retries.
             return self._stale_data_or_raise(ex)
 
         try:
