@@ -4,7 +4,7 @@
 - Integration code: `custom_components/frank_energie/` (config_flow, coordinator, sensor, const)
 - Library: `python-frank-energie` (version pinned in `manifest.json`)
 - Tests: `tests/` with `pytest-homeassistant-custom-component`
-- CI: flake8 (max line 120, complexity 10) + pytest, Python 3.10 (`.github/workflows/ci.yaml`)
+- CI: flake8 (max line 120, complexity 10) + pytest, Python 3.14 (`.github/workflows/ci.yaml`)
 
 ## Roles
 - **You (main session, Opus 5.5)**: architect, problem solver and orchestrator.
