@@ -241,6 +241,45 @@ async def test_diagnostics_month_summary_and_invoices_availability(
 
 
 # --------------------------------------------------------------------------
+# prices_timezone (see commit d6a5dc3, "Add option for the time zone of
+# price times").
+# --------------------------------------------------------------------------
+
+
+async def test_diagnostics_prices_timezone_is_utc_for_legacy_entry_without_options(
+    hass, enable_custom_integrations, hass_client, mock_frank_energie_class, config_entry
+):
+    """A legacy entry (config_entry fixture: no options set) reports prices_timezone "utc" in diagnostics."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    diag = await get_diag(hass, hass_client, config_entry)
+
+    assert diag["coordinator"]["prices_timezone"] == "utc"
+
+
+async def test_diagnostics_prices_timezone_is_home_assistant_for_new_entry(
+    hass, enable_custom_integrations, hass_client, mock_frank_energie_class, config_entry
+):
+    """An entry with the "home_assistant" option set reports that value in diagnostics."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    hass.config_entries.async_update_entry(
+        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
+    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    diag = await get_diag(hass, hass_client, config_entry)
+
+    assert diag["coordinator"]["prices_timezone"] == "home_assistant"
+
+
+# --------------------------------------------------------------------------
 # last_exception: class name and message only, never a full traceback
 # --------------------------------------------------------------------------
 

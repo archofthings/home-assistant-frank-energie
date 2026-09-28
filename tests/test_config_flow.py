@@ -891,3 +891,120 @@ async def test_unauthenticated_flow_creates_entry_with_no_data(hass, enable_cust
 
     assert result2["type"] == "create_entry"
     assert result2["data"] == {}
+
+
+# --------------------------------------------------------------------------
+# prices_timezone option (see commit d6a5dc3, "Add option for the time zone
+# of price times").
+# --------------------------------------------------------------------------
+
+
+async def test_unauthenticated_flow_creates_entry_with_home_assistant_prices_timezone_option(
+    hass, enable_custom_integrations
+):
+    """The unauthenticated ("public prices only") flow also opts new entries into "home_assistant" by default."""
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AUTHENTICATION: False})
+
+    assert result2["type"] == "create_entry"
+    assert result2["options"] == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+
+    entries = hass.config_entries.async_entries(const.DOMAIN)
+    assert len(entries) == 1
+    assert entries[0].options == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+
+
+async def test_login_single_site_creates_entry_with_home_assistant_prices_timezone_option(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+):
+    """A fresh single-site login also stores options={"prices_timezone": "home_assistant"} on the new entry."""
+    site = make_delivery_site("site-1", "IN_DELIVERY", street="Vondelstraat", house_number="7")
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site]))
+    mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+
+    result = await _start_login_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert result2["options"] == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+
+    entries = hass.config_entries.async_entries(const.DOMAIN)
+    assert len(entries) == 1
+    assert entries[0].options == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+
+
+async def test_options_flow_init_defaults_to_utc_for_legacy_entry_without_options(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """The options init form defaults to "utc" for a legacy entry that has no options set at all."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "init"
+    schema = result["data_schema"].schema
+    tz_key = next(k for k in schema if getattr(k, "schema", None) == const.CONF_PRICES_TIMEZONE)
+    assert tz_key.default() == const.PRICES_TIMEZONE_UTC
+
+
+async def test_options_flow_init_defaults_to_current_option_for_new_entry(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """The options init form defaults to the entry's currently stored option (e.g. "home_assistant")."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT},
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    schema = result["data_schema"].schema
+    tz_key = next(k for k in schema if getattr(k, "schema", None) == const.CONF_PRICES_TIMEZONE)
+    assert tz_key.default() == const.PRICES_TIMEZONE_HOME_ASSISTANT
+
+
+async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """Submitting "home_assistant" creates the options entry, updates entry.options, and reloads it to LOADED."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"], {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert entry.options == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    assert entry.state is ConfigEntryState.LOADED

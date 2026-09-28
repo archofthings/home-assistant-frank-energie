@@ -4,6 +4,8 @@ Covers the keys added by:
 - commit 372b7c7 "Add get_prices action" (services.get_prices, exceptions.*)
 - commit 366cea2 "Let users choose their delivery site and change it via
   reconfigure" (config.step.site, config.step.reconfigure, config.abort.*)
+- commit d6a5dc3 "Add option for the time zone of price times"
+  (options.step.init.*, selector.prices_timezone.options.*)
 
 Without an entry in every locale file, Home Assistant falls back to showing
 the raw key in the UI instead of human-readable text.
@@ -56,6 +58,12 @@ NEW_KEYS = [
     "config.abort.no_sites",
     "config.abort.reconfigure_successful",
     "config.abort.reconfigure_not_supported",
+    # prices_timezone option (d6a5dc3)
+    "options.step.init.title",
+    "options.step.init.description",
+    "options.step.init.data.prices_timezone",
+    "selector.prices_timezone.options.home_assistant",
+    "selector.prices_timezone.options.utc",
 ]
 
 

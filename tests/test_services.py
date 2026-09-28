@@ -133,6 +133,45 @@ async def test_get_prices_item_keys_and_value_mapping(hass, mock_frank_energie_c
     assert item["market_price_including_tax"] == round(market_price_field + market_price_tax_field, 5)
 
 
+async def test_get_prices_start_iso_time_has_utc_offset_by_default(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """With no prices_timezone option (legacy entry default), ISO start/end times end in "+00:00" (UTC)."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")  # CET, winter
+
+    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    response = await call_get_prices(hass, config_entry_id=config_entry.entry_id)
+
+    assert response["electricity"][0]["start"].endswith("+00:00")
+    assert response["electricity"][0]["end"].endswith("+00:00")
+
+
+async def test_get_prices_start_iso_time_has_amsterdam_summer_offset_with_home_assistant_option(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """With the "home_assistant" option, ISO times use +02:00 in summer (Europe/Amsterdam, CEST)."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-07-15 10:00:00+02:00")  # CEST, summer: +02:00
+    hass.config_entries.async_update_entry(
+        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
+
+    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    response = await call_get_prices(hass, config_entry_id=config_entry.entry_id)
+
+    assert response["electricity"][0]["start"].endswith("+02:00")
+    assert response["electricity"][0]["end"].endswith("+02:00")
+
+
 async def test_get_prices_start_local_iso_time_has_amsterdam_offset(
     hass, mock_frank_energie_class, config_entry, freezer
 ):
