@@ -16,7 +16,7 @@ from homeassistant.const import (
 )
 from homeassistant.data_entry_flow import FlowResult
 from python_frank_energie import FrankEnergie
-from python_frank_energie.exceptions import AuthException
+from python_frank_energie.exceptions import AuthException, FrankEnergieException
 
 from .const import DOMAIN
 
@@ -60,6 +60,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except AuthException as ex:
                 _LOGGER.exception("Error during login", exc_info=ex)
                 return await self.async_step_login(errors={"base": "invalid_auth"})
+            except FrankEnergieException as ex:
+                _LOGGER.exception("Error during login", exc_info=ex)
+                return await self.async_step_login(errors={"base": "cannot_connect"})
 
         data = {
             CONF_USERNAME: user_input[CONF_USERNAME],
@@ -70,7 +73,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if self._reauth_entry:
             self.hass.config_entries.async_update_entry(
                 self._reauth_entry,
-                data=data,
+                data={**self._reauth_entry.data, **data},
             )
 
             self.hass.async_create_task(
