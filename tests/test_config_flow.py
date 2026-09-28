@@ -10,7 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from python_frank_energie.exceptions import NetworkError
 
 from custom_components.frank_energie import const
-from custom_components.frank_energie.config_flow import _reauth_data
+from custom_components.frank_energie.config_flow import _merge_reauth_data, _same_account
 from tests.test_init import make_user_sites
 from tests.utils import build_market_prices
 
@@ -127,9 +127,11 @@ async def test_login_network_error_shows_cannot_connect(hass, enable_custom_inte
 
 
 # --------------------------------------------------------------------------
-# Regression: site_reference dropped when reauthenticating with a different
-# account (see commit b1fd26e, "Drop site reference when reauthenticating
-# with a different account").
+# Reauthenticating with a different account is rejected outright (standard HA
+# pattern): the entry must be left completely untouched, and the user is
+# pointed at adding the other account as a new integration instead (see
+# commit b1fd26e for the earlier, since-reverted approach of dropping
+# site_reference and accepting the account change).
 # --------------------------------------------------------------------------
 
 async def test_reauth_same_account_different_case_and_whitespace_keeps_site_reference(
@@ -175,23 +177,21 @@ async def test_reauth_same_account_different_case_and_whitespace_keeps_site_refe
     mock_frank_energie_class.UserSites.assert_not_awaited()
 
 
-async def test_reauth_different_account_drops_site_reference(
+async def test_reauth_different_account_is_rejected(
     hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
 ):
-    """Reauth with a different username must drop site_reference, keep the new username/tokens, and unique_id."""
+    """Reauth with a different username must be rejected, leaving the entry completely untouched."""
     entry = MockConfigEntry(
         domain=const.DOMAIN,
-        data={"site_reference": "site-1", CONF_USERNAME: "olduser@example.com"},
+        data={
+            "site_reference": "site-1",
+            CONF_USERNAME: "olduser@example.com",
+            CONF_ACCESS_TOKEN: "old-access-token",
+            CONF_TOKEN: "old-refresh-token",
+        },
         unique_id="frank_energie",
     )
     entry.add_to_hass(hass)
-
-    # No IN_DELIVERY site configured for the reload's site rediscovery: this
-    # keeps the assertion below about site_reference being dropped clean of
-    # any side effects from a successful rediscovery re-adding it under a new
-    # value, and mirrors test_init.py's SETUP_RETRY pattern for "no suitable
-    # site found" instead of crashing the reload.
-    mock_frank_energie_class.UserSites.return_value = make_user_sites([])
 
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN,
@@ -211,14 +211,15 @@ async def test_reauth_different_account_drops_site_reference(
     await hass.async_block_till_done()
 
     assert result2["type"] == "abort"
-    assert result2["reason"] == "reauth_successful"
+    assert result2["reason"] == "wrong_account"
 
-    assert "site_reference" not in entry.data
-    assert entry.data[CONF_USERNAME] == "newuser@example.com"
-    assert entry.data[CONF_ACCESS_TOKEN] == "new-access-token"
-    assert entry.data[CONF_TOKEN] == "new-refresh-token"
+    assert entry.data["site_reference"] == "site-1"
+    assert entry.data[CONF_USERNAME] == "olduser@example.com"
+    assert entry.data[CONF_ACCESS_TOKEN] == "old-access-token"
+    assert entry.data[CONF_TOKEN] == "old-refresh-token"
     assert entry.unique_id == "frank_energie"
-    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert entry.state is ConfigEntryState.NOT_LOADED
+    mock_frank_energie_class.UserSites.assert_not_awaited()
 
 
 async def test_reauth_legacy_entry_without_stored_username_drops_site_reference(
@@ -260,15 +261,30 @@ async def test_reauth_legacy_entry_without_stored_username_drops_site_reference(
 
 
 # --------------------------------------------------------------------------
-# Unit tests for _reauth_data() itself.
+# Unit tests for _same_account() and _merge_reauth_data().
 # --------------------------------------------------------------------------
 
-def test_reauth_data_same_account_case_and_whitespace_insensitive_keeps_site_reference():
+def test_same_account_case_and_whitespace_insensitive():
     """Usernames differing only by case/surrounding whitespace are treated as the same account."""
+    assert _same_account("  User@Example.com ", "user@example.com") is True
+
+
+def test_same_account_different_usernames():
+    """Different usernames are not the same account."""
+    assert _same_account("olduser", "newuser") is False
+
+
+def test_same_account_no_stored_username():
+    """No stored username (legacy entry) has no account to compare against."""
+    assert _same_account(None, "newuser") is False
+
+
+def test_merge_reauth_data_keeps_site_reference_when_not_dropped():
+    """With drop_site_reference=False the existing entry data, including site_reference, is kept."""
     entry_data = {"site_reference": "site-1", CONF_USERNAME: "  User@Example.com "}
     new_data = {CONF_USERNAME: "user@example.com", CONF_ACCESS_TOKEN: "new-token", CONF_TOKEN: "new-refresh"}
 
-    result = _reauth_data(entry_data, new_data)
+    result = _merge_reauth_data(entry_data, new_data, drop_site_reference=False)
 
     assert result["site_reference"] == "site-1"
     assert result[CONF_USERNAME] == "user@example.com"
@@ -276,34 +292,23 @@ def test_reauth_data_same_account_case_and_whitespace_insensitive_keeps_site_ref
     assert result[CONF_TOKEN] == "new-refresh"
 
 
-def test_reauth_data_different_account_drops_site_reference():
-    """A different username drops the old account's site_reference."""
-    entry_data = {"site_reference": "site-1", CONF_USERNAME: "olduser"}
-    new_data = {CONF_USERNAME: "newuser", CONF_ACCESS_TOKEN: "new-token", CONF_TOKEN: "new-refresh"}
-
-    result = _reauth_data(entry_data, new_data)
-
-    assert "site_reference" not in result
-    assert result[CONF_USERNAME] == "newuser"
-
-
-def test_reauth_data_no_stored_username_drops_site_reference():
-    """A legacy entry with no stored username has no account to compare against, so site_reference is dropped."""
+def test_merge_reauth_data_drops_site_reference_when_requested():
+    """With drop_site_reference=True the old site_reference is dropped, e.g. for a legacy entry."""
     entry_data = {"site_reference": "site-1"}
     new_data = {CONF_USERNAME: "newuser", CONF_ACCESS_TOKEN: "new-token", CONF_TOKEN: "new-refresh"}
 
-    result = _reauth_data(entry_data, new_data)
+    result = _merge_reauth_data(entry_data, new_data, drop_site_reference=True)
 
     assert "site_reference" not in result
     assert result[CONF_USERNAME] == "newuser"
 
 
-def test_reauth_data_no_site_reference_and_different_account_does_not_raise():
-    """An entry without site_reference and a different account must not raise KeyError."""
+def test_merge_reauth_data_no_site_reference_does_not_raise():
+    """An entry without site_reference must not raise KeyError when dropping is requested."""
     entry_data = {CONF_USERNAME: "olduser"}
     new_data = {CONF_USERNAME: "newuser", CONF_ACCESS_TOKEN: "new-token", CONF_TOKEN: "new-refresh"}
 
-    result = _reauth_data(entry_data, new_data)
+    result = _merge_reauth_data(entry_data, new_data, drop_site_reference=True)
 
     assert "site_reference" not in result
     assert result[CONF_USERNAME] == "newuser"

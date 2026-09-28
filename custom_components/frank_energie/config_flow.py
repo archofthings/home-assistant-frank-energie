@@ -23,31 +23,33 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-def _reauth_data(entry_data: Mapping[str, Any], new_data: dict) -> dict:
-    """Build the updated entry data for a reauth login.
+def _same_account(stored_username: str | None, new_username: str) -> bool:
+    """Return whether a stored username and a new login refer to the same account.
 
-    When the login is for the same account as before (comparing usernames
-    normalised with .strip().casefold()), the existing entry data is kept as
-    is, with the new username/tokens merged in. When it is a different
-    account, or there is no stored username to compare against (legacy
-    entries), "site_reference" is dropped: it belongs to the old account and
-    would otherwise make price/cost requests fail for the new one. The
-    unique_id is left untouched either way; async_setup_entry rediscovers the
-    site and updates the title on the reload that follows.
+    Comparison is normalised with .strip().casefold(). Returns False when
+    there is no stored username to compare against (legacy entries).
     """
-    old_username = entry_data.get(CONF_USERNAME)
-    new_username = new_data.get(CONF_USERNAME)
-
-    same_account = (
-        old_username is not None
-        and new_username is not None
-        and old_username.strip().casefold() == new_username.strip().casefold()
+    return (
+        stored_username is not None
+        and stored_username.strip().casefold() == new_username.strip().casefold()
     )
 
+
+def _merge_reauth_data(entry_data: Mapping[str, Any], new_data: dict, *, drop_site_reference: bool) -> dict:
+    """Merge new login data into the existing entry data for a reauth login.
+
+    drop_site_reference is True only for legacy entries with no stored
+    username to compare against: since we can't confirm it's the same
+    account, "site_reference" is dropped so it doesn't make price/cost
+    requests fail for a possibly different account; async_setup_entry then
+    rediscovers the site. For a same-account login (the only other case that
+    reaches this helper) the existing entry data, including site_reference,
+    is kept as is. The unique_id is left untouched either way.
+    """
     base = dict(entry_data)
 
-    if not same_account and base.pop("site_reference", None) is not None:
-        _LOGGER.debug("Dropping stale site_reference on reauth with a different account")
+    if drop_site_reference:
+        base.pop("site_reference", None)
 
     return {**base, **new_data}
 
@@ -100,16 +102,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         if self._reauth_entry:
-            self.hass.config_entries.async_update_entry(
+            stored_username = self._reauth_entry.data.get(CONF_USERNAME)
+
+            if stored_username is not None and not _same_account(stored_username, user_input[CONF_USERNAME]):
+                return self.async_abort(reason="wrong_account")
+
+            return self.async_update_reload_and_abort(
                 self._reauth_entry,
-                data=_reauth_data(self._reauth_entry.data, data),
+                data=_merge_reauth_data(
+                    self._reauth_entry.data, data, drop_site_reference=stored_username is None
+                ),
             )
-
-            self.hass.async_create_task(
-                self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
-            )
-
-            return self.async_abort(reason="reauth_successful")
 
         await self.async_set_unique_id(user_input[CONF_USERNAME])
         self._abort_if_unique_id_configured()
