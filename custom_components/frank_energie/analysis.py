@@ -77,20 +77,81 @@ def classify(
     return PRICE_LEVEL_NORMAL
 
 
+def _parse_forecast_entries(wh_hours: dict[str, float], reference_tz) -> list[tuple[datetime, float]]:
+    """Parse `wh_hours` into a sorted list of (period start, Wh) pairs, skipping malformed entries.
+
+    A key that doesn't parse as an ISO timestamp, or a value that doesn't
+    parse as a float, is skipped individually (see `solar_per_slot`).
+    """
+    forecast: list[tuple[datetime, float]] = []
+    for key, value in wh_hours.items():
+        try:
+            start = datetime.fromisoformat(key)
+            wh = float(value)
+        except (TypeError, ValueError):
+            continue
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=reference_tz)
+        forecast.append((start, wh))
+    forecast.sort(key=lambda item: item[0])
+    return forecast
+
+
+def _forecast_periods(forecast: list[tuple[datetime, float]]) -> list[tuple[datetime, float, float]]:
+    """Turn a sorted (start, Wh) forecast into (start, Wh, length_minutes) periods.
+
+    Each period's length is the gap to the *next* entry, capped at 60
+    minutes; the last (or only) entry falls back to a 60 minute period (see
+    `solar_per_slot`).
+    """
+    periods: list[tuple[datetime, float, float]] = []
+    for index, (start, wh) in enumerate(forecast):
+        if index + 1 < len(forecast):
+            length_minutes = min((forecast[index + 1][0] - start).total_seconds() / 60, 60.0)
+        else:
+            length_minutes = 60.0
+        if length_minutes <= 0:
+            continue
+        periods.append((start, wh, length_minutes))
+    return periods
+
+
+def _solar_kwh_for_slot(at: datetime, periods: list[tuple[datetime, float, float]]) -> float:
+    """Return the solar forecast (kWh/h) for the period in `periods` that contains `at`, or 0.0."""
+    for start, value, length_minutes in periods:
+        if start <= at < start + timedelta(minutes=length_minutes):
+            return (value / 1000) * 60 / length_minutes
+    return 0.0
+
+
 def solar_per_slot(slots: Iterable[PriceSlot], wh_hours: dict[str, float]) -> dict[datetime, float]:
     """Map each slot's `date_from` to a solar forecast in kWh per hour.
 
     `wh_hours` is the raw forecast as returned by an energy platform's
     `async_get_solar_forecast`: keys are ISO timestamps of forecast period
-    starts (mapping to a Wh total produced during that period), and periods
-    can be 15/30/60 minutes. The period length is derived from the spacing
-    between two consecutive (sorted) keys; a single-entry forecast falls back
-    to a 60 minute period. Forecast keys without timezone info are assumed to
-    be in the same timezone as the slots' `date_from` values.
+    *starts* (mapping to a Wh total produced during that period). Periods can
+    be irregular: e.g. Forecast.Solar places a period at the (odd-minute)
+    sunrise/sunset time, surrounded by regular hourly (or half-hourly)
+    periods elsewhere in the same day. Each period's length is therefore
+    derived individually, from the gap to the *next* sorted key, capped at 60
+    minutes; the last (or only) entry, and any gap between two keys longer
+    than 60 minutes (e.g. overnight), falls back to a 60 minute period.
+    Forecast keys without timezone info are assumed to be in the same
+    timezone as the slots' `date_from` values. A malformed entry (a key that
+    doesn't parse as an ISO timestamp, or a value that doesn't parse as a
+    float) is skipped individually, so a partially malformed forecast only
+    loses solar data for the affected period(s) instead of the whole result.
 
     Each slot is mapped to the forecast period that contains its `date_from`.
     A slot with no matching forecast period (e.g. the forecast doesn't cover
     that far ahead) gets 0.0.
+
+    Period-start evidence (Forecast.Solar): the `forecast_solar` library's
+    `Estimate.energy_current_hour` sums every `wh_period` entry whose
+    timestamp falls in `[hour_start, hour_start + 1h)` to get that hour's
+    production. That only equals the hour's total if each key marks when its
+    period *starts* -- an "ends" key would need the complementary
+    `(hour_start, hour_start + 1h]` range instead.
     """
     slots = list(slots)
     if not slots:

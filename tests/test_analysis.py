@@ -187,13 +187,20 @@ def test_group_windows():
     ids=["60_minute_forecast_periods", "30_minute_forecast_periods"],
 )
 def test_solar_per_slot_normalizes_wh_to_kwh_per_hour(period_minutes, wh1, wh2):
-    """solar_per_slot normalizes Wh-per-forecast-period into kWh/hour, for 60- and 30-minute periods."""
+    """solar_per_slot normalizes Wh-per-forecast-period into kWh/hour, for 60- and 30-minute periods.
+
+    A third (empty) forecast key bounds the second period's length via the
+    regular key spacing, rather than the last-entry 60-minute fallback (that
+    fallback is exercised separately, see
+    `test_solar_per_slot_last_entry_falls_back_to_a_60_minute_period`).
+    """
     start = datetime(2024, 1, 1, tzinfo=UTC)
     slot_count = (2 * period_minutes) // 15  # two forecast periods' worth of 15-minute slots
     slots = _slots(start, [0.2] * slot_count)
     wh_hours = {
         start.isoformat(): wh1,
         (start + timedelta(minutes=period_minutes)).isoformat(): wh2,
+        (start + timedelta(minutes=2 * period_minutes)).isoformat(): 0.0,
     }
 
     result = solar_per_slot(slots, wh_hours)
@@ -207,9 +214,61 @@ def test_solar_per_slot_normalizes_wh_to_kwh_per_hour(period_minutes, wh1, wh2):
         assert result[slot.date_from] == pytest.approx(expected2)
 
 
+def test_solar_per_slot_last_entry_falls_back_to_a_60_minute_period():
+    """The last forecast entry (no next key to derive a length from) is treated as a 60-minute period."""
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    slots = _slots(start, [0.2, 0.2, 0.2, 0.2])  # four 15-minute slots covering the hour
+    wh_hours = {start.isoformat(): 300.0}
+
+    result = solar_per_slot(slots, wh_hours)
+
+    for slot in slots:
+        assert result[slot.date_from] == pytest.approx(0.3)  # 300 Wh / 60 min == 0.3 kWh/h
+
+
+def test_solar_per_slot_handles_irregular_period_lengths():
+    """Regression (C2): an irregular (e.g. sunrise) period next to regular hourly ones normalizes correctly.
+
+    Forecast.Solar places a period at the (odd-minute) sunrise time; a global
+    period length derived from the first two keys' spacing would misapply
+    that short period's length to the following regular hourly periods,
+    scaling their values up and leaving the trailing quarters unmatched (0).
+    """
+    start = datetime(2024, 1, 1, 5, 32, tzinfo=UTC)  # 05:32 sunrise
+    hour_start = datetime(2024, 1, 1, 6, 0, tzinfo=UTC)  # 06:00, the next (regular, 60-minute) period
+    wh_hours = {
+        start.isoformat(): 0.0,  # 05:32-06:00 (28 minutes): negligible production just after sunrise
+        hour_start.isoformat(): 200.0,  # 06:00-07:00 (60 minutes): 200 Wh
+        (hour_start + timedelta(hours=1)).isoformat(): 2000.0,  # 07:00 onward: 2000 Wh (60-minute fallback)
+    }
+    slots = _slots(hour_start, [0.2, 0.2, 0.2, 0.2], minutes=15)  # 06:00, 06:15, 06:30, 06:45
+
+    result = solar_per_slot(slots, wh_hours)
+
+    for slot in slots:
+        assert result[slot.date_from] == pytest.approx(0.2)  # 200 Wh / 60 min == 0.2 kWh/h, for all four quarters
+
+
 def test_solar_per_slot_missing_forecast_is_zero():
     """A slot with no matching forecast period gets 0.0 kWh/h."""
     start = datetime(2024, 1, 1, tzinfo=UTC)
     slots = _slots(start, [0.2])
 
     assert solar_per_slot(slots, {}) == {slots[0].date_from: 0.0}
+
+
+def test_solar_per_slot_skips_malformed_entries():
+    """A malformed forecast entry (bad key or value) is skipped instead of raising (W1)."""
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    good_start = start + timedelta(minutes=60)
+    slots = _slots(good_start, [0.2, 0.2, 0.2, 0.2], minutes=15)
+    wh_hours = {
+        "not-a-timestamp": 500.0,
+        start.isoformat(): "not-a-number",
+        good_start.isoformat(): 240.0,
+    }
+
+    result = solar_per_slot(slots, wh_hours)
+
+    for slot in slots:
+        assert result[slot.date_from] == pytest.approx(0.24)  # only the well-formed 240 Wh/60 min entry applies
