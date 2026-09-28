@@ -673,7 +673,11 @@ async def test_login_usersites_network_error_shows_cannot_connect(
 async def test_login_duplicate_username_aborts_already_configured(
     hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
 ):
-    """Logging in with a username that already has a config entry aborts as already_configured."""
+    """Logging in with a username that already has a config entry aborts as already_configured.
+
+    The duplicate check happens before UserSites() is fetched (see W3), so it
+    is never awaited.
+    """
     existing = MockConfigEntry(
         domain=const.DOMAIN,
         data={"site_reference": "site-1", CONF_USERNAME: "user@example.com"},
@@ -692,6 +696,33 @@ async def test_login_duplicate_username_aborts_already_configured(
 
     assert result2["type"] == "abort"
     assert result2["reason"] == "already_configured"
+    mock_config_flow_api.UserSites.assert_not_awaited()
+
+
+async def test_login_duplicate_username_with_multiple_sites_aborts_before_site_step(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+):
+    """A duplicate login must abort already_configured before ever showing the multi-site selection step."""
+    existing = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1", CONF_USERNAME: "user@example.com"},
+        unique_id="user@example.com",
+    )
+    existing.add_to_hass(hass)
+
+    site1 = make_delivery_site("site-1", "IN_DELIVERY")
+    site2 = make_delivery_site("site-2", "IN_DELIVERY")
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site1, site2]))
+    mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+
+    result = await _start_login_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+    )
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "already_configured"
+    mock_config_flow_api.UserSites.assert_not_awaited()
 
 
 # --------------------------------------------------------------------------

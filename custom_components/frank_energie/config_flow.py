@@ -146,6 +146,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if self._reauth_entry:
                 return self._finish_reauth_login(data, user_input[CONF_USERNAME])
 
+            # Check for a duplicate account before fetching sites, so a
+            # duplicate login aborts immediately instead of making an
+            # unnecessary UserSites() call (and, for multi-site accounts,
+            # instead of making the user pick a site first).
+            await self.async_set_unique_id(user_input[CONF_USERNAME])
+            self._abort_if_unique_id_configured()
+
             return await self._async_discover_login_sites(api, data)
 
     def _finish_reauth_login(self, data: dict, new_username: str) -> FlowResult:
