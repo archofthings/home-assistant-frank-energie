@@ -91,14 +91,21 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
 
             return self._stale_data_or_raise(ex)
 
-        except FrankEnergieException as ex:
+        except (FrankEnergieException, ValueError) as ex:
             # Any other library error (e.g. plain FrankEnergieException from a
-            # 500 response or a validation error) should not crash the update;
-            # fall back to stale data if we have any usable data cached.
+            # 500 response, or a ValueError from library parsing/an invalid
+            # site_reference) should not crash the update; fall back to stale
+            # data if we have any usable data cached.
             return self._stale_data_or_raise(ex)
 
-        if self.api.is_authenticated:
-            self._async_persist_tokens()
+        finally:
+            # Tokens can be renewed transparently inside _query() during any of
+            # the awaited calls above, including ones that ultimately raised.
+            # Persist them here so a renewed token is never lost when the
+            # update otherwise fails later in the same cycle. Idempotent: see
+            # _async_persist_tokens().
+            if self.api.is_authenticated:
+                self._async_persist_tokens()
 
         tomorrow_electricity = prices_tomorrow.electricity if prices_tomorrow else None
         tomorrow_gas = prices_tomorrow.gas if prices_tomorrow else None
@@ -119,6 +126,9 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         property exists but logs a deprecation error on every access), so we
         read the private `_auth` attribute here instead.
         """
+        # Reading the private `_auth` attribute depends on the pinned
+        # python_frank_energie version (see manifest.json); re-check this if
+        # that dependency is ever bumped.
         auth = getattr(self.api, "_auth", None)
         if auth is None:
             return
@@ -259,3 +269,11 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         except (AuthException, AuthRequiredException) as ex:
             LOGGER.error("Failed to renew token: %s. Starting user reauth flow", ex)
             raise ConfigEntryAuthFailed from ex
+
+        except FrankEnergieException as ex:
+            # NetworkError, RequestException or a plain FrankEnergieException:
+            # renewal failed for a non-auth reason. Log the message only
+            # (never tokens) and return normally so the caller continues into
+            # _stale_data_or_raise(), which either serves stale data or raises
+            # UpdateFailed so the next update cycle retries.
+            LOGGER.debug("Failed to renew token: %s", ex)
