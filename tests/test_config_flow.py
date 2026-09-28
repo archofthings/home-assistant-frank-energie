@@ -1,6 +1,4 @@
 """Tests for the Frank Energie config flow."""
-import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,32 +7,17 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_AUTHENTICATION, CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from python_frank_energie.exceptions import NetworkError
-from python_frank_energie.models import Invoices, MonthSummary
+from python_frank_energie.exceptions import AuthException, NetworkError
+from python_frank_energie.models import DeliverySite
 
 from custom_components.frank_energie import const
-from custom_components.frank_energie.config_flow import _merge_reauth_data, _same_account
-from tests.utils import build_market_prices, make_delivery_site, make_user_sites
-
-
-def _configure_authenticated_api(mock_api):
-    """Set up mock_api with enough authenticated responses for a full setup (see tests/test_init.py)."""
-    mock_api.is_authenticated = True
-    mock_api.user_country.return_value = AsyncMock(countryCode="NL")
-    market_prices = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
-    mock_api.user_prices.return_value = market_prices
-    mock_api.month_summary.return_value = MonthSummary(
-        _id="1",
-        actualCostsUntilLastMeterReadingDate=10.0,
-        expectedCostsUntilLastMeterReadingDate=12.0,
-        lastMeterReadingDate="2024-01-01",
-        costs_per_day_till_now=1.0,
-        meterReadingDayCompleteness=1.0,
-        gasExcluded=False,
-        typename="MonthSummary",
-        expectedCosts=100.0,
-    )
-    mock_api.invoices.return_value = Invoices.empty()
+from custom_components.frank_energie.config_flow import SITE_REFERENCE, _merge_reauth_data, _same_account
+from tests.utils import (
+    build_market_prices,
+    configure_authenticated_api as _configure_authenticated_api,
+    make_delivery_site,
+    make_user_sites,
+)
 
 
 @pytest.fixture
@@ -56,6 +39,18 @@ def mock_config_flow_api(monkeypatch):
     return api
 
 
+async def _start_reauth_flow(hass, entry):
+    """Start a SOURCE_REAUTH flow for `entry` and assert it shows the login form."""
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    assert result["type"] == "form"
+    assert result["step_id"] == "login"
+    return result
+
+
 async def test_reauth_without_username_shows_login_form(hass, enable_custom_integrations):
     """A reauth flow on an entry without a username in its data must not raise KeyError.
 
@@ -71,14 +66,7 @@ async def test_reauth_without_username_shows_login_form(hass, enable_custom_inte
     )
     entry.add_to_hass(hass)
 
-    result = await hass.config_entries.flow.async_init(
-        const.DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
-        data=entry.data,
-    )
-
-    assert result["type"] == "form"
-    assert result["step_id"] == "login"
+    await _start_reauth_flow(hass, entry)
 
 
 # --------------------------------------------------------------------------
@@ -103,13 +91,7 @@ async def test_reauth_login_keeps_existing_entry_data(
     # without hitting the real API.
     mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
 
-    result = await hass.config_entries.flow.async_init(
-        const.DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
-        data=entry.data,
-    )
-    assert result["type"] == "form"
-    assert result["step_id"] == "login"
+    result = await _start_reauth_flow(hass, entry)
 
     auth = MagicMock(authToken="new-access-token", refreshToken="new-refresh-token")
     mock_config_flow_api.login.return_value = auth
@@ -171,13 +153,7 @@ async def test_reauth_same_account_different_case_and_whitespace_keeps_site_refe
     # discovery entirely and just re-fetches public prices.
     mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
 
-    result = await hass.config_entries.flow.async_init(
-        const.DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
-        data=entry.data,
-    )
-    assert result["type"] == "form"
-    assert result["step_id"] == "login"
+    result = await _start_reauth_flow(hass, entry)
 
     auth = MagicMock(authToken="new-access-token", refreshToken="new-refresh-token")
     mock_config_flow_api.login.return_value = auth
@@ -215,13 +191,7 @@ async def test_reauth_different_account_is_rejected(
     )
     entry.add_to_hass(hass)
 
-    result = await hass.config_entries.flow.async_init(
-        const.DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
-        data=entry.data,
-    )
-    assert result["type"] == "form"
-    assert result["step_id"] == "login"
+    result = await _start_reauth_flow(hass, entry)
 
     auth = MagicMock(authToken="new-access-token", refreshToken="new-refresh-token")
     mock_config_flow_api.login.return_value = auth
@@ -277,13 +247,7 @@ async def test_reauth_different_account_with_existing_entry_for_that_account_is_
     )
     other_entry.add_to_hass(hass)
 
-    result = await hass.config_entries.flow.async_init(
-        const.DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
-        data=entry.data,
-    )
-    assert result["type"] == "form"
-    assert result["step_id"] == "login"
+    result = await _start_reauth_flow(hass, entry)
 
     auth = MagicMock(authToken="new-access-token", refreshToken="new-refresh-token")
     mock_config_flow_api.login.return_value = auth
@@ -330,13 +294,7 @@ async def test_reauth_legacy_entry_without_stored_username_drops_site_reference(
 
     mock_frank_energie_class.UserSites.return_value = make_user_sites([])
 
-    result = await hass.config_entries.flow.async_init(
-        const.DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
-        data=entry.data,
-    )
-    assert result["type"] == "form"
-    assert result["step_id"] == "login"
+    result = await _start_reauth_flow(hass, entry)
 
     auth = MagicMock(authToken="new-access-token", refreshToken="new-refresh-token")
     mock_config_flow_api.login.return_value = auth
@@ -375,13 +333,7 @@ async def test_reauth_legacy_entry_rediscovers_site_and_loads(
     mock_frank_energie_class.UserSites.return_value = make_user_sites([site])
     _configure_authenticated_api(mock_frank_energie_class)
 
-    result = await hass.config_entries.flow.async_init(
-        const.DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
-        data=entry.data,
-    )
-    assert result["type"] == "form"
-    assert result["step_id"] == "login"
+    result = await _start_reauth_flow(hass, entry)
 
     auth = MagicMock(authToken="new-access-token", refreshToken="new-refresh-token")
     mock_config_flow_api.login.return_value = auth
@@ -418,13 +370,7 @@ async def test_reauth_same_account_reloads_entry_to_loaded(
     # discovery entirely and just re-fetches public prices.
     mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
 
-    result = await hass.config_entries.flow.async_init(
-        const.DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
-        data=entry.data,
-    )
-    assert result["type"] == "form"
-    assert result["step_id"] == "login"
+    result = await _start_reauth_flow(hass, entry)
 
     auth = MagicMock(authToken="new-access-token", refreshToken="new-refresh-token")
     mock_config_flow_api.login.return_value = auth
@@ -443,46 +389,25 @@ async def test_reauth_same_account_reloads_entry_to_loaded(
     assert entry.data[CONF_TOKEN] == "new-refresh-token"
 
 
-async def test_wrong_account_abort_reason_translated_in_all_locale_files():
-    """"wrong_account" must have real translated text in strings.json, en.json and nl.json.
-
-    Without an entry under config.abort in every locale file, Home Assistant
-    falls back to showing the raw abort reason key ("wrong_account") in the
-    UI instead of a human-readable message.
-    """
-    integration_dir = Path(__file__).resolve().parent.parent / "custom_components" / "frank_energie"
-    locale_files = [
-        integration_dir / "strings.json",
-        integration_dir / "translations" / "en.json",
-        integration_dir / "translations" / "nl.json",
-    ]
-
-    for locale_file in locale_files:
-        data = json.loads(locale_file.read_text(encoding="utf-8"))
-        message = data["config"]["abort"]["wrong_account"]
-
-        assert isinstance(message, str)
-        assert message.strip() != ""
-        assert message != "wrong_account", f"{locale_file} shows the raw abort reason key, not translated text"
+# Translated text for "wrong_account" (and every other abort reason) is
+# covered by tests/test_translations.py; see REQUIRED_KEYS there.
 
 
 # --------------------------------------------------------------------------
 # Unit tests for _same_account() and _merge_reauth_data().
 # --------------------------------------------------------------------------
 
-def test_same_account_case_and_whitespace_insensitive():
-    """Usernames differing only by case/surrounding whitespace are treated as the same account."""
-    assert _same_account("  User@Example.com ", "user@example.com") is True
-
-
-def test_same_account_different_usernames():
-    """Different usernames are not the same account."""
-    assert _same_account("olduser", "newuser") is False
-
-
-def test_same_account_no_stored_username():
-    """No stored username (legacy entry) has no account to compare against."""
-    assert _same_account(None, "newuser") is False
+@pytest.mark.parametrize(
+    "stored_username, new_username, expected",
+    [
+        ("  User@Example.com ", "user@example.com", True),  # case/whitespace insensitive
+        ("olduser", "newuser", False),  # different usernames
+        (None, "newuser", False),  # no stored username (legacy entry): no account to compare against
+    ],
+    ids=["case_and_whitespace_insensitive", "different_usernames", "no_stored_username"],
+)
+def test_same_account(stored_username, new_username, expected):
+    assert _same_account(stored_username, new_username) is expected
 
 
 def test_merge_reauth_data_keeps_site_reference_when_not_dropped():
@@ -498,9 +423,13 @@ def test_merge_reauth_data_keeps_site_reference_when_not_dropped():
     assert result[CONF_TOKEN] == "new-refresh"
 
 
-def test_merge_reauth_data_drops_site_reference_when_requested():
-    """With drop_site_reference=True the old site_reference is dropped, e.g. for a legacy entry."""
-    entry_data = {"site_reference": "site-1"}
+@pytest.mark.parametrize(
+    "entry_data",
+    [{"site_reference": "site-1"}, {CONF_USERNAME: "olduser"}],
+    ids=["with_site_reference", "without_site_reference"],
+)
+def test_merge_reauth_data_drops_site_reference_when_requested(entry_data):
+    """With drop_site_reference=True the old site_reference is dropped, without raising if it was never set."""
     new_data = {CONF_USERNAME: "newuser", CONF_ACCESS_TOKEN: "new-token", CONF_TOKEN: "new-refresh"}
 
     result = _merge_reauth_data(entry_data, new_data, drop_site_reference=True)
@@ -509,12 +438,474 @@ def test_merge_reauth_data_drops_site_reference_when_requested():
     assert result[CONF_USERNAME] == "newuser"
 
 
-def test_merge_reauth_data_no_site_reference_does_not_raise():
-    """An entry without site_reference must not raise KeyError when dropping is requested."""
-    entry_data = {CONF_USERNAME: "olduser"}
-    new_data = {CONF_USERNAME: "newuser", CONF_ACCESS_TOKEN: "new-token", CONF_TOKEN: "new-refresh"}
+# --------------------------------------------------------------------------
+# Site selection at login (see commit 366cea2, "Let users choose their
+# delivery site and change it via reconfigure").
+# --------------------------------------------------------------------------
 
-    result = _merge_reauth_data(entry_data, new_data, drop_site_reference=True)
 
-    assert "site_reference" not in result
-    assert result[CONF_USERNAME] == "newuser"
+async def _start_login_flow(hass):
+    """Start a SOURCE_USER flow and advance it to the login step."""
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AUTHENTICATION: True})
+    assert result["step_id"] == "login"
+    return result
+
+
+async def test_login_single_site_creates_entry_with_site_reference_and_address_title(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+):
+    """A login that discovers exactly one IN_DELIVERY site creates the entry directly, titled by its address."""
+    site = make_delivery_site("site-1", "IN_DELIVERY", street="Vondelstraat", house_number="7")
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site]))
+    mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+
+    result = await _start_login_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert result2["title"] == "Vondelstraat 7"
+    assert result2["data"]["site_reference"] == "site-1"
+    assert result2["data"][CONF_USERNAME] == "user@example.com"
+    assert result2["data"][CONF_ACCESS_TOKEN] == "access-token"
+
+
+async def test_login_single_site_without_address_falls_back_to_username_title(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+):
+    """When the single discovered site has no address, the entry title falls back to the username."""
+    site = DeliverySite(
+        addressHasMultipleSites=False,
+        propositionType=None,
+        reference="site-1",
+        segments=["ELECTRICITY", "GAS"],
+        address=None,
+        status="IN_DELIVERY",
+        deliveryStartDate=None,
+        deliveryEndDate=None,
+        firstMeterReadingDate=None,
+        lastMeterReadingDate=None,
+    )
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site]))
+    mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+
+    result = await _start_login_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert result2["title"] == "user@example.com"
+    assert result2["data"]["site_reference"] == "site-1"
+
+
+async def test_login_multiple_sites_shows_site_step_and_creates_entry_with_chosen_site(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+):
+    """With more than one IN_DELIVERY site, the user is shown a "site" form and can choose one."""
+    site1 = make_delivery_site("site-1", "IN_DELIVERY", street="Vondelstraat", house_number="7")
+    site2 = make_delivery_site("site-2", "IN_DELIVERY", street="Kalverstraat", house_number="99")
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site1, site2]))
+    mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+
+    result = await _start_login_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+    )
+
+    assert result2["type"] == "form"
+    assert result2["step_id"] == "site"
+
+    options = result2["data_schema"].schema[
+        next(k for k in result2["data_schema"].schema if getattr(k, "schema", None) == SITE_REFERENCE)
+    ].config["options"]
+    assert {opt["value"] for opt in options} == {"site-1", "site-2"}
+    assert {opt["label"] for opt in options} == {"Vondelstraat 7", "Kalverstraat 99"}
+
+    result3 = await hass.config_entries.flow.async_configure(result2["flow_id"], {SITE_REFERENCE: "site-2"})
+    await hass.async_block_till_done()
+
+    assert result3["type"] == "create_entry"
+    assert result3["title"] == "Kalverstraat 99"
+    assert result3["data"]["site_reference"] == "site-2"
+    assert result3["data"][CONF_USERNAME] == "user@example.com"
+
+
+async def test_login_no_sites_aborts(hass, enable_custom_integrations, mock_config_flow_api):
+    """When the account has no IN_DELIVERY sites at all, the flow aborts with no_sites."""
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([]))
+    mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+
+    result = await _start_login_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+    )
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "no_sites"
+
+
+@pytest.mark.parametrize(
+    "exception, expected_error",
+    [
+        (AuthException("token rejected"), "invalid_auth"),
+        (NetworkError("unreachable"), "cannot_connect"),
+    ],
+    ids=["auth_exception", "network_error"],
+)
+async def test_login_usersites_error_shows_login_form_with_error(
+    hass, enable_custom_integrations, mock_config_flow_api, exception, expected_error
+):
+    """An AuthException/NetworkError from UserSites() (after a successful login) re-shows the login form."""
+    mock_config_flow_api.UserSites = AsyncMock(side_effect=exception)
+    mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+
+    result = await _start_login_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+    )
+
+    assert result2["type"] == "form"
+    assert result2["step_id"] == "login"
+    assert result2["errors"] == {"base": expected_error}
+
+
+@pytest.mark.parametrize("site_count", [1, 2], ids=["single_site", "multiple_sites"])
+async def test_login_duplicate_username_aborts_already_configured(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class, site_count
+):
+    """Logging in with a username that already has a config entry aborts as already_configured.
+
+    The duplicate check happens before UserSites() is fetched (see W3), so it
+    is never awaited -- true whether the account has one site (which would
+    otherwise create the entry directly) or several (which would otherwise
+    show the multi-site selection step).
+    """
+    existing = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1", CONF_USERNAME: "user@example.com"},
+        unique_id="user@example.com",
+    )
+    existing.add_to_hass(hass)
+
+    sites = [make_delivery_site(f"site-{i + 1}", "IN_DELIVERY") for i in range(site_count)]
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites(sites))
+    mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+
+    result = await _start_login_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+    )
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "already_configured"
+    mock_config_flow_api.UserSites.assert_not_awaited()
+
+
+# --------------------------------------------------------------------------
+# Reconfigure flow (see commit 366cea2).
+# --------------------------------------------------------------------------
+
+
+async def test_reconfigure_without_token_aborts_not_supported(hass, enable_custom_integrations):
+    """An entry with no stored access token cannot be reconfigured (no account to fetch sites for)."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reconfigure_not_supported"
+
+
+async def test_reconfigure_shows_form_defaulting_to_current_site_and_submits_new_site(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """The reconfigure form defaults to the current site; submitting another site updates and reloads the entry.
+
+    The entry is loaded, so the reconfigure flow must reuse the running
+    coordinator's own client (`mock_frank_energie_class`) rather than build a
+    new one, and must fetch UserSites() exactly once across form + submit.
+    """
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={
+            "site_reference": "site-1",
+            CONF_USERNAME: "user@example.com",
+            CONF_ACCESS_TOKEN: "old-access-token",
+            CONF_TOKEN: "old-refresh-token",
+            "extra_field": "keep-me",
+        },
+        unique_id="frank_energie",
+        title="Oldstraat 1",
+    )
+    entry.add_to_hass(hass)
+
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+    site1 = make_delivery_site("site-1", "IN_DELIVERY", street="Oldstraat", house_number="1")
+    site2 = make_delivery_site("site-2", "IN_DELIVERY", street="Newstraat", house_number="99")
+    mock_frank_energie_class.UserSites.return_value = make_user_sites([site1, site2])
+    # Simulate the library silently renewing tokens inside UserSites().
+    mock_frank_energie_class._auth = MagicMock(authToken="renewed-access-token", refreshToken="renewed-refresh-token")
+
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "reconfigure"
+
+    schema = result["data_schema"].schema
+    site_key = next(k for k in schema if getattr(k, "schema", None) == SITE_REFERENCE)
+    assert site_key.default() == "site-1"
+
+    result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {SITE_REFERENCE: "site-2"})
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "reconfigure_successful"
+
+    assert entry.data["site_reference"] == "site-2"
+    assert entry.title == "Newstraat 99"
+    assert entry.data["extra_field"] == "keep-me"
+    assert entry.data[CONF_USERNAME] == "user@example.com"
+    assert entry.data[CONF_ACCESS_TOKEN] == "renewed-access-token"
+    assert entry.data[CONF_TOKEN] == "renewed-refresh-token"
+    assert entry.state is ConfigEntryState.LOADED
+
+    mock_frank_energie_class.UserSites.assert_awaited_once()
+
+
+async def test_reconfigure_not_loaded_entry_builds_new_client(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+):
+    """When the entry isn't loaded, reconfigure must build its own client instead of using a coordinator's."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={
+            "site_reference": "site-1",
+            CONF_USERNAME: "user@example.com",
+            CONF_ACCESS_TOKEN: "old-access-token",
+            CONF_TOKEN: "old-refresh-token",
+        },
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    assert entry.state is ConfigEntryState.NOT_LOADED
+
+    site1 = make_delivery_site("site-1", "IN_DELIVERY")
+    site2 = make_delivery_site("site-2", "IN_DELIVERY", street="Newstraat", house_number="99")
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site1, site2]))
+    # Unlike mock_frank_energie_class (autospec'd with _auth=None by default), mock_config_flow_api
+    # is a plain MagicMock: without this, `._auth` auto-vivifies into a non-None Mock, which
+    # _finish_reconfigure would then try (and fail) to persist as real token values.
+    mock_config_flow_api._auth = None
+    # A successful reconfigure schedules a reload of the entry, which is not yet loaded: configure
+    # the (separately mocked) FrankEnergie client used by __init__.py so that reload succeeds too.
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+    assert result["type"] == "form"
+    assert result["step_id"] == "reconfigure"
+
+    result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {SITE_REFERENCE: "site-2"})
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "reconfigure_successful"
+    assert entry.data["site_reference"] == "site-2"
+    mock_config_flow_api.UserSites.assert_awaited_once()
+    mock_frank_energie_class.UserSites.assert_not_awaited()
+
+
+async def test_reconfigure_first_fetch_failing_aborts_cannot_connect(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """A fetch failure on the very first reconfigure step (showing the form) aborts with cannot_connect."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={
+            "site_reference": "site-1",
+            CONF_USERNAME: "user@example.com",
+            CONF_ACCESS_TOKEN: "old-access-token",
+            CONF_TOKEN: "old-refresh-token",
+        },
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_frank_energie_class.UserSites.side_effect = NetworkError("unreachable")
+
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "cannot_connect"
+
+
+async def test_reconfigure_no_sites_aborts_no_sites(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """When the account has no IN_DELIVERY sites, reconfigure aborts with no_sites."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={
+            "site_reference": "site-1",
+            CONF_USERNAME: "user@example.com",
+            CONF_ACCESS_TOKEN: "old-access-token",
+            CONF_TOKEN: "old-refresh-token",
+        },
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_frank_energie_class.UserSites.return_value = make_user_sites([])
+
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "no_sites"
+
+
+# --------------------------------------------------------------------------
+# Regression: the unauthenticated ("public prices only") flow is unchanged.
+# --------------------------------------------------------------------------
+
+
+async def test_unauthenticated_flow_creates_entry_with_no_data_and_home_assistant_prices_timezone_option(
+    hass, enable_custom_integrations
+):
+    """Declining to sign in still creates an entry with empty data, and opts it into "home_assistant" by default.
+
+    See commit d6a5dc3, "Add option for the time zone of price times".
+    """
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AUTHENTICATION: False})
+
+    assert result2["type"] == "create_entry"
+    assert result2["data"] == {}
+    assert result2["options"] == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+
+    entries = hass.config_entries.async_entries(const.DOMAIN)
+    assert len(entries) == 1
+    assert entries[0].options == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+
+
+async def test_login_single_site_creates_entry_with_home_assistant_prices_timezone_option(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+):
+    """A fresh single-site login also stores options={"prices_timezone": "home_assistant"} on the new entry."""
+    site = make_delivery_site("site-1", "IN_DELIVERY", street="Vondelstraat", house_number="7")
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site]))
+    mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+
+    result = await _start_login_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert result2["options"] == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+
+    entries = hass.config_entries.async_entries(const.DOMAIN)
+    assert len(entries) == 1
+    assert entries[0].options == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+
+
+@pytest.mark.parametrize(
+    "options, expected_default",
+    [
+        ({}, const.PRICES_TIMEZONE_UTC),
+        ({const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}, const.PRICES_TIMEZONE_HOME_ASSISTANT),
+    ],
+    ids=["legacy_entry_without_options", "entry_with_stored_option"],
+)
+async def test_options_flow_init_defaults_to_the_entrys_current_option(
+    hass, enable_custom_integrations, mock_frank_energie_class, options, expected_default
+):
+    """The options init form defaults to "utc" for a legacy entry, or the entry's currently stored option."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        options=options,
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "init"
+    schema = result["data_schema"].schema
+    tz_key = next(k for k in schema if getattr(k, "schema", None) == const.CONF_PRICES_TIMEZONE)
+    assert tz_key.default() == expected_default
+
+
+async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """Submitting "home_assistant" creates the options entry, updates entry.options, and reloads it to LOADED."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"], {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert entry.options == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    assert entry.state is ConfigEntryState.LOADED

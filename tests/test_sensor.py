@@ -4,15 +4,23 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
-from python_frank_energie.models import Invoice, Invoices, Me, MonthSummary
+from python_frank_energie.models import Invoice, Invoices
 
 from custom_components.frank_energie import const, sensor
-from tests.utils import build_market_prices, build_market_prices_from_local_midnight, price_generator
+from tests.utils import (
+    build_market_prices,
+    build_market_prices_from_local_midnight,
+    build_price_data,
+    make_me,
+    make_month_summary,
+    price_generator,
+)
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -45,40 +53,6 @@ async def enable_all_sensors(hass, entry):
 
 def make_invoice(total: float, start: datetime, description: str) -> Invoice:
     return Invoice(id="inv-1", StartDate=start, PeriodDescription=description, TotalAmount=total)
-
-
-def make_month_summary(**overrides) -> MonthSummary:
-    defaults = dict(
-        _id="1",
-        actualCostsUntilLastMeterReadingDate=10.0,
-        expectedCostsUntilLastMeterReadingDate=12.0,
-        lastMeterReadingDate="2024-01-01",
-        costs_per_day_till_now=1.0,
-        meterReadingDayCompleteness=1.0,
-        gasExcluded=False,
-        typename="MonthSummary",
-        expectedCosts=100.0,
-    )
-    defaults.update(overrides)
-    return MonthSummary(**defaults)
-
-
-def make_me(country_code: str = "NL") -> Me:
-    return Me(
-        id="user-1",
-        email="user@example.com",
-        countryCode=country_code,
-        advancedPaymentAmount=0.0,
-        treesCount=0,
-        hasInviteLink=False,
-        InviteLinkUser=None,
-        hasCO2Compensation=False,
-        createdAt="2024-01-01T00:00:00Z",
-        updatedAt="2024-01-01T00:00:00Z",
-        addressHasMultipleSites=False,
-        meterReadingExportPeriods=[],
-        smartCharging={},
-    )
 
 
 def local_midnight():
@@ -361,6 +335,44 @@ async def test_unload_entry_cancels_update_timers(
 
 
 # --------------------------------------------------------------------------
+# _tz_name: PriceData.asdict(timezone=...) needs a string name, not a tzinfo
+# object; datetime.timezone.utc (unlike ZoneInfo) has no `.key`.
+# --------------------------------------------------------------------------
+
+
+def test_tz_name_returns_key_for_zoneinfo_and_falls_back_to_utc_for_datetime_timezone_utc():
+    """A ZoneInfo returns its `.key`; datetime.timezone.utc (no `.key` attribute) falls back to "UTC", not a crash."""
+    from zoneinfo import ZoneInfo
+
+    assert sensor._tz_name(ZoneInfo("Europe/Amsterdam")) == "Europe/Amsterdam"
+    assert sensor._tz_name(dt_util.UTC) == "UTC"
+
+
+async def test_prices_attribute_does_not_crash_with_home_assistant_option_and_utc_default_timezone(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """Regression test: prices_timezone="home_assistant" must not crash when the default time zone is plain UTC.
+
+    Home Assistant's own DEFAULT_TIME_ZONE starts out as the
+    datetime.timezone.utc singleton (before any async_set_time_zone() call),
+    which has no `.key` attribute, unlike a ZoneInfo instance.
+    """
+    freezer.move_to("2026-01-15 10:00:00+00:00")
+    dt_util.set_default_time_zone(dt_util.UTC)
+    hass.config_entries.async_update_entry(
+        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
+    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[], tomorrow_gas=[])
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    prices = state_for_key(hass, config_entry, "elec_markup").attributes["prices"]
+    assert prices
+    assert prices[0]["from"].utcoffset() == timedelta(0)
+
+
+# --------------------------------------------------------------------------
 # Recorder exclusion / error handling (unit tests, no hass setup needed)
 # --------------------------------------------------------------------------
 
@@ -630,3 +642,344 @@ async def test_no_current_slot_after_midnight_shows_unavailable_not_stale(
     # today_min/today_max must render (no exception), even with no data left.
     assert state_for_key(hass, config_entry, "elec_min").state == STATE_UNAVAILABLE
     assert state_for_key(hass, config_entry, "elec_max").state == STATE_UNAVAILABLE
+
+
+# --------------------------------------------------------------------------
+# New sensors: elec_next, elec_tomorrow_avg/min/max, elec_upcoming_min/max,
+# gas_tomorrow_avg (see commit bad4b3a, "Add upcoming and tomorrow price
+# sensors").
+# --------------------------------------------------------------------------
+
+NEW_SENSOR_KEYS = (
+    "elec_next",
+    "elec_tomorrow_avg",
+    "elec_tomorrow_min",
+    "elec_tomorrow_max",
+    "elec_upcoming_min",
+    "elec_upcoming_max",
+    "gas_tomorrow_avg",
+)
+
+
+def test_new_price_sensors_are_enabled_by_default():
+    """All 7 new sensors must be enabled by default (no opt-in required)."""
+    descriptions = {desc.key: desc for desc in sensor.SENSOR_TYPES}
+    for key in NEW_SENSOR_KEYS:
+        assert key in descriptions, f"missing sensor description for key={key}"
+        assert descriptions[key].entity_registry_enabled_default is not False, (
+            f"{key} must be enabled by default"
+        )
+
+
+async def test_new_price_sensors_with_today_and_tomorrow_data(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """With today and tomorrow data, the 7 new sensors report the right values and from_time."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")  # local slot index 40 (10:00-10:15) is "now"
+
+    electricity_today = [0.20] * 96
+    electricity_today[50] = 0.05  # a later-today slot: the lowest "upcoming" price
+    tomorrow_midnight = local_midnight() + timedelta(days=1)
+
+    electricity_tomorrow = price_generator(0.30, 0.02, count=96)
+    electricity_tomorrow[5] = 9.99  # tomorrow's highest price, also the highest "upcoming" price
+    gas_tomorrow = [1.75] * 48 + [1.23] * 48
+
+    install_public_prices(
+        mock_frank_energie_class,
+        electricity_today,
+        [1.0] * 96,
+        tomorrow_electricity=electricity_tomorrow,
+        tomorrow_gas=gas_tomorrow,
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # elec_next: the slot right after "now" (10:15-10:30, index 41).
+    next_state = state_for_key(hass, config_entry, "elec_next")
+    assert float(next_state.state) == pytest.approx(electricity_today[41])
+    expected_next_from = local_midnight() + timedelta(minutes=15 * 41)
+    assert next_state.attributes["from_time"] == expected_next_from
+
+    # elec_tomorrow_avg / gas_tomorrow_avg.
+    tomorrow_avg_state = state_for_key(hass, config_entry, "elec_tomorrow_avg")
+    assert float(tomorrow_avg_state.state) == pytest.approx(
+        sum(electricity_tomorrow) / len(electricity_tomorrow)
+    )
+    gas_tomorrow_avg_state = state_for_key(hass, config_entry, "gas_tomorrow_avg")
+    assert float(gas_tomorrow_avg_state.state) == pytest.approx(sum(gas_tomorrow) / len(gas_tomorrow))
+
+    # elec_tomorrow_min / elec_tomorrow_max.
+    tomorrow_min_state = state_for_key(hass, config_entry, "elec_tomorrow_min")
+    assert float(tomorrow_min_state.state) == pytest.approx(min(electricity_tomorrow))
+    tomorrow_max_state = state_for_key(hass, config_entry, "elec_tomorrow_max")
+    assert float(tomorrow_max_state.state) == pytest.approx(max(electricity_tomorrow))
+    max_index = electricity_tomorrow.index(max(electricity_tomorrow))
+    assert tomorrow_max_state.attributes["from_time"] == tomorrow_midnight + timedelta(minutes=15 * max_index)
+
+    # elec_upcoming_min/max span both the rest of today and all of tomorrow.
+    upcoming_min_state = state_for_key(hass, config_entry, "elec_upcoming_min")
+    assert float(upcoming_min_state.state) == pytest.approx(0.05)
+    assert upcoming_min_state.attributes["from_time"] == local_midnight() + timedelta(minutes=15 * 50)
+
+    upcoming_max_state = state_for_key(hass, config_entry, "elec_upcoming_max")
+    assert float(upcoming_max_state.state) == pytest.approx(9.99)
+    assert upcoming_max_state.attributes["from_time"] == tomorrow_midnight + timedelta(minutes=15 * 5)
+
+
+def test_next_price_returns_none_for_empty_price_data():
+    """No slots at all -> None (so elec_next's value_fn reports None, not a crash)."""
+    from python_frank_energie.models import PriceData
+
+    price_data = PriceData([], energy_type="electricity")
+    assert sensor._next_price(price_data) is None
+
+
+@pytest.mark.parametrize(
+    "resolution_minutes, start_hour, start_minute, expected_next_from",
+    [
+        # 60-minute slots: must return the next hour, not the current (up to
+        # 45-minute-stale) hour. Regression test for elec_next using
+        # PriceData.next_quarter_hour (now + 15 minutes), which pointed at
+        # the current hour's slot for the first 45 minutes of every hour.
+        (60, 9, 0, datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)),
+        # 15-minute slots: the next quarter-hour slot, matching old behaviour.
+        (15, 9, 45, datetime(2026, 1, 15, 10, 15, tzinfo=timezone.utc)),
+    ],
+    ids=["60_minute_slots", "15_minute_slots"],
+)
+def test_next_price_returns_the_next_slot_for_the_slot_resolution(
+    freezer, resolution_minutes, start_hour, start_minute, expected_next_from
+):
+    """_next_price returns the slot right after "now", whatever the slots' own resolution."""
+    freezer.move_to("2026-01-15 10:07:00+00:00")
+    start = datetime(2026, 1, 15, start_hour, start_minute, tzinfo=timezone.utc)
+    price_data = build_price_data(start, [0.10, 0.20, 0.30], "electricity", resolution_minutes=resolution_minutes)
+
+    next_price = sensor._next_price(price_data)
+
+    assert next_price is not None
+    assert next_price.total == pytest.approx(0.30)
+    assert next_price.date_from == expected_next_from
+
+
+async def test_elec_next_sensor_uses_next_hour_with_60_minute_slots(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """Integration-level regression test: elec_next reports the next hour's price with 60-minute slots."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:07:00+01:00")  # 7 minutes into the 10:00-11:00 local slot
+
+    today = local_midnight()
+    electricity_today = [0.10] * 24
+    electricity_today[10] = 0.20  # current hour (10:00-11:00)
+    electricity_today[11] = 0.30  # next hour (11:00-12:00): expected elec_next value
+
+    today_prices = build_market_prices(today, electricity_today, [1.0] * 24, resolution_minutes=60)
+    tomorrow_prices = build_market_prices(
+        today + timedelta(days=1), [0.3] * 24, [1.2] * 24, resolution_minutes=60
+    )
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        if start_date == dt_util.now().date():
+            return today_prices
+        return tomorrow_prices
+
+    mock_frank_energie_class.prices.side_effect = prices_side_effect
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    next_state = state_for_key(hass, config_entry, "elec_next")
+    assert float(next_state.state) == pytest.approx(0.30)
+    assert next_state.attributes["from_time"] == today + timedelta(hours=11)
+
+
+async def test_new_price_sensors_without_tomorrow_data(hass, mock_frank_energie_class, config_entry, freezer, caplog):
+    """Without tomorrow data, tomorrow sensors are unavailable (no errors); next/upcoming still work from today."""
+    caplog.set_level(logging.DEBUG)
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+
+    electricity_today = [0.20] * 96
+    electricity_today[41] = 0.42  # next slot after "now"
+    electricity_today[80] = 0.01  # a later-today slot: the lowest upcoming price
+
+    install_public_prices(
+        mock_frank_energie_class,
+        electricity_today,
+        [1.0] * 96,
+        tomorrow_electricity=[],
+        tomorrow_gas=[],
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    for key in ("elec_tomorrow_avg", "elec_tomorrow_min", "elec_tomorrow_max", "gas_tomorrow_avg"):
+        state = state_for_key(hass, config_entry, key)
+        assert state is not None, f"expected an entity for key={key}"
+        assert state.state == STATE_UNAVAILABLE, f"{key} expected unavailable, got {state.state!r}"
+
+    next_state = state_for_key(hass, config_entry, "elec_next")
+    assert float(next_state.state) == pytest.approx(0.42)
+
+    upcoming_min_state = state_for_key(hass, config_entry, "elec_upcoming_min")
+    assert float(upcoming_min_state.state) == pytest.approx(0.01)
+    upcoming_max_state = state_for_key(hass, config_entry, "elec_upcoming_max")
+    assert upcoming_max_state.state != STATE_UNAVAILABLE
+
+    errors = [
+        record
+        for record in caplog.records
+        if record.name.startswith("custom_components.frank_energie") and record.levelno >= logging.ERROR
+    ]
+    assert not errors, f"unexpected error log(s) from the sensor platform: {errors}"
+
+
+# --------------------------------------------------------------------------
+# prices_timezone option: "prices" attribute and from_time attribute notation
+# (see commit d6a5dc3, "Add option for the time zone of price times").
+# --------------------------------------------------------------------------
+
+FROM_TIME_KEYS = (
+    "elec_min",
+    "elec_max",
+    "gas_min",
+    "gas_max",
+    "elec_next",
+    "elec_tomorrow_min",
+    "elec_tomorrow_max",
+    "elec_upcoming_min",
+    "elec_upcoming_max",
+)
+
+
+@pytest.mark.parametrize(
+    "options, freeze_time, expected_offset",
+    [
+        (None, "2026-01-15 10:00:00+01:00", timedelta(0)),
+        ({const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}, "2026-01-15 10:00:00+01:00",
+         timedelta(hours=1)),
+        ({const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}, "2026-07-15 10:00:00+02:00",
+         timedelta(hours=2)),
+    ],
+    ids=["utc_default", "home_assistant_winter", "home_assistant_summer"],
+)
+async def test_prices_attribute_offset_follows_prices_timezone_option(
+    hass, mock_frank_energie_class, config_entry, freezer, options, freeze_time, expected_offset
+):
+    """The "prices" attribute's from/till utcoffset follows prices_timezone: UTC by default, else the HA tz offset.
+
+    With "home_assistant" that means +01:00 in winter (CET) and +02:00 in
+    summer (CEST) for Europe/Amsterdam.
+    """
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to(freeze_time)
+    if options is not None:
+        hass.config_entries.async_update_entry(config_entry, options=options)
+    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[], tomorrow_gas=[])
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    prices = state_for_key(hass, config_entry, "elec_markup").attributes["prices"]
+    assert prices
+    for slot in prices:
+        assert slot["from"].utcoffset() == expected_offset
+        assert slot["till"].utcoffset() == expected_offset
+
+
+async def test_changing_prices_timezone_via_options_flow_updates_prices_notation_without_restart(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """Changing prices_timezone via the options flow updates the "prices" notation after reload, same instants."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[], tomorrow_gas=[])
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    utc_prices = state_for_key(hass, config_entry, "elec_markup").attributes["prices"]
+    assert utc_prices
+    assert all(slot["from"].utcoffset() == timedelta(0) for slot in utc_prices)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"], {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
+    await hass.async_block_till_done()
+    assert result2["type"] == "create_entry"
+    assert config_entry.state is ConfigEntryState.LOADED
+
+    ha_prices = state_for_key(hass, config_entry, "elec_markup").attributes["prices"]
+    assert ha_prices
+    assert all(slot["from"].utcoffset() == timedelta(hours=1) for slot in ha_prices)
+
+    # Same underlying instants across both options, only the notation differs.
+    assert [s["from"] for s in utc_prices] == [s["from"] for s in ha_prices]
+    assert [s["till"] for s in utc_prices] == [s["till"] for s in ha_prices]
+
+
+async def test_from_time_attributes_default_to_utc_then_follow_home_assistant_timezone_with_same_instant(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """from_time attributes have utcoffset 0 by default; with "home_assistant" they use the HA tz offset instead.
+
+    Both notations represent the same instant.
+    """
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    install_public_prices(
+        mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[0.3] * 96, tomorrow_gas=[1.2] * 96
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    utc_from_times = {}
+    for key in FROM_TIME_KEYS:
+        state = state_for_key(hass, config_entry, key)
+        assert state is not None, f"expected an entity for key={key}"
+        from_time = state.attributes["from_time"]
+        assert from_time.utcoffset() == timedelta(0), f"{key}: expected utc offset 0, got {from_time.utcoffset()}"
+        utc_from_times[key] = from_time
+
+    hass.config_entries.async_update_entry(
+        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
+    assert await hass.config_entries.async_reload(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    for key in FROM_TIME_KEYS:
+        state = state_for_key(hass, config_entry, key)
+        from_time = state.attributes["from_time"]
+        assert from_time.utcoffset() == timedelta(hours=1), f"{key}: expected +01:00, got {from_time.utcoffset()}"
+        assert from_time == utc_from_times[key], f"{key}: instant changed across prices_timezone options"
+
+
+async def test_new_price_sensors_late_in_day_next_and_upcoming_unavailable(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """Late in the day, with only today's data, next/upcoming sensors become unavailable once no slots remain."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 23:50:00+01:00")  # inside the last slot (23:45-00:00)
+
+    install_public_prices(
+        mock_frank_energie_class,
+        [0.20] * 96,
+        [1.0] * 96,
+        tomorrow_electricity=[],
+        tomorrow_gas=[],
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    for key in ("elec_next", "elec_upcoming_min", "elec_upcoming_max"):
+        state = state_for_key(hass, config_entry, key)
+        assert state is not None, f"expected an entity for key={key}"
+        assert state.state == STATE_UNAVAILABLE, f"{key} expected unavailable, got {state.state!r}"

@@ -17,44 +17,11 @@ from python_frank_energie.exceptions import (
     NoMarketPricesAvailableException,
     RequestException,
 )
-from python_frank_energie.models import Invoices, Me, MonthSummary
+from python_frank_energie.models import Invoices
 
 from custom_components.frank_energie import const
 from custom_components.frank_energie.coordinator import FrankEnergieCoordinator
-from tests.utils import build_market_prices, build_price_data
-
-
-def make_me(country_code: str = "NL") -> Me:
-    """Build a minimal Me instance."""
-    return Me(
-        id="user-1",
-        email="user@example.com",
-        countryCode=country_code,
-        advancedPaymentAmount=0.0,
-        treesCount=0,
-        hasInviteLink=False,
-        InviteLinkUser=None,
-        hasCO2Compensation=False,
-        createdAt="2024-01-01T00:00:00Z",
-        updatedAt="2024-01-01T00:00:00Z",
-        addressHasMultipleSites=False,
-        meterReadingExportPeriods=[],
-        smartCharging={},
-    )
-
-
-def make_month_summary() -> MonthSummary:
-    return MonthSummary(
-        _id="1",
-        actualCostsUntilLastMeterReadingDate=10.0,
-        expectedCostsUntilLastMeterReadingDate=12.0,
-        lastMeterReadingDate="2024-01-01",
-        costs_per_day_till_now=1.0,
-        meterReadingDayCompleteness=1.0,
-        gasExcluded=False,
-        typename="MonthSummary",
-        expectedCosts=100.0,
-    )
+from tests.utils import build_market_prices, build_price_data, make_me, make_month_summary
 
 
 @pytest.fixture
@@ -89,6 +56,20 @@ def api():
 @pytest.fixture
 def coordinator(hass, entry, api):
     return FrankEnergieCoordinator(hass, entry, api)
+
+
+def _install_stale_data(coordinator):
+    """Install usable (still-upcoming) stale electricity/gas data on `coordinator`, and return it."""
+    future = dt_util.now() + timedelta(hours=1)
+    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
+    stale_gas = build_price_data(future, [1.2] * 5, "gas")
+    coordinator.data = {
+        const.DATA_ELECTRICITY: stale_electricity,
+        const.DATA_GAS: stale_gas,
+        const.DATA_MONTH_SUMMARY: None,
+        const.DATA_INVOICES: None,
+    }
+    return stale_electricity, stale_gas
 
 
 async def test_unauthenticated_fetches_today_and_tomorrow(coordinator, api):
@@ -224,34 +205,6 @@ async def test_tomorrow_present_merges_today_and_tomorrow(coordinator, api):
     assert len(data[const.DATA_GAS].all) == 48
 
 
-async def test_today_request_exception_without_previous_data_raises_update_failed(coordinator, api):
-    """A RequestException fetching today's prices with no cached data raises UpdateFailed."""
-    api.prices.side_effect = RequestException("boom")
-
-    with pytest.raises(UpdateFailed):
-        await coordinator._async_update_data()
-
-
-async def test_today_request_exception_with_previous_data_returns_stale_data(coordinator, api):
-    """A RequestException with usable previous data should return the previous data instead of failing."""
-    future = dt_util.now() + timedelta(hours=1)
-    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
-    stale_gas = build_price_data(future, [1.2] * 5, "gas")
-    coordinator.data = {
-        const.DATA_ELECTRICITY: stale_electricity,
-        const.DATA_GAS: stale_gas,
-        const.DATA_MONTH_SUMMARY: None,
-        const.DATA_INVOICES: None,
-    }
-
-    api.prices.side_effect = RequestException("temporary failure")
-
-    data = await coordinator._async_update_data()
-
-    assert data is coordinator.data
-    assert data[const.DATA_ELECTRICITY] is stale_electricity
-
-
 async def test_today_user_error_raises_config_entry_auth_failed(coordinator, api):
     """A 'user-error:' RequestException should be treated as an auth failure."""
     api.prices.side_effect = RequestException("user-error:some-other-user-error")
@@ -296,7 +249,10 @@ async def test_auth_exception_renew_failure_raises_config_entry_auth_failed(coor
 
 
 # --------------------------------------------------------------------------
-# 1. NetworkError / AuthRequiredException / plain FrankEnergieException
+# 1. NetworkError / AuthRequiredException / plain FrankEnergieException /
+#    RequestException / ValueError: everything _async_update_data() routes to
+#    _handle_update_error()/_stale_data_or_raise() the same way (except a
+#    "user-error:" RequestException, which is covered separately above).
 # --------------------------------------------------------------------------
 
 _TODAY_ERRORS = pytest.mark.parametrize(
@@ -305,14 +261,22 @@ _TODAY_ERRORS = pytest.mark.parametrize(
         lambda: NetworkError("network unreachable"),
         lambda: AuthRequiredException("auth required"),
         lambda: FrankEnergieException("something else broke"),
+        lambda: RequestException("boom"),
+        lambda: ValueError("invalid site_reference"),
     ],
-    ids=["network_error", "auth_required_exception", "plain_frank_energie_exception"],
+    ids=[
+        "network_error",
+        "auth_required_exception",
+        "plain_frank_energie_exception",
+        "request_exception",
+        "value_error",
+    ],
 )
 
 
 @_TODAY_ERRORS
 async def test_today_error_without_previous_data_raises_update_failed(coordinator, api, make_exception):
-    """NetworkError/AuthRequiredException/FrankEnergieException with no cached data raise UpdateFailed."""
+    """NetworkError/AuthRequiredException/FrankEnergieException/RequestException/ValueError raise UpdateFailed."""
     api.prices.side_effect = make_exception()
 
     with pytest.raises(UpdateFailed):
@@ -321,16 +285,8 @@ async def test_today_error_without_previous_data_raises_update_failed(coordinato
 
 @_TODAY_ERRORS
 async def test_today_error_with_previous_data_returns_stale_data(coordinator, api, make_exception):
-    """NetworkError/AuthRequiredException/FrankEnergieException with usable cached data return it instead."""
-    future = dt_util.now() + timedelta(hours=1)
-    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
-    stale_gas = build_price_data(future, [1.2] * 5, "gas")
-    coordinator.data = {
-        const.DATA_ELECTRICITY: stale_electricity,
-        const.DATA_GAS: stale_gas,
-        const.DATA_MONTH_SUMMARY: None,
-        const.DATA_INVOICES: None,
-    }
+    """The same errors, with usable cached data, return it instead of failing."""
+    stale_electricity, stale_gas = _install_stale_data(coordinator)
 
     api.prices.side_effect = make_exception()
 
@@ -622,15 +578,7 @@ async def test_renew_token_network_error_with_previous_data_returns_stale_data(c
     api.prices.side_effect = AuthException("token expired")
     api.renew_token.side_effect = NetworkError("renewal network unreachable")
 
-    future = dt_util.now() + timedelta(hours=1)
-    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
-    stale_gas = build_price_data(future, [1.2] * 5, "gas")
-    coordinator.data = {
-        const.DATA_ELECTRICITY: stale_electricity,
-        const.DATA_GAS: stale_gas,
-        const.DATA_MONTH_SUMMARY: None,
-        const.DATA_INVOICES: None,
-    }
+    stale_electricity, stale_gas = _install_stale_data(coordinator)
 
     data = await coordinator._async_update_data()
 
@@ -675,34 +623,6 @@ async def test_internally_renewed_tokens_persisted_when_today_fetch_fails(hass, 
     assert entry.data[CONF_TOKEN] == "internally-renewed-refresh"
     assert entry.data["site_reference"] == "site-1"
     assert entry.data[CONF_USERNAME] == "someuser"
-
-
-async def test_today_value_error_without_previous_data_raises_update_failed(coordinator, api):
-    """A plain ValueError fetching today's prices (e.g. library parsing) with no cached data raises UpdateFailed."""
-    api.prices.side_effect = ValueError("invalid site_reference")
-
-    with pytest.raises(UpdateFailed):
-        await coordinator._async_update_data()
-
-
-async def test_today_value_error_with_previous_data_returns_stale_data(coordinator, api):
-    """A plain ValueError with usable previous data should return stale data instead of failing."""
-    future = dt_util.now() + timedelta(hours=1)
-    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
-    stale_gas = build_price_data(future, [1.2] * 5, "gas")
-    coordinator.data = {
-        const.DATA_ELECTRICITY: stale_electricity,
-        const.DATA_GAS: stale_gas,
-        const.DATA_MONTH_SUMMARY: None,
-        const.DATA_INVOICES: None,
-    }
-
-    api.prices.side_effect = ValueError("invalid site_reference")
-
-    data = await coordinator._async_update_data()
-
-    assert data is coordinator.data
-    assert data[const.DATA_ELECTRICITY] is stale_electricity
 
 
 # --------------------------------------------------------------------------
@@ -757,15 +677,7 @@ async def test_auth_exception_retry_succeeds_returns_fresh_data(coordinator, api
 
 async def test_auth_exception_retry_fails_again_no_second_renewal_with_stale_data(coordinator, api):
     """An AuthException on the retry itself must not trigger a second renewal; stale data is served instead."""
-    future = dt_util.now() + timedelta(hours=1)
-    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
-    stale_gas = build_price_data(future, [1.2] * 5, "gas")
-    coordinator.data = {
-        const.DATA_ELECTRICITY: stale_electricity,
-        const.DATA_GAS: stale_gas,
-        const.DATA_MONTH_SUMMARY: None,
-        const.DATA_INVOICES: None,
-    }
+    stale_electricity, stale_gas = _install_stale_data(coordinator)
 
     # Every prices() call raises, including the retry's.
     api.prices.side_effect = AuthException("token expired")
@@ -829,15 +741,7 @@ async def test_retry_network_error_with_stale_data_returns_stale_data(coordinato
     api.prices.side_effect = prices_side_effect
     api.renew_token.side_effect = _fake_renew_token(api)
 
-    future = dt_util.now() + timedelta(hours=1)
-    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
-    stale_gas = build_price_data(future, [1.2] * 5, "gas")
-    coordinator.data = {
-        const.DATA_ELECTRICITY: stale_electricity,
-        const.DATA_GAS: stale_gas,
-        const.DATA_MONTH_SUMMARY: None,
-        const.DATA_INVOICES: None,
-    }
+    stale_electricity, stale_gas = _install_stale_data(coordinator)
 
     data = await coordinator._async_update_data()
 

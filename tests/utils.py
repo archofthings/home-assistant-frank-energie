@@ -9,7 +9,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from homeassistant.util import dt as dt_util
-from python_frank_energie.models import Address, DeliverySite, MarketPrices, PriceData, UserSites
+from python_frank_energie.models import (
+    Address,
+    DeliverySite,
+    Invoices,
+    MarketPrices,
+    Me,
+    MonthSummary,
+    PriceData,
+    UserSites,
+)
 
 # A non-JWT-shaped token. python_frank_energie's Authentication.is_expired
 # treats any auth token that doesn't look like a JWT (3 dot-separated parts)
@@ -119,6 +128,91 @@ def make_user_sites(sites: list[DeliverySite]) -> UserSites:
         segments=[],
         status="IN_DELIVERY",
     )
+
+
+def make_me(country_code: str = "NL", **overrides) -> Me:
+    """Build a minimal ``Me`` instance, e.g. for mock_api.user_country()."""
+    defaults = dict(
+        id="user-1",
+        email="user@example.com",
+        countryCode=country_code,
+        advancedPaymentAmount=0.0,
+        treesCount=0,
+        hasInviteLink=False,
+        InviteLinkUser=None,
+        hasCO2Compensation=False,
+        createdAt="2024-01-01T00:00:00Z",
+        updatedAt="2024-01-01T00:00:00Z",
+        addressHasMultipleSites=False,
+        meterReadingExportPeriods=[],
+        smartCharging={},
+    )
+    defaults.update(overrides)
+    return Me(**defaults)
+
+
+def make_month_summary(**overrides) -> MonthSummary:
+    """Build a minimal ``MonthSummary`` instance, e.g. for mock_api.month_summary()."""
+    defaults = dict(
+        _id="1",
+        actualCostsUntilLastMeterReadingDate=10.0,
+        expectedCostsUntilLastMeterReadingDate=12.0,
+        lastMeterReadingDate="2024-01-01",
+        costs_per_day_till_now=1.0,
+        meterReadingDayCompleteness=1.0,
+        gasExcluded=False,
+        typename="MonthSummary",
+        expectedCosts=100.0,
+    )
+    defaults.update(overrides)
+    return MonthSummary(**defaults)
+
+
+def configure_authenticated_api(mock_api, resolution_minutes: int = 60) -> None:
+    """Set up mock_api with enough authenticated responses for a full config entry setup.
+
+    Used by tests that need a fully authenticated account (prices, month
+    summary, invoices) but don't care about the exact values.
+    """
+    mock_api.is_authenticated = True
+    mock_api.user_country.return_value = make_me("NL")
+    mock_api.user_prices.return_value = build_market_prices(
+        dt_util.now(), [0.2] * 24, [1.0] * 24, resolution_minutes=resolution_minutes
+    )
+    mock_api.month_summary.return_value = make_month_summary()
+    mock_api.invoices.return_value = Invoices.empty()
+
+
+def local_midnight() -> datetime:
+    """Today's local midnight, as an aware datetime, honoring hass's configured timezone."""
+    return dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def install_prices(
+    mock_api,
+    today_electricity: list[float],
+    today_gas: list[float],
+    tomorrow_electricity: list[float] | None = None,
+    tomorrow_gas: list[float] | None = None,
+    resolution_minutes: int = 60,
+) -> tuple[MarketPrices, MarketPrices]:
+    """Configure mock_api.prices to serve today/tomorrow price data."""
+    today = local_midnight()
+    today_prices = build_market_prices(today, today_electricity, today_gas, resolution_minutes=resolution_minutes)
+    tomorrow_prices = build_market_prices(
+        today + timedelta(days=1),
+        tomorrow_electricity if tomorrow_electricity is not None else [],
+        tomorrow_gas if tomorrow_gas is not None else [],
+        resolution_minutes=resolution_minutes,
+    )
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        if start_date == dt_util.now().date():
+            return today_prices
+        return tomorrow_prices
+
+    mock_api.prices.side_effect = prices_side_effect
+    return today_prices, tomorrow_prices
 
 
 def price_generator(base: float, var: float, count: int = 24) -> list:

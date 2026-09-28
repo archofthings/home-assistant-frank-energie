@@ -1,9 +1,13 @@
 {
     "config": {
         "abort": {
+            "single_instance_allowed": "Al geconfigureerd. Er is slechts één configuratie mogelijk.",
             "already_configured": "Account is al toegevoegd",
             "reauth_successful": "Opnieuw inloggen gelukt",
-            "wrong_account": "Je bent ingelogd met een ander account dan voor deze integratie is ingesteld. Voeg het andere account toe als nieuwe Frank Energie-integratie."
+            "wrong_account": "Je bent ingelogd met een ander account dan voor deze integratie is ingesteld. Voeg het andere account toe als nieuwe Frank Energie-integratie.",
+            "no_sites": "Er is geen actief leveringsadres gevonden voor dit account.",
+            "reconfigure_successful": "Herconfigureren gelukt",
+            "reconfigure_not_supported": "Dit item is niet ingelogd, dus er is geen adres om te kiezen. Herconfigureren is alleen beschikbaar voor items met een Frank Energie-account."
         },
         "error": {
             "cannot_connect": "Verbinden mislukt, probeer het opnieuw.",
@@ -23,7 +27,69 @@
                 },
                 "title": "Wil je inloggen bij Frank Energie?",
                 "description": "Inloggen is niet nodig om deze integratie te kunnen gebruiken maar biedt wel de mogelijkheid extra gegevens op te halen."
+            },
+            "site": {
+                "title": "Kies je adres",
+                "data": {
+                    "site_reference": "Adres"
+                }
+            },
+            "reconfigure": {
+                "title": "Kies je adres",
+                "data": {
+                    "site_reference": "Adres"
+                }
             }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Tijdzone voor prijstijden",
+                "description": "Kies de notatie voor de 'van'/'tot'-tijden in de attributen van de prijssensoren en de actie get_prices. Dit verandert alleen hoe die tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt.",
+                "data": {
+                    "prices_timezone": "Tijdzone voor prijstijden"
+                }
+            }
+        }
+    },
+    "selector": {
+        "prices_timezone": {
+            "options": {
+                "home_assistant": "Tijdzone van Home Assistant",
+                "utc": "UTC"
+            }
+        }
+    },
+    "services": {
+        "get_prices": {
+            "name": "Prijzen ophalen",
+            "description": "Geeft de gecachte elektriciteits- en gasprijzen van een Frank Energie-configuratie-item terug, zonder de Frank Energie API te benaderen.",
+            "fields": {
+                "config_entry_id": {
+                    "name": "Configuratie-item",
+                    "description": "Het Frank Energie-configuratie-item om prijzen voor op te halen."
+                },
+                "start": {
+                    "name": "Starttijd",
+                    "description": "Geef alleen prijsblokken terug die na dit tijdstip eindigen. Standaard worden alle beschikbare blokken meegenomen."
+                },
+                "end": {
+                    "name": "Eindtijd",
+                    "description": "Geef alleen prijsblokken terug die voor dit tijdstip beginnen. Standaard worden alle beschikbare blokken meegenomen."
+                }
+            }
+        }
+    },
+    "exceptions": {
+        "entry_not_found": {
+            "message": "Frank Energie-configuratie-item \"{entry_id}\" niet gevonden."
+        },
+        "entry_not_loaded": {
+            "message": "Frank Energie-configuratie-item \"{entry_id}\" is niet geladen."
+        },
+        "invalid_period": {
+            "message": "De starttijd moet voor de eindtijd liggen."
         }
     },
     "title": "Frank Energie"

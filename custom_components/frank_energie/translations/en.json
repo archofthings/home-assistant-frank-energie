@@ -3,7 +3,10 @@
         "abort": {
             "already_configured": "Account is already configured",
             "reauth_successful": "Re-authentication was successful",
-            "wrong_account": "The account you logged in with differs from the one configured for this entry. Add the other account as a new Frank Energie integration instead."
+            "wrong_account": "The account you logged in with differs from the one configured for this entry. Add the other account as a new Frank Energie integration instead.",
+            "no_sites": "No active delivery address was found for this account.",
+            "reconfigure_successful": "Reconfiguration was successful",
+            "reconfigure_not_supported": "This entry is not signed in, so there is no address to choose. Reconfigure is only available for entries with a Frank Energie account."
         },
         "error": {
             "cannot_connect": "Failed to connect, please try again.",
@@ -23,7 +26,69 @@
                 },
                 "title": "Do you want to sign in to Frank Energie?",
                 "description": "Signing in is not required for obtaining energy price data but will add additional sensors specific to your account."
+            },
+            "site": {
+                "title": "Choose your address",
+                "data": {
+                    "site_reference": "Address"
+                }
+            },
+            "reconfigure": {
+                "title": "Choose your address",
+                "data": {
+                    "site_reference": "Address"
+                }
             }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Time zone for price times",
+                "description": "Choose the notation used for the 'from'/'till' times in the price sensors' attributes and the get_prices action. This only changes how those times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting.",
+                "data": {
+                    "prices_timezone": "Time zone for price times"
+                }
+            }
+        }
+    },
+    "selector": {
+        "prices_timezone": {
+            "options": {
+                "home_assistant": "Home Assistant's time zone",
+                "utc": "UTC"
+            }
+        }
+    },
+    "services": {
+        "get_prices": {
+            "name": "Get prices",
+            "description": "Returns the cached electricity and gas prices for a Frank Energie config entry, without contacting the Frank Energie API.",
+            "fields": {
+                "config_entry_id": {
+                    "name": "Config entry",
+                    "description": "The Frank Energie config entry to get prices for."
+                },
+                "start": {
+                    "name": "Start time",
+                    "description": "Only return price slots ending after this time. Defaults to including all available slots."
+                },
+                "end": {
+                    "name": "End time",
+                    "description": "Only return price slots starting before this time. Defaults to including all available slots."
+                }
+            }
+        }
+    },
+    "exceptions": {
+        "entry_not_found": {
+            "message": "Frank Energie config entry \"{entry_id}\" not found."
+        },
+        "entry_not_loaded": {
+            "message": "Frank Energie config entry \"{entry_id}\" is not loaded."
+        },
+        "invalid_period": {
+            "message": "The start time must be before the end time."
         }
     },
     "title": "Frank Energie"

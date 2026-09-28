@@ -1,16 +1,21 @@
 """Tests for the Frank Energie integration setup (site discovery)."""
-from unittest.mock import AsyncMock
-
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, NetworkError, RequestException
-from python_frank_energie.models import DeliverySite, Invoices, MonthSummary
+from python_frank_energie.models import DeliverySite
 
 from custom_components.frank_energie import const
-from tests.utils import FAKE_ACCESS_TOKEN, FAKE_REFRESH_TOKEN, build_market_prices, make_delivery_site, make_user_sites
+from tests.utils import (
+    FAKE_ACCESS_TOKEN,
+    FAKE_REFRESH_TOKEN,
+    build_market_prices,
+    configure_authenticated_api as _configure_authenticated_api,
+    make_delivery_site,
+    make_user_sites,
+)
 
 
 @pytest.fixture
@@ -26,26 +31,6 @@ async def entry_with_token(hass, enable_custom_integrations):
     )
     config_entry.add_to_hass(hass)
     return config_entry
-
-
-def _configure_authenticated_api(mock_api):
-    """Set up mock_api with enough authenticated responses for a full setup."""
-    mock_api.is_authenticated = True
-    mock_api.user_country.return_value = AsyncMock(countryCode="NL")
-    market_prices = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
-    mock_api.user_prices.return_value = market_prices
-    mock_api.month_summary.return_value = MonthSummary(
-        _id="1",
-        actualCostsUntilLastMeterReadingDate=10.0,
-        expectedCostsUntilLastMeterReadingDate=12.0,
-        lastMeterReadingDate="2024-01-01",
-        costs_per_day_till_now=1.0,
-        meterReadingDayCompleteness=1.0,
-        gasExcluded=False,
-        typename="MonthSummary",
-        expectedCosts=100.0,
-    )
-    mock_api.invoices.return_value = Invoices.empty()
 
 
 async def test_site_discovery_picks_in_delivery_site_and_sets_title(
