@@ -18,6 +18,7 @@ from typing import Callable
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import event
+from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 from python_frank_energie.models import Price
@@ -113,6 +114,10 @@ class PriceAnalysisCoordinator(DataUpdateCoordinator[AnalysisResult | None]):
             config_entry=entry,
             name="Frank Energie price analysis",
             update_interval=None,
+            # Coalesce refreshes triggered back-to-back by the price
+            # coordinator's own update and the quarter-hour timer (see
+            # _async_trigger_refresh) into a single recomputation.
+            request_refresh_debouncer=Debouncer(hass, LOGGER, cooldown=1.0, immediate=True),
         )
 
     def async_setup_listeners(self) -> list[Callable[[], None]]:
@@ -131,25 +136,37 @@ class PriceAnalysisCoordinator(DataUpdateCoordinator[AnalysisResult | None]):
         Named distinctly from (and must never be named) `_schedule_refresh`:
         that name is used internally by `DataUpdateCoordinator` itself (called
         from `async_add_listener` and after every `_async_refresh()`), and
-        overriding it here would recurse into an infinite refresh loop.
+        overriding it here would recurse into an infinite refresh loop. The
+        actual refresh is coalesced via `async_request_refresh()` and the
+        debouncer set up in `__init__` (see `request_refresh_debouncer`), so
+        several back-to-back triggers only recompute once.
         """
-        self.hass.async_create_task(self.async_refresh())
+        self.hass.async_create_task(self.async_request_refresh())
 
     async def _async_update_data(self) -> AnalysisResult | None:
         """Recompute the price analysis from the price coordinator's current data."""
+        options = self.entry.options
+        cheap = options.get(CONF_CHEAP_PRICE_THRESHOLD, DEFAULT_CHEAP_PRICE_THRESHOLD)
+        expensive = options.get(CONF_EXPENSIVE_PRICE_THRESHOLD, DEFAULT_EXPENSIVE_PRICE_THRESHOLD)
+        # int(): NumberSelector always returns a float, and an entry created
+        # before that field existed (or one whose options were never
+        # round-tripped through the options flow) could still have a float
+        # here; find_cheapest_period() requires a whole number of minutes.
+        cheapest_minutes = int(options.get(CONF_CHEAPEST_PERIOD_MINUTES, DEFAULT_CHEAPEST_PERIOD_MINUTES))
+        solar_threshold = options.get(CONF_SOLAR_THRESHOLD_KWH, DEFAULT_SOLAR_THRESHOLD_KWH)
+        solar_entry_id = options.get(CONF_SOLAR_FORECAST_ENTRY)
+
+        # Fetch the (possibly slow) solar forecast before reading
+        # price_coordinator.data, so a price refresh that completes while
+        # this await is in flight is picked up here instead of being
+        # overwritten by this update with stale price data.
+        wh_hours = await async_get_solar_forecast_wh_hours(self.hass, solar_entry_id)
+
         data = self.price_coordinator.data
         electricity = data.get(DATA_ELECTRICITY) if data else None
         if electricity is None or not electricity.all:
             return None
 
-        options = self.entry.options
-        cheap = options.get(CONF_CHEAP_PRICE_THRESHOLD, DEFAULT_CHEAP_PRICE_THRESHOLD)
-        expensive = options.get(CONF_EXPENSIVE_PRICE_THRESHOLD, DEFAULT_EXPENSIVE_PRICE_THRESHOLD)
-        cheapest_minutes = options.get(CONF_CHEAPEST_PERIOD_MINUTES, DEFAULT_CHEAPEST_PERIOD_MINUTES)
-        solar_threshold = options.get(CONF_SOLAR_THRESHOLD_KWH, DEFAULT_SOLAR_THRESHOLD_KWH)
-        solar_entry_id = options.get(CONF_SOLAR_FORECAST_ENTRY)
-
-        wh_hours = await async_get_solar_forecast_wh_hours(self.hass, solar_entry_id)
         solar_kwh_by_start = solar_per_slot(electricity.all, wh_hours)
 
         today_slots = electricity.today

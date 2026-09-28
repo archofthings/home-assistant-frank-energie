@@ -2,6 +2,9 @@
   "domain": "frank_energie",
   "name": "Frank Energie",
   "config_flow": true,
+  "after_dependencies": [
+    "energy"
+  ],
   "codeowners": [
     "@archofthings"
   ],

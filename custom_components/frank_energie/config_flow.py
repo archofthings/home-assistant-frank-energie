@@ -42,6 +42,7 @@ from .const import (
     PRICES_TIMEZONE_UTC,
 )
 from .sites import build_site_title, discover_in_delivery_sites
+from .solar_forecast import warn_energy_platforms_import_failed_once
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,12 +93,18 @@ async def _solar_forecast_entry_options(hass: HomeAssistant) -> list[selector.Se
     Options are the config entries whose domain provides an energy solar
     forecast platform (`async_get_solar_forecast`), labeled "<entry title>
     (<domain>)". Returns an empty list (never raises) if the energy
-    websocket API can't be imported/queried for any reason.
+    websocket API can't be imported/queried for any reason. An import failure
+    is logged as a WARNING once per Home Assistant run (shared with
+    solar_forecast.py's own lookup); every other error stays at debug level.
     """
     try:
-        from homeassistant.components.energy.websocket_api import (  # pylint: disable=import-outside-toplevel
-            async_get_energy_platforms,
-        )
+        try:
+            from homeassistant.components.energy.websocket_api import (  # pylint: disable=import-outside-toplevel
+                async_get_energy_platforms,
+            )
+        except ImportError as ex:
+            warn_energy_platforms_import_failed_once(ex)
+            return []
 
         platforms = await async_get_energy_platforms(hass)
     except Exception as ex:  # noqa: BLE001 - defensive; energy always ships with HA, but never break the form
