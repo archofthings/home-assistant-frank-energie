@@ -6,6 +6,7 @@
   "documentation": "https://github.com/bajansen/home-assistant-frank_energie",
   "issue_tracker": "https://github.com/bajansen/home-assistant-frank_energie/issues",
   "iot_class": "cloud_polling",
+  "loggers": ["python_frank_energie"],
   "requirements": [
     "python-frank-energie==2026.9.20"
   ],

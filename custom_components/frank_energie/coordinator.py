@@ -51,6 +51,7 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         super().__init__(
             hass,
             LOGGER,
+            config_entry=entry,
             name="Frank Energie coordinator",
             update_interval=timedelta(minutes=60),
         )
