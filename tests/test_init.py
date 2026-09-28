@@ -6,7 +6,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from python_frank_energie.exceptions import RequestException
+from python_frank_energie.exceptions import AuthException, AuthRequiredException, NetworkError, RequestException
 from python_frank_energie.models import Address, DeliverySite, Invoices, MonthSummary, UserSites
 
 from custom_components.frank_energie import const
@@ -194,3 +194,48 @@ async def test_setup_skips_discovery_when_site_reference_present(
 
     assert config_entry.state is ConfigEntryState.LOADED
     mock_frank_energie_class.UserSites.assert_not_awaited()
+
+
+async def test_site_discovery_network_error_retries_setup(hass, entry_with_token, mock_frank_energie_class):
+    """UserSites raising a NetworkError should cause ConfigEntryNotReady (SETUP_RETRY)."""
+    mock_frank_energie_class.UserSites.side_effect = NetworkError("network unreachable")
+
+    assert not await hass.config_entries.async_setup(entry_with_token.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry_with_token.state is ConfigEntryState.SETUP_RETRY
+
+
+@pytest.mark.parametrize("exception_cls", [AuthException, AuthRequiredException])
+async def test_site_discovery_auth_exception_starts_reauth(
+    hass, entry_with_token, mock_frank_energie_class, exception_cls
+):
+    """UserSites raising AuthException/AuthRequiredException should trigger a reauth flow (SETUP_ERROR)."""
+    mock_frank_energie_class.UserSites.side_effect = exception_cls("authentication required")
+
+    assert not await hass.config_entries.async_setup(entry_with_token.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry_with_token.state is ConfigEntryState.SETUP_ERROR
+
+    flows = hass.config_entries.flow.async_progress()
+    assert any(
+        flow["context"].get("source") == "reauth" and flow["context"].get("entry_id") == entry_with_token.entry_id
+        for flow in flows
+    )
+
+
+async def test_delivery_sites_skips_none_entries(hass, entry_with_token, mock_frank_energie_class):
+    """A None entry in deliverySites should be skipped, and the valid IN_DELIVERY site picked."""
+    valid_site = make_delivery_site("active-site", "IN_DELIVERY", street="Vondelstraat", house_number="7")
+    user_sites = make_user_sites([valid_site])
+    user_sites.deliverySites = [None, valid_site]
+    mock_frank_energie_class.UserSites.return_value = user_sites
+    _configure_authenticated_api(mock_frank_energie_class)
+
+    assert await hass.config_entries.async_setup(entry_with_token.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry_with_token.state is ConfigEntryState.LOADED
+    assert entry_with_token.data["site_reference"] == "active-site"
+    assert entry_with_token.title == "Vondelstraat 7"

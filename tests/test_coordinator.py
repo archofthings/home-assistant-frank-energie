@@ -1,6 +1,6 @@
 """Tests for FrankEnergieCoordinator."""
-from datetime import timedelta
-from unittest.mock import AsyncMock
+from datetime import date, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME
@@ -8,7 +8,14 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from python_frank_energie.exceptions import AuthException, NoMarketPricesAvailableException, RequestException
+from python_frank_energie.exceptions import (
+    AuthException,
+    AuthRequiredException,
+    FrankEnergieException,
+    NetworkError,
+    NoMarketPricesAvailableException,
+    RequestException,
+)
 from python_frank_energie.models import Invoices, Me, MonthSummary
 
 from custom_components.frank_energie import const
@@ -281,3 +288,309 @@ async def test_auth_exception_renew_failure_raises_config_entry_auth_failed(coor
 
     with pytest.raises(ConfigEntryAuthFailed):
         await coordinator._async_update_data()
+
+
+# --------------------------------------------------------------------------
+# 1. NetworkError / AuthRequiredException / plain FrankEnergieException
+# --------------------------------------------------------------------------
+
+_TODAY_ERRORS = pytest.mark.parametrize(
+    "make_exception",
+    [
+        lambda: NetworkError("network unreachable"),
+        lambda: AuthRequiredException("auth required"),
+        lambda: FrankEnergieException("something else broke"),
+    ],
+    ids=["network_error", "auth_required_exception", "plain_frank_energie_exception"],
+)
+
+
+@_TODAY_ERRORS
+async def test_today_error_without_previous_data_raises_update_failed(coordinator, api, make_exception):
+    """NetworkError/AuthRequiredException/FrankEnergieException with no cached data raise UpdateFailed."""
+    api.prices.side_effect = make_exception()
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+
+@_TODAY_ERRORS
+async def test_today_error_with_previous_data_returns_stale_data(coordinator, api, make_exception):
+    """NetworkError/AuthRequiredException/FrankEnergieException with usable cached data return it instead."""
+    future = dt_util.now() + timedelta(hours=1)
+    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
+    stale_gas = build_price_data(future, [1.2] * 5, "gas")
+    coordinator.data = {
+        const.DATA_ELECTRICITY: stale_electricity,
+        const.DATA_GAS: stale_gas,
+        const.DATA_MONTH_SUMMARY: None,
+        const.DATA_INVOICES: None,
+    }
+
+    api.prices.side_effect = make_exception()
+
+    data = await coordinator._async_update_data()
+
+    assert data is coordinator.data
+    assert data[const.DATA_ELECTRICITY] is stale_electricity
+    assert data[const.DATA_GAS] is stale_gas
+
+
+async def test_auth_required_exception_triggers_token_renewal(coordinator, api):
+    """AuthRequiredException while fetching today's prices should trigger a token renewal attempt."""
+    api.prices.side_effect = AuthRequiredException("token expired")
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    api.renew_token.assert_awaited_once()
+
+
+# --------------------------------------------------------------------------
+# 2. Stale data refused when only one segment has upcoming prices
+# --------------------------------------------------------------------------
+
+async def test_stale_data_refused_when_only_one_segment_has_upcoming_prices(coordinator, api):
+    """Cached data is only reused when BOTH electricity and gas still have upcoming prices."""
+    far_past = dt_util.now() - timedelta(hours=6)
+    future = dt_util.now() + timedelta(hours=1)
+    # 5 hourly entries all ending well before "now" -> none of them are upcoming.
+    stale_gas_no_upcoming = build_price_data(far_past, [1.2] * 5, "gas")
+    stale_electricity_upcoming = build_price_data(future, [0.3] * 5, "electricity")
+
+    coordinator.data = {
+        const.DATA_ELECTRICITY: stale_electricity_upcoming,
+        const.DATA_GAS: stale_gas_no_upcoming,
+        const.DATA_MONTH_SUMMARY: None,
+        const.DATA_INVOICES: None,
+    }
+
+    api.prices.side_effect = RequestException("temporary failure")
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+
+# --------------------------------------------------------------------------
+# 3. renew_token raising AuthRequiredException -> ConfigEntryAuthFailed
+# --------------------------------------------------------------------------
+
+async def test_renew_token_auth_required_exception_raises_config_entry_auth_failed(coordinator, api):
+    """If renew_token fails with AuthRequiredException, a reauth flow should be triggered."""
+    api.prices.side_effect = AuthException("token expired")
+    api.renew_token.side_effect = AuthRequiredException("reauth required")
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
+# --------------------------------------------------------------------------
+# 4. Token persistence
+# --------------------------------------------------------------------------
+
+async def test_internally_renewed_tokens_are_persisted_after_successful_update(hass, entry, coordinator, api):
+    """Tokens the library renews internally (api._auth) are persisted after a successful update."""
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_ACCESS_TOKEN: "old-access", CONF_TOKEN: "old-refresh"}
+    )
+
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    api.month_summary.return_value = None
+    api.invoices.return_value = None
+
+    renewed = AsyncMock()
+    renewed.authToken = "internally-renewed-access"
+    renewed.refreshToken = "internally-renewed-refresh"
+    api._auth = renewed
+
+    await coordinator._async_update_data()
+
+    assert entry.data[CONF_ACCESS_TOKEN] == "internally-renewed-access"
+    assert entry.data[CONF_TOKEN] == "internally-renewed-refresh"
+    assert entry.data["site_reference"] == "site-1"
+    assert entry.data[CONF_USERNAME] == "someuser"
+
+
+async def test_matching_internal_tokens_are_not_persisted(hass, entry, coordinator, api, monkeypatch):
+    """When api._auth already matches the entry's tokens, the entry should not be updated."""
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_ACCESS_TOKEN: "same-access", CONF_TOKEN: "same-refresh"}
+    )
+
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    api.month_summary.return_value = None
+    api.invoices.return_value = None
+
+    same_auth = AsyncMock()
+    same_auth.authToken = "same-access"
+    same_auth.refreshToken = "same-refresh"
+    api._auth = same_auth
+
+    update_entry_spy = MagicMock(wraps=hass.config_entries.async_update_entry)
+    monkeypatch.setattr(hass.config_entries, "async_update_entry", update_entry_spy)
+
+    await coordinator._async_update_data()
+
+    update_entry_spy.assert_not_called()
+    assert entry.data[CONF_ACCESS_TOKEN] == "same-access"
+    assert entry.data[CONF_TOKEN] == "same-refresh"
+
+
+async def test_unauthenticated_update_does_not_persist_tokens(hass, entry, coordinator, api):
+    """An unauthenticated update must never write tokens into the config entry."""
+    api.is_authenticated = False
+    api.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    api._auth = AsyncMock(authToken="should-not-be-persisted", refreshToken="also-not-persisted")
+
+    original_data = dict(entry.data)
+
+    await coordinator._async_update_data()
+
+    assert dict(entry.data) == original_data
+
+
+# --------------------------------------------------------------------------
+# 5. Resolution handling
+# --------------------------------------------------------------------------
+
+async def test_missing_electricity_fallback_uses_gas_resolution(coordinator, api):
+    """When only electricity is missing, the public fallback is requested at gas's resolution."""
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.side_effect = lambda *a, **k: build_market_prices(
+        dt_util.now(), [], [1.0] * 24, resolution_minutes=60
+    )
+    api.prices.side_effect = lambda *a, **k: build_market_prices(
+        dt_util.now(), [0.5] * 24, [1.0] * 24, resolution_minutes=60
+    )
+    api.month_summary.return_value = None
+    api.invoices.return_value = None
+
+    await coordinator._async_update_data()
+
+    assert api.prices.await_count > 0
+    for call in api.prices.await_args_list:
+        assert call.kwargs.get("resolution") == "PT60M"
+
+
+async def test_merge_mismatched_resolutions_returns_today_only(coordinator):
+    """_merge() must not crash when today and tomorrow have different resolutions."""
+    today = build_price_data(dt_util.now(), [0.2] * 4, "electricity", resolution_minutes=15)
+    tomorrow = build_price_data(dt_util.now() + timedelta(days=1), [0.3] * 2, "electricity", resolution_minutes=60)
+
+    merged = FrankEnergieCoordinator._merge(today, tomorrow)
+
+    assert merged is today
+
+
+# --------------------------------------------------------------------------
+# 6. Missing segments
+# --------------------------------------------------------------------------
+
+async def test_user_prices_unavailable_falls_back_to_public_for_both_segments(coordinator, api):
+    """NoMarketPricesAvailableException from user_prices() falls back to public prices for both segments."""
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.side_effect = NoMarketPricesAvailableException("no user prices at all")
+    api.prices.side_effect = lambda *a, **k: build_market_prices(dt_util.now(), [0.5] * 24, [1.5] * 24)
+    api.month_summary.return_value = None
+    api.invoices.return_value = None
+
+    data = await coordinator._async_update_data()
+
+    assert data[const.DATA_ELECTRICITY].all[0].total == pytest.approx(0.5)
+    assert data[const.DATA_GAS].all[0].total == pytest.approx(1.5)
+
+
+async def test_gas_empty_after_fallback_succeeds_with_empty_gas(coordinator, api):
+    """Gas can legitimately stay empty (electricity-only customers); the update must still succeed."""
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.side_effect = lambda *a, **k: build_market_prices(dt_util.now(), [0.5] * 24, [])
+    api.prices.side_effect = lambda *a, **k: build_market_prices(dt_util.now(), [0.6] * 24, [])
+    api.month_summary.return_value = None
+    api.invoices.return_value = None
+
+    data = await coordinator._async_update_data()
+
+    assert len(data[const.DATA_GAS].all) == 0
+    assert len(data[const.DATA_ELECTRICITY].all) > 0
+
+
+async def test_today_electricity_empty_after_fallback_raises_update_failed(coordinator, api):
+    """Electricity still empty after falling back to public prices for today is a real failure."""
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.side_effect = lambda *a, **k: build_market_prices(dt_util.now(), [], [1.0] * 24)
+    api.prices.side_effect = lambda *a, **k: build_market_prices(dt_util.now(), [], [1.0] * 24)
+    api.month_summary.return_value = None
+    api.invoices.return_value = None
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+
+async def test_tomorrow_electricity_empty_after_fallback_succeeds_with_today_only(coordinator, api):
+    """Electricity still empty for tomorrow only should not fail the update; today's data is used."""
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    today = dt_util.now().date()
+
+    async def user_prices_side_effect(site_reference, country, start_date):
+        if start_date == today:
+            return build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+        return build_market_prices(dt_util.now() + timedelta(days=1), [], [1.0] * 24)
+
+    api.user_prices.side_effect = user_prices_side_effect
+    # Public fallback also has no electricity, for either date.
+    api.prices.side_effect = lambda *a, **k: build_market_prices(dt_util.now(), [], [1.0] * 24)
+    api.month_summary.return_value = None
+    api.invoices.return_value = None
+
+    data = await coordinator._async_update_data()
+
+    assert len(data[const.DATA_ELECTRICITY].all) == 24
+
+
+# --------------------------------------------------------------------------
+# 7. Country handling
+# --------------------------------------------------------------------------
+
+async def test_be_country_empty_user_prices_uses_country_prices_not_prices(coordinator, api):
+    """A BE user with empty user prices should fall back to country_prices(), not the NL-only prices()."""
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("BE")
+    api.user_prices.side_effect = lambda *a, **k: build_market_prices(dt_util.now(), [], [])
+    api.country_prices.side_effect = lambda *a, **k: build_market_prices(dt_util.now(), [0.4] * 24, [1.4] * 24)
+    api.month_summary.return_value = None
+    api.invoices.return_value = None
+
+    await coordinator._async_update_data()
+
+    assert api.country_prices.await_count > 0
+    assert api.prices.await_count == 0
+    for call in api.country_prices.await_args_list:
+        assert call.args[0] == "BE"
+
+
+# --------------------------------------------------------------------------
+# 8. Market day timezone
+# --------------------------------------------------------------------------
+
+async def test_market_day_uses_amsterdam_timezone_not_ha_timezone(hass, coordinator, api, freezer):
+    """"Today" must be computed in Europe/Amsterdam even when the HA instance uses a different timezone."""
+    await hass.config.async_set_time_zone("UTC")
+    freezer.move_to("2026-03-10 23:30:00+00:00")
+
+    api.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+
+    await coordinator._async_update_data()
+
+    # Amsterdam (UTC+1 in March, before the DST switch on 2026-03-29) is
+    # already on 2026-03-11 at this UTC instant, even though UTC (the HA
+    # instance's own timezone here) is still on 2026-03-10.
+    assert api.prices.await_args_list[0].args[0] == date(2026, 3, 11)
