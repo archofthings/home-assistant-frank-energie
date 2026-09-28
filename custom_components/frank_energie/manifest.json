@@ -2,11 +2,15 @@
   "domain": "frank_energie",
   "name": "Frank Energie",
   "config_flow": true,
-  "codeowners": ["@bajansen"],
-  "documentation": "https://github.com/bajansen/home-assistant-frank_energie",
-  "issue_tracker": "https://github.com/bajansen/home-assistant-frank_energie/issues",
+  "codeowners": [
+    "@archofthings"
+  ],
+  "documentation": "https://github.com/archofthings/home-assistant-frank-energie",
+  "issue_tracker": "https://github.com/archofthings/home-assistant-frank-energie/issues",
   "iot_class": "cloud_polling",
-  "loggers": ["python_frank_energie"],
+  "loggers": [
+    "python_frank_energie"
+  ],
   "requirements": [
     "python-frank-energie==2026.9.20"
   ],

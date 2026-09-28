@@ -1,8 +1,8 @@
 # Frank Energie for Home Assistant
 
-[![Latest release](https://img.shields.io/github/v/release/archofthings/home-assistant-frank_energie?include_prereleases&sort=semver&label=release)](https://github.com/archofthings/home-assistant-frank_energie/releases)
+[![Latest release](https://img.shields.io/github/v/release/archofthings/home-assistant-frank-energie?include_prereleases&sort=semver&label=release)](https://github.com/archofthings/home-assistant-frank-energie/releases)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
-[![CI](https://img.shields.io/github/actions/workflow/status/archofthings/home-assistant-frank_energie/ci.yaml?branch=main&label=CI)](https://github.com/archofthings/home-assistant-frank_energie/actions/workflows/ci.yaml)
+[![CI](https://img.shields.io/github/actions/workflow/status/archofthings/home-assistant-frank-energie/ci.yaml?branch=main&label=CI)](https://github.com/archofthings/home-assistant-frank-energie/actions/workflows/ci.yaml)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5.svg?logo=homeassistant)](https://www.home-assistant.io/)
 [![Installations](https://img.shields.io/badge/dynamic/json?label=installations&query=%24.frank_energie.total&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json)](https://analytics.home-assistant.io/)
 
@@ -49,19 +49,19 @@ Use the price sensors to run appliances, charge a car or battery, or heat water 
 
 ### HACS (recommended)
 
-[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=archofthings&repository=home-assistant-frank_energie&category=integration)
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=archofthings&repository=home-assistant-frank-energie&category=integration)
 
 Or add it by hand:
 
 1. In HACS, open the menu (⋮) and choose **Custom repositories**.
-2. Add `https://github.com/archofthings/home-assistant-frank_energie` with type **Integration**.
+2. Add `https://github.com/archofthings/home-assistant-frank-energie` with type **Integration**.
 3. Search for **Frank Energie**, download it, and restart Home Assistant.
 
 Releases are currently published as **pre-releases**. If HACS doesn't offer the newest one, open the integration in HACS, choose **Redownload**, and select the version.
 
 ### Manual
 
-1. Download `frank_energie.zip` from the [latest release](https://github.com/archofthings/home-assistant-frank_energie/releases).
+1. Download `frank_energie.zip` from the [latest release](https://github.com/archofthings/home-assistant-frank-energie/releases).
 2. Extract it into `config/custom_components/frank_energie/` in your Home Assistant configuration folder.
 3. Restart Home Assistant.
 
@@ -242,7 +242,7 @@ series:
 **Switching an existing HACS installation:**
 
 1. In HACS, open **Frank Energie** and choose **Remove**. This removes the integration's files only; your configured integration, entities and history stay in Home Assistant.
-2. Remove `https://github.com/bajansen/home-assistant-frank_energie` from **Custom repositories**.
+2. Remove the old repository from **Custom repositories**: `https://github.com/bajansen/home-assistant-frank_energie`, or `https://github.com/archofthings/home-assistant-frank_energie` if you installed the earlier fork.
 3. Add this repository and download it as described under [Installation](#installation).
 4. Restart Home Assistant.
 
@@ -275,7 +275,7 @@ logger:
 > [!WARNING]
 > Debug logs from `python_frank_energie` can contain your address and full price data. Remove personal details before sharing logs in an issue. The integration itself never logs your tokens or password.
 
-Please report problems via [GitHub issues](https://github.com/archofthings/home-assistant-frank_energie/issues).
+Please report problems via [GitHub issues](https://github.com/archofthings/home-assistant-frank-energie/issues).
 
 ## Development
 
@@ -304,7 +304,7 @@ CI runs flake8 and pytest on every push and pull request. Publishing a GitHub re
 
 This integration was created as [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie) by [@bajansen](https://github.com/bajansen) and contributors, and was developed there until early 2025.
 
-In 2026 Frank Energie changed its API, which broke the original integration. This repository picks up from there and continues its development:
+In 2026 Frank Energie changed its API, which broke the original integration. Development continued briefly in a GitHub fork (`archofthings/home-assistant-frank_energie`) and has since moved to this repository:
 
 - moved to the new API (`python-frank-energie` 2026.9.20) and Frank Energie's 15-minute prices
 - more robust error handling, automatic token renewal, and support for accounts without gas or outside the Netherlands
