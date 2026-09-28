@@ -9,7 +9,7 @@
       "Bash(git status*)",
       "Bash(git log*)"
     ],
-    "deny": [
+    "ask": [
       "Bash(git push*)"
     ]
   }

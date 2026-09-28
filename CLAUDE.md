@@ -33,5 +33,7 @@ Small, single-file changes (typo, constant, one-line fix): do it directly, then 
   (never `git add -A`). No amending or rewriting existing commits.
 - `CLAUDE.md` and `.claude/` (agents, shared `settings.json`) are tracked in the repo; only the orchestrator
   changes and commits them, in their own commit. `.claude/settings.local.json` stays untracked.
-- Never push, and never commit on `main` directly: work on a feature branch (the orchestrator creates it).
+- Never commit on `main` directly: work on a feature branch (the orchestrator creates it).
+- Only the orchestrator pushes, and only when I explicitly ask; `git push` always requires my approval
+  (`ask` rule in `.claude/settings.json`). Subagents never push.
 - Never call the real Frank Energie API in tests; never log tokens or credentials.
