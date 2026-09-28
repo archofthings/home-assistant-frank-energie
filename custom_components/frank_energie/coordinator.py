@@ -262,6 +262,6 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
 
             LOGGER.debug("Successfully renewed token")
 
-        except AuthException as ex:
+        except (AuthException, AuthRequiredException) as ex:
             LOGGER.error("Failed to renew token: %s. Starting user reauth flow", ex)
             raise ConfigEntryAuthFailed from ex
