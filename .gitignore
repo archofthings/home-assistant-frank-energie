@@ -1,6 +1,15 @@
 # All pycache folders in all folders
 __pycache__/
 
+# OS files
+.DS_Store
+
+# Test caches
+.pytest_cache/
+
+# Personal Claude Code settings (shared settings in .claude/settings.json are tracked)
+.claude/settings.local.json
+
 # HA files to allow for local development
 .HA_VERSION
 .storage/
