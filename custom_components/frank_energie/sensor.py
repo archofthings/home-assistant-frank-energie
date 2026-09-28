@@ -489,16 +489,22 @@ async def async_setup_entry(
         for description in SENSOR_TYPES
         if not description.authenticated or frank_coordinator.api.is_authenticated
     ]
-    entities.extend(
+    async_add_entities(entities, True)
+
+    # The price analysis entities read PriceAnalysisCoordinator.data, which is
+    # already populated (async_setup_entry awaits the coordinator's first
+    # refresh before setting up any platform): update_before_add=False avoids
+    # an extra (and, for CoordinatorEntity.async_update(), coordinator-wide)
+    # recomputation, including a redundant solar forecast fetch, per entity.
+    async_add_entities(
         [
             FrankEnergiePriceLevelSensor(price_analysis_coordinator, config_entry),
             FrankEnergiePriceAnalysisDaySensor(price_analysis_coordinator, config_entry, "today"),
             FrankEnergiePriceAnalysisDaySensor(price_analysis_coordinator, config_entry, "tomorrow"),
             FrankEnergieNextCheapestPeriodSensor(price_analysis_coordinator, config_entry),
-        ]
+        ],
+        False,
     )
-
-    async_add_entities(entities, True)
 
 
 class FrankEnergieSensor(CoordinatorEntity, SensorEntity):

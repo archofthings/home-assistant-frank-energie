@@ -21,12 +21,15 @@ async def async_setup_entry(
     """Set up Frank Energie binary sensor entries."""
     price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id][CONF_PRICE_ANALYSIS]
 
+    # update_before_add=False: these read PriceAnalysisCoordinator.data, which
+    # is already populated by the time platforms are set up (see sensor.py's
+    # async_setup_entry for the full rationale).
     async_add_entities(
         [
             CheapPriceNowBinarySensor(price_analysis_coordinator, config_entry),
             CheapestPeriodNowBinarySensor(price_analysis_coordinator, config_entry),
         ],
-        True,
+        False,
     )
 
 
