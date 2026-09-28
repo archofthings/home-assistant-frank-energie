@@ -13,7 +13,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from python_frank_energie.models import Invoice, Invoices, Me, MonthSummary
 
 from custom_components.frank_energie import const, sensor
-from tests.utils import build_market_prices, build_market_prices_from_local_midnight, price_generator
+from tests.utils import build_market_prices, build_market_prices_from_local_midnight, build_price_data, price_generator
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -716,6 +716,77 @@ async def test_new_price_sensors_with_today_and_tomorrow_data(
     upcoming_max_state = state_for_key(hass, config_entry, "elec_upcoming_max")
     assert float(upcoming_max_state.state) == pytest.approx(9.99)
     assert upcoming_max_state.attributes["from_time"] == tomorrow_midnight + timedelta(minutes=15 * 5)
+
+
+def test_next_price_returns_none_for_empty_price_data():
+    """No slots at all -> None (so elec_next's value_fn reports None, not a crash)."""
+    from python_frank_energie.models import PriceData
+
+    price_data = PriceData([], energy_type="electricity")
+    assert sensor._next_price(price_data) is None
+
+
+def test_next_price_60_minute_slots_returns_next_hour_not_current_hour(freezer):
+    """With 60-minute slots, _next_price must return the next hour, not the current (up to 45-minute-stale) hour.
+
+    Regression test for elec_next using PriceData.next_quarter_hour (now + 15
+    minutes), which pointed at the current hour's slot for the first 45
+    minutes of every hour when slots are 60 minutes long.
+    """
+    freezer.move_to("2026-01-15 10:07:00+00:00")
+    start = datetime(2026, 1, 15, 9, 0, tzinfo=timezone.utc)
+    price_data = build_price_data(start, [0.10, 0.20, 0.30], "electricity", resolution_minutes=60)
+
+    next_price = sensor._next_price(price_data)
+
+    assert next_price is not None
+    assert next_price.total == pytest.approx(0.30)
+    assert next_price.date_from == datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
+
+
+def test_next_price_15_minute_slots_returns_next_quarter_hour(freezer):
+    """With 15-minute slots, _next_price returns the next quarter-hour slot, matching the old behaviour."""
+    freezer.move_to("2026-01-15 10:07:00+00:00")
+    start = datetime(2026, 1, 15, 9, 45, tzinfo=timezone.utc)
+    price_data = build_price_data(start, [0.10, 0.20, 0.30], "electricity", resolution_minutes=15)
+
+    next_price = sensor._next_price(price_data)
+
+    assert next_price is not None
+    assert next_price.total == pytest.approx(0.30)
+    assert next_price.date_from == datetime(2026, 1, 15, 10, 15, tzinfo=timezone.utc)
+
+
+async def test_elec_next_sensor_uses_next_hour_with_60_minute_slots(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """Integration-level regression test: elec_next reports the next hour's price with 60-minute slots."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:07:00+01:00")  # 7 minutes into the 10:00-11:00 local slot
+
+    today = local_midnight()
+    electricity_today = [0.10] * 24
+    electricity_today[10] = 0.20  # current hour (10:00-11:00)
+    electricity_today[11] = 0.30  # next hour (11:00-12:00): expected elec_next value
+
+    today_prices = build_market_prices(today, electricity_today, [1.0] * 24, resolution_minutes=60)
+    tomorrow_prices = build_market_prices(
+        today + timedelta(days=1), [0.3] * 24, [1.2] * 24, resolution_minutes=60
+    )
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        if start_date == dt_util.now().date():
+            return today_prices
+        return tomorrow_prices
+
+    mock_frank_energie_class.prices.side_effect = prices_side_effect
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    next_state = state_for_key(hass, config_entry, "elec_next")
+    assert float(next_state.state) == pytest.approx(0.30)
+    assert next_state.attributes["from_time"] == today + timedelta(hours=11)
 
 
 async def test_new_price_sensors_without_tomorrow_data(hass, mock_frank_energie_class, config_entry, freezer, caplog):

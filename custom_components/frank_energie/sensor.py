@@ -24,6 +24,8 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
+from python_frank_energie.models import Price, PriceData
 
 from .const import (
     ATTR_TIME,
@@ -62,6 +64,18 @@ def _price_attr(price, name: str) -> StateType:
     if price is None:
         return None
     return getattr(price, name)
+
+
+def _next_price(price_data: PriceData) -> Price | None:
+    """Return the first price slot of `price_data` that starts after now.
+
+    `PriceData.next_quarter_hour` (now + 15 minutes) is wrong for 60-minute
+    slots: it can point at the current slot for up to 45 minutes. `price_data`
+    is sorted, so the first slot with `date_from` after now is always the
+    correct next slot, regardless of the resolution.
+    """
+    now = dt_util.utcnow()
+    return next((price for price in price_data.price_data if price.date_from > now), None)
 
 
 @dataclass
@@ -251,10 +265,10 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].next_quarter_hour, "total"),
+        value_fn=lambda data: _price_attr(_next_price(data[DATA_ELECTRICITY]), "total"),
         attr_fn=lambda data, tz: (
-            {ATTR_TIME: data[DATA_ELECTRICITY].next_quarter_hour.date_from.astimezone(tz)}
-            if data[DATA_ELECTRICITY].next_quarter_hour is not None
+            {ATTR_TIME: next_price.date_from.astimezone(tz)}
+            if (next_price := _next_price(data[DATA_ELECTRICITY])) is not None
             else {}
         ),
     ),
