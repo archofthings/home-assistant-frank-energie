@@ -945,6 +945,57 @@ async def test_options_flow_rejects_cheap_threshold_not_below_expensive(
     assert const.CONF_CHEAP_PRICE_THRESHOLD not in entry.options
 
 
+async def test_options_flow_submitting_without_solar_forecast_entry_clears_it(
+    hass, enable_custom_integrations, mock_frank_energie_class, monkeypatch
+):
+    """Submitting the options form without solar_forecast_entry removes a previously configured choice (C3).
+
+    The SelectSelector previously had a `default=` whenever a choice was
+    configured, so an omitted key (the frontend's way of clearing a
+    SelectSelector) had voluptuous put the old default straight back,
+    making the option impossible to clear.
+    """
+    solar_entry = MockConfigEntry(domain="fake_solar", title="My Roof", unique_id="solar-1")
+    solar_entry.add_to_hass(hass)
+
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        options={const.CONF_SOLAR_FORECAST_ENTRY: solar_entry.entry_id},
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+
+    async def fake_get_energy_platforms(_hass):
+        return {"fake_solar": AsyncMock(return_value={"wh_hours": {}})}
+
+    monkeypatch.setattr(
+        "homeassistant.components.energy.websocket_api.async_get_energy_platforms",
+        fake_get_energy_platforms,
+    )
+
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC,
+            const.CONF_CHEAP_PRICE_THRESHOLD: 0.25,
+            const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.40,
+            const.CONF_CHEAPEST_PERIOD_MINUTES: 120,
+            const.CONF_SOLAR_THRESHOLD_KWH: 1.5,
+            # CONF_SOLAR_FORECAST_ENTRY intentionally omitted: clearing the selector.
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert const.CONF_SOLAR_FORECAST_ENTRY not in entry.options
+
+
 async def test_options_flow_solar_forecast_entry_lists_entries_with_a_solar_forecast_platform(
     hass, enable_custom_integrations, mock_frank_energie_class, monkeypatch
 ):

@@ -146,11 +146,19 @@ def _options_schema(options: Mapping[str, Any], solar_entry_options: list[select
         ): _price_number_selector(0.1, UnitOfEnergy.KILO_WATT_HOUR),
     }
 
-    # Only set a default when a solar forecast entry is currently configured,
-    # so the SelectSelector can be submitted empty (cleared) to mean "none".
+    # No `default=`: with a default, voluptuous puts it back whenever the
+    # frontend omits the key (which it does for a cleared/empty
+    # SelectSelector), making the choice impossible to clear. A
+    # "suggested_value" pre-fills the form the same way without that
+    # fallback-on-submit behaviour, and is only set when the currently
+    # configured entry is still one of the valid choices: an id that no
+    # longer resolves to a config entry would otherwise fail SelectSelector
+    # validation and make the form impossible to submit at all.
+    current_solar_entry = options.get(CONF_SOLAR_FORECAST_ENTRY)
+    valid_solar_entries = {option["value"] for option in solar_entry_options}
     solar_forecast_entry_key = (
-        vol.Optional(CONF_SOLAR_FORECAST_ENTRY, default=options[CONF_SOLAR_FORECAST_ENTRY])
-        if options.get(CONF_SOLAR_FORECAST_ENTRY)
+        vol.Optional(CONF_SOLAR_FORECAST_ENTRY, description={"suggested_value": current_solar_entry})
+        if current_solar_entry in valid_solar_entries
         else vol.Optional(CONF_SOLAR_FORECAST_ENTRY)
     )
     schema[solar_forecast_entry_key] = selector.SelectSelector(
