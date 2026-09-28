@@ -12,8 +12,6 @@ from python_frank_energie.models import Address, DeliverySite, Invoices, MonthSu
 from custom_components.frank_energie import const
 from tests.utils import FAKE_ACCESS_TOKEN, FAKE_REFRESH_TOKEN, build_market_prices
 
-pytestmark = pytest.mark.asyncio
-
 
 def make_delivery_site(
     reference: str,

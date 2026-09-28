@@ -14,8 +14,6 @@ from custom_components.frank_energie.config_flow import _reauth_data
 from tests.test_init import make_user_sites
 from tests.utils import build_market_prices
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.fixture
 def mock_config_flow_api(monkeypatch):

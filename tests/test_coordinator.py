@@ -23,8 +23,6 @@ from custom_components.frank_energie import const
 from custom_components.frank_energie.coordinator import FrankEnergieCoordinator
 from tests.utils import build_market_prices, build_price_data
 
-pytestmark = pytest.mark.asyncio
-
 
 def make_me(country_code: str = "NL") -> Me:
     """Build a minimal Me instance."""
