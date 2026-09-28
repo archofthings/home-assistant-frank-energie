@@ -1,10 +1,11 @@
 import sys
 from os.path import abspath, dirname
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from python_frank_energie import FrankEnergie
 
 root_dir = abspath(dirname(__file__) + "/../custom_components/")
 sys.path.append(root_dir)
@@ -15,25 +16,22 @@ from tests.utils import FAKE_ACCESS_TOKEN, FAKE_REFRESH_TOKEN  # noqa: E402
 
 @pytest.fixture
 def mock_api():
-    """A MagicMock standing in for a python_frank_energie.FrankEnergie instance.
+    """An autospec'd mock standing in for a python_frank_energie.FrankEnergie instance.
 
-    All network-touching coroutine methods are AsyncMocks so nothing here ever
-    hits the real Frank Energie API. Individual tests configure the return
-    values/side effects they need.
+    Built with create_autospec() so every coroutine method is automatically an
+    AsyncMock that enforces the real method's signature (catching tests that
+    call/configure it wrong), and nothing here ever hits the real Frank
+    Energie API. Individual tests configure the return values/side effects
+    they need.
     """
-    api = MagicMock(name="FrankEnergieApi")
+    api = create_autospec(FrankEnergie, instance=True)
     api.is_authenticated = False
     # The coordinator reads api._auth directly (see _async_persist_tokens);
     # default it to None like a real, non-renewed FrankEnergie client so tests
     # don't accidentally persist Mock objects as tokens into the config entry.
     api._auth = None
-    api.prices = AsyncMock()
-    api.user_prices = AsyncMock()
-    api.user_country = AsyncMock()
     api.month_summary = AsyncMock(return_value=None)
     api.invoices = AsyncMock(return_value=None)
-    api.UserSites = AsyncMock()
-    api.renew_token = AsyncMock()
     return api
 
 

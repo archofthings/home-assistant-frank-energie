@@ -379,16 +379,22 @@ def test_no_data_errors_excludes_attribute_error():
 
 
 async def test_attribute_error_from_value_fn_is_not_swallowed(hass, config_entry):
-    """A value_fn raising AttributeError must propagate out of _compute_native_value."""
+    """A value_fn raising AttributeError must propagate out of _compute_native_value.
+
+    Uses data whose value_fn genuinely raises AttributeError (accessing an
+    attribute on a None value), not a KeyError from a missing dict key, so
+    this test actually exercises the AttributeError code path instead of
+    passing vacuously.
+    """
     coordinator = MagicMock()
-    coordinator.data = {}
+    coordinator.data = {"x": None}
     description = sensor.FrankEnergieEntityDescription(
         key="broken",
-        value_fn=lambda data: data["missing"].some_attribute,
+        value_fn=lambda data: data["x"].missing_attr,
     )
     entity = sensor.FrankEnergieSensor(coordinator, description, config_entry)
 
-    with pytest.raises((AttributeError, KeyError)):
+    with pytest.raises(AttributeError):
         entity._compute_native_value()
 
 

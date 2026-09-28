@@ -1,6 +1,6 @@
 """Tests for FrankEnergieCoordinator."""
 from datetime import date, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME
@@ -8,6 +8,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from python_frank_energie import FrankEnergie
 from python_frank_energie.exceptions import (
     AuthException,
     AuthRequiredException,
@@ -71,7 +72,13 @@ async def entry(hass):
 
 @pytest.fixture
 def api():
-    mock = AsyncMock()
+    """An autospec'd mock standing in for a python_frank_energie.FrankEnergie instance.
+
+    Built with create_autospec() so every coroutine method is automatically an
+    AsyncMock that enforces the real method's signature, catching tests that
+    call/configure it with the wrong arguments.
+    """
+    mock = create_autospec(FrankEnergie, instance=True)
     mock.is_authenticated = False
     # The coordinator reads api._auth (see _async_persist_tokens); default it
     # to None like a real, non-renewed FrankEnergie client so tests that don't
