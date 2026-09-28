@@ -15,11 +15,36 @@ from .coordinator import FrankEnergieCoordinator
 TO_REDACT = {CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME, "site_reference", "title", "unique_id"}
 
 
-def _serialize_exception(ex: BaseException | None) -> str | None:
-    """Return the exception's class name and message only, never a full traceback."""
+def _redact_message(message: str, entry: ConfigEntry | None) -> str:
+    """Replace any occurrence of `entry`'s tokens, username or site_reference in `message`.
+
+    Exception messages (e.g. from a failed request) can otherwise echo those
+    values back verbatim.
+    """
+    if entry is None:
+        return message
+
+    sensitive_values = (
+        entry.data.get(CONF_ACCESS_TOKEN),
+        entry.data.get(CONF_TOKEN),
+        entry.data.get(CONF_USERNAME),
+        entry.data.get("site_reference"),
+    )
+    for value in sensitive_values:
+        if value:
+            message = message.replace(str(value), "**REDACTED**")
+    return message
+
+
+def _serialize_exception(ex: BaseException | None, entry: ConfigEntry | None = None) -> str | None:
+    """Return the exception's class name and message only, never a full traceback.
+
+    Any occurrence of `entry`'s tokens, username or site_reference in the
+    message is redacted; see `_redact_message`.
+    """
     if ex is None:
         return None
-    return f"{type(ex).__name__}: {ex}"
+    return _redact_message(f"{type(ex).__name__}: {ex}", entry)
 
 
 def _serialize_price_data(price_data: PriceData | None) -> dict[str, Any]:
@@ -61,7 +86,7 @@ def _diagnostics_coordinator(coordinator: FrankEnergieCoordinator) -> dict[str, 
     update_interval = coordinator.update_interval
     return {
         "last_update_success": coordinator.last_update_success,
-        "last_exception": _serialize_exception(coordinator.last_exception),
+        "last_exception": _serialize_exception(coordinator.last_exception, coordinator.entry),
         "update_interval": update_interval.total_seconds() if update_interval is not None else None,
         "user_country": coordinator.user_country,
         "prices_timezone": coordinator.prices_timezone,
@@ -86,8 +111,24 @@ def _diagnostics_data(coordinator: FrankEnergieCoordinator) -> dict[str, Any]:
 
 
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
-    """Return diagnostics for a config entry."""
-    coordinator: FrankEnergieCoordinator = hass.data[DOMAIN][entry.entry_id][CONF_COORDINATOR]
+    """Return diagnostics for a config entry.
+
+    `hass.data[DOMAIN][entry.entry_id]` is only populated after a successful
+    first refresh (see async_setup_entry), so entries stuck in
+    SETUP_RETRY/SETUP_ERROR have no coordinator yet. Report the redacted
+    "entry" section with "coordinator"/"data" set to None in that case,
+    instead of raising KeyError.
+    """
+    loaded = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+
+    if loaded is None:
+        return {
+            "entry": _diagnostics_entry(entry),
+            "coordinator": None,
+            "data": None,
+        }
+
+    coordinator: FrankEnergieCoordinator = loaded[CONF_COORDINATOR]
 
     return {
         "entry": _diagnostics_entry(entry),

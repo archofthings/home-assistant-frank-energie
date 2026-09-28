@@ -3,9 +3,11 @@ import json
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from python_frank_energie.exceptions import NetworkError
 from python_frank_energie.models import Invoices, Me, MonthSummary
 
 from custom_components.frank_energie import const, diagnostics
@@ -137,6 +139,35 @@ async def test_diagnostics_redacts_sensitive_fields_and_hides_address(
     assert FAKE_REFRESH_TOKEN not in serialized
     assert "someone@example.com" not in serialized
     assert "site-42" not in serialized
+
+
+# --------------------------------------------------------------------------
+# W1: entry not loaded yet (first refresh failed, e.g. SETUP_RETRY)
+# --------------------------------------------------------------------------
+
+
+async def test_diagnostics_works_when_first_refresh_failed_and_entry_not_loaded(
+    hass, enable_custom_integrations, hass_client, mock_frank_energie_class, config_entry
+):
+    """When the first refresh fails and the entry is left in SETUP_RETRY, diagnostics must not raise KeyError.
+
+    hass.data[DOMAIN][entry_id] is only populated after a successful first
+    refresh; report the redacted "entry" section with coordinator/data set to
+    None instead.
+    """
+    mock_frank_energie_class.prices.side_effect = NetworkError("network unreachable")
+
+    result = await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert result is False
+    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+
+    diag = await get_diag(hass, hass_client, config_entry)
+
+    assert diag["coordinator"] is None
+    assert diag["data"] is None
+    assert diag["entry"]["data"]["site_reference"] == "**REDACTED**"
 
 
 # --------------------------------------------------------------------------
@@ -301,6 +332,34 @@ def test_serialize_exception_class_name_and_message_only():
     assert "File \"" not in result
 
 
+def test_serialize_exception_redacts_entry_tokens_username_and_site_reference():
+    """A message echoing back the entry's tokens/username/site_reference has those values redacted."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={
+            "site_reference": "site-42",
+            CONF_USERNAME: "someone@example.com",
+            CONF_ACCESS_TOKEN: FAKE_ACCESS_TOKEN,
+            CONF_TOKEN: FAKE_REFRESH_TOKEN,
+        },
+    )
+    message = (
+        f"request failed for user {entry.data[CONF_USERNAME]} "
+        f"(site {entry.data['site_reference']}, token {entry.data[CONF_ACCESS_TOKEN]}/{entry.data[CONF_TOKEN]})"
+    )
+
+    try:
+        raise RuntimeError(message)
+    except RuntimeError as ex:
+        result = diagnostics._serialize_exception(ex, entry)
+
+    assert "someone@example.com" not in result
+    assert "site-42" not in result
+    assert FAKE_ACCESS_TOKEN not in result
+    assert FAKE_REFRESH_TOKEN not in result
+    assert result.count("**REDACTED**") == 4
+
+
 def test_diagnostics_coordinator_reports_last_exception_when_update_failed():
     """When the coordinator's last update failed, last_exception shows class name and message only."""
     coordinator = MagicMock()
@@ -308,11 +367,34 @@ def test_diagnostics_coordinator_reports_last_exception_when_update_failed():
     coordinator.last_exception = ValueError("boom")
     coordinator.update_interval = timedelta(minutes=60)
     coordinator.user_country = None
+    coordinator.entry = MockConfigEntry(domain=const.DOMAIN, data={})
 
     result = diagnostics._diagnostics_coordinator(coordinator)
 
     assert result["last_update_success"] is False
     assert result["last_exception"] == "ValueError: boom"
+
+
+async def test_diagnostics_redacts_entry_values_from_last_exception_end_to_end(
+    hass, enable_custom_integrations, hass_client, mock_frank_energie_class, authenticated_config_entry
+):
+    """End-to-end: an update error echoing the site_reference has it redacted in the diagnostics response."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[const.DOMAIN][authenticated_config_entry.entry_id][const.CONF_COORDINATOR]
+    try:
+        raise RuntimeError(f"user-error: request failed for site {authenticated_config_entry.data['site_reference']}")
+    except RuntimeError as ex:
+        coordinator.last_exception = ex
+        coordinator.last_update_success = False
+
+    diag = await get_diag(hass, hass_client, authenticated_config_entry)
+
+    assert "site-1" not in diag["coordinator"]["last_exception"]
+    assert "**REDACTED**" in diag["coordinator"]["last_exception"]
 
 
 def test_diagnostics_data_section_when_coordinator_data_is_none():
