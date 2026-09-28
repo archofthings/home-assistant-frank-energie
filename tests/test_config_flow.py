@@ -718,9 +718,14 @@ async def test_reconfigure_without_token_aborts_not_supported(hass, enable_custo
 
 
 async def test_reconfigure_shows_form_defaulting_to_current_site_and_submits_new_site(
-    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+    hass, enable_custom_integrations, mock_frank_energie_class
 ):
-    """The reconfigure form defaults to the current site; submitting another site updates and reloads the entry."""
+    """The reconfigure form defaults to the current site; submitting another site updates and reloads the entry.
+
+    The entry is loaded, so the reconfigure flow must reuse the running
+    coordinator's own client (`mock_frank_energie_class`) rather than build a
+    new one, and must fetch UserSites() exactly once across form + submit.
+    """
     entry = MockConfigEntry(
         domain=const.DOMAIN,
         data={
@@ -742,9 +747,9 @@ async def test_reconfigure_shows_form_defaulting_to_current_site_and_submits_new
 
     site1 = make_delivery_site("site-1", "IN_DELIVERY", street="Oldstraat", house_number="1")
     site2 = make_delivery_site("site-2", "IN_DELIVERY", street="Newstraat", house_number="99")
-    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site1, site2]))
+    mock_frank_energie_class.UserSites.return_value = make_user_sites([site1, site2])
     # Simulate the library silently renewing tokens inside UserSites().
-    mock_config_flow_api._auth = MagicMock(authToken="renewed-access-token", refreshToken="renewed-refresh-token")
+    mock_frank_energie_class._auth = MagicMock(authToken="renewed-access-token", refreshToken="renewed-refresh-token")
 
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN,
@@ -772,9 +777,56 @@ async def test_reconfigure_shows_form_defaulting_to_current_site_and_submits_new
     assert entry.data[CONF_TOKEN] == "renewed-refresh-token"
     assert entry.state is ConfigEntryState.LOADED
 
+    mock_frank_energie_class.UserSites.assert_awaited_once()
+
+
+async def test_reconfigure_not_loaded_entry_builds_new_client(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+):
+    """When the entry isn't loaded, reconfigure must build its own client instead of using a coordinator's."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={
+            "site_reference": "site-1",
+            CONF_USERNAME: "user@example.com",
+            CONF_ACCESS_TOKEN: "old-access-token",
+            CONF_TOKEN: "old-refresh-token",
+        },
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    assert entry.state is ConfigEntryState.NOT_LOADED
+
+    site1 = make_delivery_site("site-1", "IN_DELIVERY")
+    site2 = make_delivery_site("site-2", "IN_DELIVERY", street="Newstraat", house_number="99")
+    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site1, site2]))
+    # Unlike mock_frank_energie_class (autospec'd with _auth=None by default), mock_config_flow_api
+    # is a plain MagicMock: without this, `._auth` auto-vivifies into a non-None Mock, which
+    # _finish_reconfigure would then try (and fail) to persist as real token values.
+    mock_config_flow_api._auth = None
+    # A successful reconfigure schedules a reload of the entry, which is not yet loaded: configure
+    # the (separately mocked) FrankEnergie client used by __init__.py so that reload succeeds too.
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+    assert result["type"] == "form"
+    assert result["step_id"] == "reconfigure"
+
+    result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {SITE_REFERENCE: "site-2"})
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "reconfigure_successful"
+    assert entry.data["site_reference"] == "site-2"
+    mock_config_flow_api.UserSites.assert_awaited_once()
+    mock_frank_energie_class.UserSites.assert_not_awaited()
+
 
 async def test_reconfigure_first_fetch_failing_aborts_cannot_connect(
-    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+    hass, enable_custom_integrations, mock_frank_energie_class
 ):
     """A fetch failure on the very first reconfigure step (showing the form) aborts with cannot_connect."""
     entry = MockConfigEntry(
@@ -793,7 +845,7 @@ async def test_reconfigure_first_fetch_failing_aborts_cannot_connect(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    mock_config_flow_api.UserSites = AsyncMock(side_effect=NetworkError("unreachable"))
+    mock_frank_energie_class.UserSites.side_effect = NetworkError("unreachable")
 
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN,
@@ -804,50 +856,8 @@ async def test_reconfigure_first_fetch_failing_aborts_cannot_connect(
     assert result["reason"] == "cannot_connect"
 
 
-async def test_reconfigure_fetch_failing_on_submit_shows_form_with_error(
-    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
-):
-    """A fetch failure on submit (after the form was already shown successfully) re-shows the form with an error."""
-    entry = MockConfigEntry(
-        domain=const.DOMAIN,
-        data={
-            "site_reference": "site-1",
-            CONF_USERNAME: "user@example.com",
-            CONF_ACCESS_TOKEN: "old-access-token",
-            CONF_TOKEN: "old-refresh-token",
-        },
-        unique_id="frank_energie",
-    )
-    entry.add_to_hass(hass)
-
-    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
-    assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-
-    site1 = make_delivery_site("site-1", "IN_DELIVERY")
-    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site1]))
-
-    result = await hass.config_entries.flow.async_init(
-        const.DOMAIN,
-        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
-    )
-    assert result["type"] == "form"
-
-    mock_config_flow_api.UserSites = AsyncMock(side_effect=NetworkError("unreachable"))
-
-    result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {SITE_REFERENCE: "site-1"})
-
-    assert result2["type"] == "form"
-    assert result2["step_id"] == "reconfigure"
-    assert result2["errors"] == {"base": "cannot_connect"}
-
-    # The entry must be untouched: the failed submit did not update or reload it.
-    assert entry.data["site_reference"] == "site-1"
-    assert entry.data[CONF_ACCESS_TOKEN] == "old-access-token"
-
-
 async def test_reconfigure_no_sites_aborts_no_sites(
-    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
+    hass, enable_custom_integrations, mock_frank_energie_class
 ):
     """When the account has no IN_DELIVERY sites, reconfigure aborts with no_sites."""
     entry = MockConfigEntry(
@@ -866,7 +876,7 @@ async def test_reconfigure_no_sites_aborts_no_sites(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([]))
+    mock_frank_energie_class.UserSites.return_value = make_user_sites([])
 
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN,

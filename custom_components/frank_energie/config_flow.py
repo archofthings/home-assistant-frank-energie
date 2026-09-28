@@ -23,7 +23,7 @@ from python_frank_energie import FrankEnergie
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, FrankEnergieException
 from python_frank_energie.models import DeliverySite
 
-from .const import CONF_PRICES_TIMEZONE, DOMAIN, PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC
+from .const import CONF_COORDINATOR, CONF_PRICES_TIMEZONE, DOMAIN, PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC
 from .sites import build_site_title, discover_in_delivery_sites
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,6 +103,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pending_login_data: dict | None = None
         self._pending_sites: list[DeliverySite] | None = None
         self._reconfigure_sites: list[DeliverySite] | None = None
+        self._reconfigure_api: FrankEnergie | None = None
 
     async def async_step_login(self, user_input=None, errors=None) -> FlowResult:
         """Handle login with credentials by user."""
@@ -230,40 +231,59 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.async_step_login()
 
     async def async_step_reconfigure(self, user_input=None) -> FlowResult:
-        """Let the user change which delivery site an already-configured entry uses."""
+        """Let the user change which delivery site an already-configured entry uses.
+
+        UserSites() is fetched only once, when the form is first shown (and
+        its result, plus the client used, kept on the flow); submitting the
+        form does not fetch again, since the selector already constrains the
+        choice to one of those sites. This avoids both losing tokens the
+        client renews mid-flow and racing a parallel renewal (with the same
+        refresh token) by the entry's own running coordinator.
+        """
         entry = self._get_reconfigure_entry()
 
         if entry.data.get(CONF_ACCESS_TOKEN) is None:
             return self.async_abort(reason="reconfigure_not_supported")
 
-        api = FrankEnergie(
-            clientsession=async_get_clientsession(self.hass),
-            auth_token=entry.data.get(CONF_ACCESS_TOKEN),
-            refresh_token=entry.data.get(CONF_TOKEN),
-        )
+        if self._reconfigure_sites is None:
+            api = self._reconfigure_client(entry)
+            sites, errors = await self._fetch_reconfigure_sites(api)
 
-        sites, errors = await self._fetch_reconfigure_sites(api)
-
-        if errors is not None:
-            if user_input is None or self._reconfigure_sites is None:
+            if errors is not None:
                 return self.async_abort(reason="cannot_connect")
-            return self.async_show_form(
-                step_id="reconfigure",
-                data_schema=_site_selection_schema(self._reconfigure_sites, entry.data.get(SITE_REFERENCE)),
-                errors=errors,
-            )
 
-        if not sites:
-            return self.async_abort(reason="no_sites")
+            if not sites:
+                return self.async_abort(reason="no_sites")
 
-        self._reconfigure_sites = sites
+            self._reconfigure_api = api
+            self._reconfigure_sites = sites
 
         if user_input is not None:
-            return self._finish_reconfigure(entry, api, sites, user_input[SITE_REFERENCE])
+            return self._finish_reconfigure(
+                entry, self._reconfigure_api, self._reconfigure_sites, user_input[SITE_REFERENCE]
+            )
 
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=_site_selection_schema(sites, entry.data.get(SITE_REFERENCE)),
+            data_schema=_site_selection_schema(self._reconfigure_sites, entry.data.get(SITE_REFERENCE)),
+        )
+
+    def _reconfigure_client(self, entry: ConfigEntry) -> FrankEnergie:
+        """Return the API client to use for the reconfigure flow.
+
+        Reuses the running coordinator's client when the entry is loaded,
+        since the coordinator already persists any tokens that client renews
+        (see FrankEnergieCoordinator._async_persist_tokens()). A new client is
+        only built when the entry isn't loaded (e.g. it is in SETUP_RETRY).
+        """
+        loaded = self.hass.data.get(DOMAIN, {}).get(entry.entry_id)
+        if loaded is not None:
+            return loaded[CONF_COORDINATOR].api
+
+        return FrankEnergie(
+            clientsession=async_get_clientsession(self.hass),
+            auth_token=entry.data.get(CONF_ACCESS_TOKEN),
+            refresh_token=entry.data.get(CONF_TOKEN),
         )
 
     @staticmethod
