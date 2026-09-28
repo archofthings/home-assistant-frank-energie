@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from homeassistant.util import dt as dt_util
-from python_frank_energie.models import MarketPrices, PriceData
+from python_frank_energie.models import Address, DeliverySite, MarketPrices, PriceData, UserSites
 
 # A non-JWT-shaped token. python_frank_energie's Authentication.is_expired
 # treats any auth token that doesn't look like a JWT (3 dot-separated parts)
@@ -71,6 +71,53 @@ def build_market_prices(
         electricity=build_price_data(start, electricity_prices, "electricity", resolution_minutes),
         gas=build_price_data(start, gas_prices, "gas", resolution_minutes),
         energy_country=energy_country,
+    )
+
+
+def make_delivery_site(
+    reference: str,
+    status: str,
+    street: str = "Teststraat",
+    house_number: str = "12",
+    addition: str | None = None,
+) -> DeliverySite:
+    """Build a real ``DeliverySite`` instance with a simple address."""
+    address = Address(
+        street=street,
+        houseNumber=house_number,
+        zipCode="1234 AB",
+        city="Amsterdam",
+        houseNumberAddition=addition,
+    )
+    return DeliverySite(
+        addressHasMultipleSites=False,
+        propositionType=None,
+        reference=reference,
+        segments=["ELECTRICITY", "GAS"],
+        address=address,
+        status=status,
+        deliveryStartDate=None,
+        deliveryEndDate=None,
+        firstMeterReadingDate=None,
+        lastMeterReadingDate=None,
+    )
+
+
+def make_user_sites(sites: list[DeliverySite]) -> UserSites:
+    """Build a real ``UserSites`` instance wrapping the given delivery sites."""
+    first = sites[0] if sites else None
+    return UserSites(
+        deliverySites=sites,
+        addressFormatted="x",
+        addressHasMultipleSites=False,
+        deliveryEndDate=None,
+        deliveryStartDate=None,
+        firstMeterReadingDate=None,
+        lastMeterReadingDate=None,
+        propositionType=None,
+        reference=first.reference if first else "",
+        segments=[],
+        status="IN_DELIVERY",
     )
 
 

@@ -23,6 +23,37 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
+def _same_account(stored_username: str | None, new_username: str) -> bool:
+    """Return whether a stored username and a new login refer to the same account.
+
+    Comparison is normalised with .strip().casefold(). Returns False when
+    there is no stored username to compare against (legacy entries).
+    """
+    return (
+        stored_username is not None
+        and stored_username.strip().casefold() == new_username.strip().casefold()
+    )
+
+
+def _merge_reauth_data(entry_data: Mapping[str, Any], new_data: dict, *, drop_site_reference: bool) -> dict:
+    """Merge new login data into the existing entry data for a reauth login.
+
+    drop_site_reference is True only for legacy entries with no stored
+    username to compare against: since we can't confirm it's the same
+    account, "site_reference" is dropped so it doesn't make price/cost
+    requests fail for a possibly different account; async_setup_entry then
+    rediscovers the site. For a same-account login (the only other case that
+    reaches this helper) the existing entry data, including site_reference,
+    is kept as is. The unique_id is left untouched either way.
+    """
+    base = dict(entry_data)
+
+    if drop_site_reference:
+        base.pop("site_reference", None)
+
+    return {**base, **new_data}
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the config flow for Frank Energie."""
 
@@ -71,16 +102,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         if self._reauth_entry:
-            self.hass.config_entries.async_update_entry(
+            stored_username = self._reauth_entry.data.get(CONF_USERNAME)
+
+            if stored_username is not None and not _same_account(stored_username, user_input[CONF_USERNAME]):
+                return self.async_abort(reason="wrong_account")
+
+            return self.async_update_reload_and_abort(
                 self._reauth_entry,
-                data={**self._reauth_entry.data, **data},
+                data=_merge_reauth_data(
+                    self._reauth_entry.data, data, drop_site_reference=stored_username is None
+                ),
             )
-
-            self.hass.async_create_task(
-                self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
-            )
-
-            return self.async_abort(reason="reauth_successful")
 
         await self.async_set_unique_id(user_input[CONF_USERNAME])
         self._abort_if_unique_id_configured()

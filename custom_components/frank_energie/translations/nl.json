@@ -2,7 +2,8 @@
     "config": {
         "abort": {
             "already_configured": "Account is al toegevoegd",
-            "reauth_successful": "Opnieuw inloggen gelukt"
+            "reauth_successful": "Opnieuw inloggen gelukt",
+            "wrong_account": "Je bent ingelogd met een ander account dan voor deze integratie is ingesteld. Voeg het andere account toe als nieuwe Frank Energie-integratie."
         },
         "error": {
             "cannot_connect": "Verbinden mislukt, probeer het opnieuw.",

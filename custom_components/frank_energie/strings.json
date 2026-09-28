@@ -6,7 +6,8 @@
       }
     },
     "abort": {
-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]",
+      "wrong_account": "The account you logged in with differs from the one configured for this entry. Add the other account as a new Frank Energie integration instead."
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"

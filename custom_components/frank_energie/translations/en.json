@@ -2,7 +2,8 @@
     "config": {
         "abort": {
             "already_configured": "Account is already configured",
-            "reauth_successful": "Re-authentication was successful"
+            "reauth_successful": "Re-authentication was successful",
+            "wrong_account": "The account you logged in with differs from the one configured for this entry. Add the other account as a new Frank Energie integration instead."
         },
         "error": {
             "cannot_connect": "Failed to connect, please try again.",
