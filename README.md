@@ -22,6 +22,7 @@ Use the price sensors to run appliances, charge a car or battery, or heat water 
 - [Sensors](#sensors)
 - [Using the price list](#using-the-price-list)
 - [The get_prices action](#the-get_prices-action)
+- [Price analysis](#price-analysis)
 - [Charts](#charts)
 - [Upgrading from the original integration](#upgrading-from-the-original-integration)
 - [Troubleshooting](#troubleshooting)
@@ -39,6 +40,7 @@ Use the price sensors to run appliances, charge a car or battery, or heat water 
 - **Optional login** for your personal contract prices, plus your monthly cost and invoice sensors.
 - **Choose your delivery address** when your account has more than one, and change it later with **Reconfigure**.
 - **Local or UTC times** for the price list, configurable per installation.
+- **Price analysis**: every quarter hour labelled cheap, normal or expensive (optionally "cheap + solar"), the cheapest period of the length you choose, and chart-ready data. See [Price analysis](#price-analysis).
 - **Diagnostics download** for bug reports, with tokens and personal details removed.
 - **Keeps working through API hiccups**: if an update fails, the last prices stay available as long as they still cover the future. Tokens are renewed automatically, and you're only asked to log in again when that fails.
 - **Netherlands and Belgium**: public fallback prices follow your account's country.
@@ -94,8 +96,13 @@ Choose **Configure** on the integration to change these settings:
 | Option | Choices | Default |
 |---|---|---|
 | **Time zone for price times** | Home Assistant's time zone, or UTC | Home Assistant's time zone for new installations; UTC for installations set up before this option existed |
+| **Cheap price below** | €/kWh (all-in) | €0.25 |
+| **Expensive price above** | €/kWh (all-in); must be higher than the cheap price | €0.40 |
+| **Cheapest period length** | 15 minutes to 6 hours, in steps of 15 minutes | 2 hours |
+| **Solar forecast** | Any installed integration that provides the Energy dashboard's solar forecast (for example Forecast.Solar or Solcast), or none | None |
+| **Solar threshold** | kWh per hour | 1.5 |
 
-This option sets the notation of the times in the `prices` list, the `from_time` attributes and the `get_prices` action. The moments are the same either way: `2026-09-28T10:00:00+02:00` and `2026-09-28T08:00:00+00:00` are the same time. See [Switching the time zone](#switching-the-time-zone) before changing it if automations read these times.
+The price, period and solar settings are used by the [price analysis](#price-analysis). The time zone option sets the notation of the times in the `prices` list, the `from_time` attributes and the `get_prices` action. The moments are the same either way: `2026-09-28T10:00:00+02:00` and `2026-09-28T08:00:00+00:00` are the same time. See [Switching the time zone](#switching-the-time-zone) before changing it if automations read these times.
 
 #### Switching the time zone
 
@@ -231,6 +238,143 @@ action:
 ```
 
 In the Developer tools → **Actions** tab, pick the entry from the list to find its ID.
+
+## Price analysis
+
+The price analysis answers two different questions about electricity prices:
+
+1. **Is the price cheap right now?** Every 15-minute slot gets a *level* based on fixed prices you choose under [Options](#options):
+
+   | Level | Meaning |
+   |---|---|
+   | `cheap_solar` | Cheap, and the solar forecast for that hour is at or above your solar threshold |
+   | `cheap` | All-in price at or below **Cheap price below** |
+   | `normal` | Between the two thresholds |
+   | `expensive` | All-in price above **Expensive price above** |
+
+2. **When is the cheapest period?** The integration finds the consecutive block of **Cheapest period length** (for example 2 hours) with the lowest average price, whatever the absolute price is. It does this for today, for tomorrow, and from now onwards. Use it to start the dishwasher, washing machine or car charging at the cheapest moment.
+
+### Entities
+
+| Entity | State | Use it for |
+|---|---|---|
+| **Electricity price level** | `cheap_solar`, `cheap`, `normal` or `expensive` for the current slot | Dashboards, conditions |
+| **Cheap electricity price now** | On while the current slot is `cheap` or `cheap_solar` | Automations that run whenever power is cheap |
+| **Cheapest electricity period now** | On during today's cheapest period | Automations that run once a day at the cheapest moment |
+| **Next cheapest electricity period** | Start time of the next cheapest period (may be tomorrow) | Planning, notifications |
+| **Electricity price analysis today** | Start time of today's cheapest period | Charts (see below) |
+| **Electricity price analysis tomorrow** | Start time of tomorrow's cheapest period; unavailable until tomorrow's prices are published | Charts |
+
+**Next cheapest electricity period** has the attributes `end`, `average_price` and `minutes`.
+
+The two analysis sensors have these attributes. They're not stored in the recorder history, and their times follow the [time zone option](#options):
+
+| Attribute | Content |
+|---|---|
+| `slots` | One entry per 15-minute slot: `from`, `till`, `price`, `level`, `solar_kwh`, `in_cheapest_period`, `is_current` |
+| `cheapest_period` | `start`, `end`, `average_price`, `minutes` |
+| `cheap_windows`, `expensive_windows` | Consecutive cheap or expensive slots: `start`, `end`, `average_price`, `minutes` |
+| `solar_windows` | Consecutive `cheap_solar` slots, also with `average_solar_kwh` |
+| `thresholds` | The `cheap`, `expensive` and `solar_kwh` values used |
+
+### Chart: prices coloured by level
+
+This [ApexCharts Card](https://github.com/RomRider/apexcharts-card) chart shows today's prices as columns coloured by level, with a line marking the cheapest period. Replace the entity ID with the one of your **Electricity price analysis today** sensor.
+
+<!-- Screenshot: images/price_analysis.png -->
+
+```yaml
+type: custom:apexcharts-card
+graph_span: 24h
+span:
+  start: day
+now:
+  show: true
+  label: Now
+header:
+  show: true
+  title: Electricity price today (€/kWh)
+  show_states: false
+apex_config:
+  chart:
+    stacked: true
+  legend:
+    show: true
+series:
+  - entity: sensor.electricity_price_analysis_today
+    name: Cheap + solar
+    type: column
+    color: '#009688'
+    data_generator: |
+      return entity.attributes.slots.map((s) =>
+        [new Date(s.from).getTime(), s.level === 'cheap_solar' ? s.price : null]);
+  - entity: sensor.electricity_price_analysis_today
+    name: Cheap
+    type: column
+    color: '#4caf50'
+    data_generator: |
+      return entity.attributes.slots.map((s) =>
+        [new Date(s.from).getTime(), s.level === 'cheap' ? s.price : null]);
+  - entity: sensor.electricity_price_analysis_today
+    name: Normal
+    type: column
+    color: '#ffc107'
+    data_generator: |
+      return entity.attributes.slots.map((s) =>
+        [new Date(s.from).getTime(), s.level === 'normal' ? s.price : null]);
+  - entity: sensor.electricity_price_analysis_today
+    name: Expensive
+    type: column
+    color: '#f44336'
+    data_generator: |
+      return entity.attributes.slots.map((s) =>
+        [new Date(s.from).getTime(), s.level === 'expensive' ? s.price : null]);
+  - entity: sensor.electricity_price_analysis_today
+    name: Cheapest period
+    type: line
+    color: '#673ab7'
+    stroke_width: 3
+    curve: stepline
+    data_generator: |
+      return entity.attributes.slots.map((s) =>
+        [new Date(s.from).getTime(), s.in_cheapest_period ? s.price : null]);
+```
+
+For tomorrow, use the **Electricity price analysis tomorrow** sensor and set `span: start: day` with `offset: '+1d'`.
+
+### Automation examples
+
+Start the dishwasher at the beginning of today's cheapest period:
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.cheapest_electricity_period_now
+    to: "on"
+actions:
+  - action: switch.turn_on
+    target:
+      entity_id: switch.dishwasher
+```
+
+Charge the home battery whenever the price is cheap:
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.cheap_electricity_price_now
+    to: ["on", "off"]
+actions:
+  - action: "switch.turn_{{ trigger.to_state.state }}"
+    target:
+      entity_id: switch.battery_charging
+```
+
+The entity IDs in these examples may differ in your installation; check them under **Settings → Devices & services → Frank Energie**.
+
+### Solar forecast
+
+To use `cheap_solar`, choose a solar forecast under **Configure**. The list shows the integrations that provide a solar forecast for the Energy dashboard. The forecast is read from that integration each time the analysis is recalculated, so it adds no extra internet traffic. Without a solar forecast, slots are never labelled `cheap_solar`.
 
 ## Charts
 
