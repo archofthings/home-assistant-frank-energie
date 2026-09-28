@@ -1,12 +1,12 @@
 """Tests for Frank Energie sensors."""
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
-from homeassistant.util.async_ import get_scheduled_timer_handles
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from python_frank_energie.models import Invoice, Invoices, Me, MonthSummary
 
@@ -337,15 +337,24 @@ async def test_unload_entry_cancels_update_timers(
     freezer.move_to("2026-01-15 10:00:00+01:00")
     install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96)
 
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
+    unsubscribers = []
+
+    def fake_track_utc_time_change(*_args, **_kwargs):
+        unsub = MagicMock(name="unsub")
+        unsubscribers.append(unsub)
+        return unsub
+
+    with patch.object(sensor.event, "async_track_utc_time_change", side_effect=fake_track_utc_time_change):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    # One timer per sensor that was actually added (disabled-by-default sensors get none).
+    added = hass.states.async_all("sensor")
+    assert unsubscribers
+    assert len(unsubscribers) == len(added)
+    assert all(unsub.call_count == 0 for unsub in unsubscribers)
 
     assert await hass.config_entries.async_unload(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    for handle in get_scheduled_timer_handles(hass.loop):
-        if handle.cancelled():
-            continue
-        job = getattr(handle._callback, "job", None)
-        target = getattr(job, "target", None)
-        assert getattr(target, "__qualname__", "") != "FrankEnergieSensor._handle_scheduled_update"
+    assert all(unsub.call_count == 1 for unsub in unsubscribers)
