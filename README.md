@@ -21,6 +21,7 @@ Use the price sensors to run appliances, charge a car or battery, or heat water 
 - [Configuration](#configuration)
 - [Sensors](#sensors)
 - [Using the price list](#using-the-price-list)
+- [The get_prices action](#the-get_prices-action)
 - [Charts](#charts)
 - [Upgrading from the original integration](#upgrading-from-the-original-integration)
 - [Troubleshooting](#troubleshooting)
@@ -31,11 +32,14 @@ Use the price sensors to run appliances, charge a car or battery, or heat water 
 ## Features
 
 - **Current prices every 15 minutes**: all-in price, market price, price including tax, VAT, sourcing markup and energy tax, for electricity and gas.
-- **Daily statistics**: lowest, highest and average price for today.
+- **Daily statistics**: lowest, highest and average price for today and tomorrow, the next price, and the lowest and highest price still to come.
+- **`frank_energie.get_prices` action** that returns all known prices with their components, for scripts and automations.
 - **Full price list** as an attribute, covering today and (once published, usually around 13:00) tomorrow.
 - **No account needed** for public prices.
 - **Optional login** for your personal contract prices, plus your monthly cost and invoice sensors.
-- **Your delivery address is detected automatically** when you log in.
+- **Choose your delivery address** when your account has more than one, and change it later with **Reconfigure**.
+- **Local or UTC times** for the price list, configurable per installation.
+- **Diagnostics download** for bug reports, with tokens and personal details removed.
 - **Keeps working through API hiccups**: if an update fails, the last prices stay available as long as they still cover the future. Tokens are renewed automatically, and you're only asked to log in again when that fails.
 - **Netherlands and Belgium**: public fallback prices follow your account's country.
 
@@ -72,13 +76,33 @@ Releases are currently published as **pre-releases**. If HACS doesn't offer the 
 1. Go to **Settings → Devices & services → Add integration** and search for **Frank Energie**.
 2. Choose whether to log in with your Frank Energie account:
    - **Without login** you get the public market prices.
-   - **With login** you get your personal contract prices, plus the monthly cost and invoice sensors. The first site on your account that is in delivery is selected automatically, and the entry is named after its address.
-3. Individual sensors can be disabled or hidden afterwards.
+   - **With login** you get your personal contract prices, plus the monthly cost and invoice sensors.
+3. If you logged in and your account has more than one address in delivery, choose the address to use. With a single address this step is skipped. The entry is named after the address.
+4. Individual sensors can be disabled or hidden afterwards.
+
+**Changing the address:** open the integration under **Settings → Devices & services → Frank Energie**, open the menu (⋮) and choose **Reconfigure**.
 
 If your login expires and can't be renewed automatically, Home Assistant asks you to **re-authenticate** from **Settings → Devices & services**.
 
 > [!IMPORTANT]
 > The old `configuration.yaml` setup is no longer supported. Remove any `frank_energie` YAML configuration and set the integration up through the UI.
+
+### Options
+
+Choose **Configure** on the integration to change these settings:
+
+| Option | Choices | Default |
+|---|---|---|
+| **Time zone for price times** | Home Assistant's time zone, or UTC | Home Assistant's time zone for new installations; UTC for installations set up before this option existed |
+
+This option sets the notation of the times in the `prices` list, the `from_time` attributes and the `get_prices` action. The moments are the same either way: `2026-09-28T10:00:00+02:00` and `2026-09-28T08:00:00+00:00` are the same time. See [Switching the time zone](#switching-the-time-zone) before changing it if automations read these times.
+
+#### Switching the time zone
+
+Installations set up before the time zone option existed keep UTC times, so existing automations keep working. Before switching to Home Assistant's time zone, check automations, templates and Node-RED flows that read the `prices` list or `from_time`:
+
+- **Safe:** anything that parses the full time including its offset, such as `as_timestamp()`, `as_datetime()`, comparisons with `now()` in templates, `new Date(...)` or `moment(...)` in Node-RED, and ApexCharts.
+- **Needs adjusting:** anything that assumes the text is UTC, such as adding a fixed 1 or 2 hours, cutting the hour out of the text (`substring`, `slice`), replacing `+00:00`, or comparing the text with other UTC text.
 
 ## Sensors
 
@@ -97,6 +121,12 @@ Prices are fetched every hour. Sensor states switch at every quarter hour (:00, 
 | Lowest energy price today | ✅ | |
 | Highest energy price today | ✅ | |
 | Average electricity price today | ✅ | |
+| Next electricity price (All-in) | ✅ | |
+| Average electricity price tomorrow | ✅ | |
+| Lowest electricity price tomorrow | ✅ | |
+| Highest electricity price tomorrow | ✅ | |
+| Lowest upcoming electricity price | ✅ | |
+| Highest upcoming electricity price | ✅ | |
 
 ### Gas (€/m³)
 
@@ -110,8 +140,9 @@ Prices are fetched every hour. Sensor states switch at every quarter hour (:00, 
 | Current gas tax only | – | |
 | Lowest gas price today | ✅ | |
 | Highest gas price today | ✅ | |
+| Average gas price tomorrow | ✅ | |
 
-The lowest and highest price sensors have a `from_time` attribute with the start of that slot.
+The lowest, highest and next price sensors have a `from_time` attribute with the start of that slot. *Upcoming* means slots that start after now, today and tomorrow. The tomorrow sensors are unavailable until tomorrow's prices are published.
 
 ### Costs (€, login required)
 
@@ -141,7 +172,7 @@ prices:
   # ...
 ```
 
-Times are in UTC and prices are rounded to 3 decimals. With tomorrow's prices included the list holds up to 200 entries, so it's **not stored in the recorder history**, to stay within Home Assistant's attribute size limit. It is always available on the live state, in templates and in dashboards.
+Times follow the [time zone option](#options) (UTC in this example) and prices are rounded to 3 decimals. With tomorrow's prices included the list holds up to 200 entries, so it's **not stored in the recorder history**, to stay within Home Assistant's attribute size limit. It is always available on the live state, in templates and in dashboards.
 
 The examples below use `sensor.current_electricity_price_all_in`. Your entity ID may differ; check it under **Settings → Devices & services → Frank Energie**.
 
@@ -169,6 +200,37 @@ Lowest price in the next six hours:
    | selectattr('till', 'lt', now() + timedelta(hours=6))
    | min(attribute='price') }}
 ```
+
+## The get_prices action
+
+`frank_energie.get_prices` returns the known prices (today, and tomorrow once published) for scripts and automations. It uses the prices already loaded by the integration, so it doesn't call the Frank Energie API.
+
+| Field | Required | Description |
+|---|:---:|---|
+| `config_entry_id` | ✅ | Your Frank Energie integration entry |
+| `start` | | Only return slots that end after this time |
+| `end` | | Only return slots that start before this time |
+
+Each slot in the `electricity` and `gas` lists contains `start`, `end`, `price` (all-in), `market_price`, `market_price_including_tax`, `vat`, `sourcing_markup` and `energy_tax`. Times follow the [time zone option](#options).
+
+Example: find the cheapest quarter hour in the next 6 hours.
+
+```yaml
+action:
+  - action: frank_energie.get_prices
+    data:
+      config_entry_id: YOUR_ENTRY_ID
+      start: "{{ now() }}"
+      end: "{{ now() + timedelta(hours=6) }}"
+    response_variable: frank
+  - variables:
+      cheapest: "{{ frank.electricity | min(attribute='price') }}"
+  - action: notify.notify
+    data:
+      message: "Cheapest at {{ cheapest.start }}: € {{ cheapest.price }}/kWh"
+```
+
+In the Developer tools → **Actions** tab, pick the entry from the list to find its ID.
 
 ## Charts
 
@@ -262,6 +324,8 @@ series:
 - *Just after midnight:* tomorrow's prices may not have been loaded yet. They're fetched hourly and normally published around 13:00.
 - *Gas sensors:* if your contract has no gas, the gas sensors stay unavailable.
 
+**Download diagnostics.** On the integration page, open the menu (⋮) and choose **Download diagnostics**. Tokens, your username, site reference and address are removed, so the file can be attached to an issue.
+
 **Debug logging.** Add this to `configuration.yaml` and restart:
 
 ```yaml
@@ -282,9 +346,12 @@ Please report problems via [GitHub issues](https://github.com/archofthings/home-
 ```text
 custom_components/frank_energie/
 ├── __init__.py      # setup, delivery site discovery
-├── config_flow.py   # UI setup, login and reauth
+├── config_flow.py   # UI setup, login, site choice, reauth, reconfigure, options
 ├── coordinator.py   # data fetching, fallbacks, token handling
+├── diagnostics.py   # redacted diagnostics download
 ├── sensor.py        # sensor definitions
+├── services.py      # get_prices action (services.yaml describes it)
+├── sites.py         # delivery site filtering and titles
 └── manifest.json    # pins python-frank-energie==2026.9.20
 tests/               # pytest-homeassistant-custom-component tests (API fully mocked)
 ```
