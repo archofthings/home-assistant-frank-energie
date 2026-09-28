@@ -210,20 +210,14 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         missing_gas = len(user_prices.gas.all) == 0
         missing_electricity = len(user_prices.electricity.all) == 0
 
-        # The user's contract can use a different resolution than the public
-        # prices' PT15M default (e.g. PT60M). When only one segment is missing,
-        # request the public fallback at the resolution of the user's other,
-        # non-empty segment so _merge() doesn't have to reconcile mismatched
-        # resolutions later. When both segments are missing there is no
-        # resolution to match, so fall back to the public default.
-        if missing_gas and not missing_electricity:
-            resolution = f"PT{user_prices.electricity.resolution_minutes}M"
-        elif missing_electricity and not missing_gas:
-            resolution = f"PT{user_prices.gas.resolution_minutes}M"
-        else:
-            resolution = "PT15M"
-
-        public_prices = await self._fetch_public_prices(user_country, start_date, resolution)
+        # Merges only ever happen within one segment across days (today vs.
+        # tomorrow), never between electricity and gas, so there is no need to
+        # match the public fallback's resolution to the *other* segment here.
+        # Gas can also be PT60M or even daily, which is not a valid
+        # PriceResolution to request electricity at (or vice versa). Always
+        # request the public fallback at the default "PT15M"; the _merge()
+        # ValueError guard handles any cross-day resolution mismatches.
+        public_prices = await self._fetch_public_prices(user_country, start_date, "PT15M")
 
         if missing_gas:
             LOGGER.info("No gas prices found for user, falling back to public prices")

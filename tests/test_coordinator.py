@@ -457,8 +457,13 @@ async def test_unauthenticated_update_does_not_persist_tokens(hass, entry, coord
 # 5. Resolution handling
 # --------------------------------------------------------------------------
 
-async def test_missing_electricity_fallback_uses_gas_resolution(coordinator, api):
-    """When only electricity is missing, the public fallback is requested at gas's resolution."""
+async def test_missing_electricity_fallback_always_uses_pt15m_resolution(coordinator, api):
+    """The public fallback is always requested at PT15M, even when gas is PT60M.
+
+    Merges only ever happen within one segment (electricity or gas) across
+    days, never between electricity and gas, and gas can be PT60M or even
+    daily, which is not a valid resolution to request electricity at.
+    """
     api.is_authenticated = True
     api.user_country.return_value = make_me("NL")
     api.user_prices.side_effect = lambda *a, **k: build_market_prices(
@@ -474,7 +479,7 @@ async def test_missing_electricity_fallback_uses_gas_resolution(coordinator, api
 
     assert api.prices.await_count > 0
     for call in api.prices.await_args_list:
-        assert call.kwargs.get("resolution") == "PT60M"
+        assert call.kwargs.get("resolution") == "PT15M"
 
 
 async def test_merge_mismatched_resolutions_returns_today_only(coordinator):
