@@ -10,10 +10,17 @@ from homeassistant.core import State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
-from python_frank_energie.models import Invoice, Invoices, Me, MonthSummary
+from python_frank_energie.models import Invoice, Invoices
 
 from custom_components.frank_energie import const, sensor
-from tests.utils import build_market_prices, build_market_prices_from_local_midnight, build_price_data, price_generator
+from tests.utils import (
+    build_market_prices,
+    build_market_prices_from_local_midnight,
+    build_price_data,
+    make_me,
+    make_month_summary,
+    price_generator,
+)
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -46,40 +53,6 @@ async def enable_all_sensors(hass, entry):
 
 def make_invoice(total: float, start: datetime, description: str) -> Invoice:
     return Invoice(id="inv-1", StartDate=start, PeriodDescription=description, TotalAmount=total)
-
-
-def make_month_summary(**overrides) -> MonthSummary:
-    defaults = dict(
-        _id="1",
-        actualCostsUntilLastMeterReadingDate=10.0,
-        expectedCostsUntilLastMeterReadingDate=12.0,
-        lastMeterReadingDate="2024-01-01",
-        costs_per_day_till_now=1.0,
-        meterReadingDayCompleteness=1.0,
-        gasExcluded=False,
-        typename="MonthSummary",
-        expectedCosts=100.0,
-    )
-    defaults.update(overrides)
-    return MonthSummary(**defaults)
-
-
-def make_me(country_code: str = "NL") -> Me:
-    return Me(
-        id="user-1",
-        email="user@example.com",
-        countryCode=country_code,
-        advancedPaymentAmount=0.0,
-        treesCount=0,
-        hasInviteLink=False,
-        InviteLinkUser=None,
-        hasCO2Compensation=False,
-        createdAt="2024-01-01T00:00:00Z",
-        updatedAt="2024-01-01T00:00:00Z",
-        addressHasMultipleSites=False,
-        meterReadingExportPeriods=[],
-        smartCharging={},
-    )
 
 
 def local_midnight():
@@ -367,15 +340,11 @@ async def test_unload_entry_cancels_update_timers(
 # --------------------------------------------------------------------------
 
 
-def test_tz_name_returns_key_for_zoneinfo():
-    """A ZoneInfo instance (e.g. Home Assistant's configured time zone) returns its `.key`."""
+def test_tz_name_returns_key_for_zoneinfo_and_falls_back_to_utc_for_datetime_timezone_utc():
+    """A ZoneInfo returns its `.key`; datetime.timezone.utc (no `.key` attribute) falls back to "UTC", not a crash."""
     from zoneinfo import ZoneInfo
 
     assert sensor._tz_name(ZoneInfo("Europe/Amsterdam")) == "Europe/Amsterdam"
-
-
-def test_tz_name_falls_back_to_utc_for_datetime_timezone_utc():
-    """datetime.timezone.utc (no `.key` attribute) falls back to the literal "UTC", not a crash."""
     assert sensor._tz_name(dt_util.UTC) == "UTC"
 
 
@@ -768,35 +737,32 @@ def test_next_price_returns_none_for_empty_price_data():
     assert sensor._next_price(price_data) is None
 
 
-def test_next_price_60_minute_slots_returns_next_hour_not_current_hour(freezer):
-    """With 60-minute slots, _next_price must return the next hour, not the current (up to 45-minute-stale) hour.
-
-    Regression test for elec_next using PriceData.next_quarter_hour (now + 15
-    minutes), which pointed at the current hour's slot for the first 45
-    minutes of every hour when slots are 60 minutes long.
-    """
+@pytest.mark.parametrize(
+    "resolution_minutes, start_hour, start_minute, expected_next_from",
+    [
+        # 60-minute slots: must return the next hour, not the current (up to
+        # 45-minute-stale) hour. Regression test for elec_next using
+        # PriceData.next_quarter_hour (now + 15 minutes), which pointed at
+        # the current hour's slot for the first 45 minutes of every hour.
+        (60, 9, 0, datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)),
+        # 15-minute slots: the next quarter-hour slot, matching old behaviour.
+        (15, 9, 45, datetime(2026, 1, 15, 10, 15, tzinfo=timezone.utc)),
+    ],
+    ids=["60_minute_slots", "15_minute_slots"],
+)
+def test_next_price_returns_the_next_slot_for_the_slot_resolution(
+    freezer, resolution_minutes, start_hour, start_minute, expected_next_from
+):
+    """_next_price returns the slot right after "now", whatever the slots' own resolution."""
     freezer.move_to("2026-01-15 10:07:00+00:00")
-    start = datetime(2026, 1, 15, 9, 0, tzinfo=timezone.utc)
-    price_data = build_price_data(start, [0.10, 0.20, 0.30], "electricity", resolution_minutes=60)
+    start = datetime(2026, 1, 15, start_hour, start_minute, tzinfo=timezone.utc)
+    price_data = build_price_data(start, [0.10, 0.20, 0.30], "electricity", resolution_minutes=resolution_minutes)
 
     next_price = sensor._next_price(price_data)
 
     assert next_price is not None
     assert next_price.total == pytest.approx(0.30)
-    assert next_price.date_from == datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
-
-
-def test_next_price_15_minute_slots_returns_next_quarter_hour(freezer):
-    """With 15-minute slots, _next_price returns the next quarter-hour slot, matching the old behaviour."""
-    freezer.move_to("2026-01-15 10:07:00+00:00")
-    start = datetime(2026, 1, 15, 9, 45, tzinfo=timezone.utc)
-    price_data = build_price_data(start, [0.10, 0.20, 0.30], "electricity", resolution_minutes=15)
-
-    next_price = sensor._next_price(price_data)
-
-    assert next_price is not None
-    assert next_price.total == pytest.approx(0.30)
-    assert next_price.date_from == datetime(2026, 1, 15, 10, 15, tzinfo=timezone.utc)
+    assert next_price.date_from == expected_next_from
 
 
 async def test_elec_next_sensor_uses_next_hour_with_60_minute_slots(
@@ -891,12 +857,29 @@ FROM_TIME_KEYS = (
 )
 
 
-async def test_prices_attribute_has_zero_utc_offset_by_default(
-    hass, mock_frank_energie_class, config_entry, freezer
+@pytest.mark.parametrize(
+    "options, freeze_time, expected_offset",
+    [
+        (None, "2026-01-15 10:00:00+01:00", timedelta(0)),
+        ({const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}, "2026-01-15 10:00:00+01:00",
+         timedelta(hours=1)),
+        ({const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}, "2026-07-15 10:00:00+02:00",
+         timedelta(hours=2)),
+    ],
+    ids=["utc_default", "home_assistant_winter", "home_assistant_summer"],
+)
+async def test_prices_attribute_offset_follows_prices_timezone_option(
+    hass, mock_frank_energie_class, config_entry, freezer, options, freeze_time, expected_offset
 ):
-    """With no prices_timezone option set (legacy entry default), prices['from'/'till'] have utcoffset 0."""
+    """The "prices" attribute's from/till utcoffset follows prices_timezone: UTC by default, else the HA tz offset.
+
+    With "home_assistant" that means +01:00 in winter (CET) and +02:00 in
+    summer (CEST) for Europe/Amsterdam.
+    """
     await hass.config.async_set_time_zone("Europe/Amsterdam")
-    freezer.move_to("2026-01-15 10:00:00+01:00")
+    freezer.move_to(freeze_time)
+    if options is not None:
+        hass.config_entries.async_update_entry(config_entry, options=options)
     install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[], tomorrow_gas=[])
 
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -905,49 +888,8 @@ async def test_prices_attribute_has_zero_utc_offset_by_default(
     prices = state_for_key(hass, config_entry, "elec_markup").attributes["prices"]
     assert prices
     for slot in prices:
-        assert slot["from"].utcoffset() == timedelta(0)
-        assert slot["till"].utcoffset() == timedelta(0)
-
-
-async def test_prices_attribute_uses_amsterdam_winter_offset_with_home_assistant_option(
-    hass, mock_frank_energie_class, config_entry, freezer
-):
-    """With the "home_assistant" option, prices use the HA tz offset: +01:00 in winter (Europe/Amsterdam, CET)."""
-    await hass.config.async_set_time_zone("Europe/Amsterdam")
-    freezer.move_to("2026-01-15 10:00:00+01:00")
-    hass.config_entries.async_update_entry(
-        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
-    )
-    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[], tomorrow_gas=[])
-
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    prices = state_for_key(hass, config_entry, "elec_markup").attributes["prices"]
-    assert prices
-    for slot in prices:
-        assert slot["from"].utcoffset() == timedelta(hours=1)
-        assert slot["till"].utcoffset() == timedelta(hours=1)
-
-
-async def test_prices_attribute_uses_amsterdam_summer_offset_with_home_assistant_option(
-    hass, mock_frank_energie_class, config_entry, freezer
-):
-    """With the "home_assistant" option, prices use +02:00 in summer (Europe/Amsterdam, CEST)."""
-    await hass.config.async_set_time_zone("Europe/Amsterdam")
-    freezer.move_to("2026-07-15 10:00:00+02:00")
-    hass.config_entries.async_update_entry(
-        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
-    )
-    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[], tomorrow_gas=[])
-
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    prices = state_for_key(hass, config_entry, "elec_markup").attributes["prices"]
-    assert prices
-    for slot in prices:
-        assert slot["from"].utcoffset() == timedelta(hours=2)
+        assert slot["from"].utcoffset() == expected_offset
+        assert slot["till"].utcoffset() == expected_offset
 
 
 async def test_changing_prices_timezone_via_options_flow_updates_prices_notation_without_restart(
@@ -982,10 +924,13 @@ async def test_changing_prices_timezone_via_options_flow_updates_prices_notation
     assert [s["till"] for s in utc_prices] == [s["till"] for s in ha_prices]
 
 
-async def test_from_time_attributes_have_zero_utc_offset_by_default(
+async def test_from_time_attributes_default_to_utc_then_follow_home_assistant_timezone_with_same_instant(
     hass, mock_frank_energie_class, config_entry, freezer
 ):
-    """With no prices_timezone option set, from_time attributes (today/tomorrow/next/upcoming) have utcoffset 0."""
+    """from_time attributes have utcoffset 0 by default; with "home_assistant" they use the HA tz offset instead.
+
+    Both notations represent the same instant.
+    """
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     freezer.move_to("2026-01-15 10:00:00+01:00")
     install_public_prices(
@@ -995,29 +940,13 @@ async def test_from_time_attributes_have_zero_utc_offset_by_default(
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
+    utc_from_times = {}
     for key in FROM_TIME_KEYS:
         state = state_for_key(hass, config_entry, key)
         assert state is not None, f"expected an entity for key={key}"
         from_time = state.attributes["from_time"]
         assert from_time.utcoffset() == timedelta(0), f"{key}: expected utc offset 0, got {from_time.utcoffset()}"
-
-
-async def test_from_time_attributes_use_home_assistant_timezone_with_same_instant(
-    hass, mock_frank_energie_class, config_entry, freezer
-):
-    """With "home_assistant", from_time attributes use the HA tz offset, but represent the same instant as "utc"."""
-    await hass.config.async_set_time_zone("Europe/Amsterdam")
-    freezer.move_to("2026-01-15 10:00:00+01:00")
-    install_public_prices(
-        mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[0.3] * 96, tomorrow_gas=[1.2] * 96
-    )
-
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    utc_from_times = {
-        key: state_for_key(hass, config_entry, key).attributes["from_time"] for key in FROM_TIME_KEYS
-    }
+        utc_from_times[key] = from_time
 
     hass.config_entries.async_update_entry(
         config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
