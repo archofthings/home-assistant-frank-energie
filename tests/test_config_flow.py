@@ -151,9 +151,9 @@ async def test_login_network_error_shows_cannot_connect(hass, enable_custom_inte
 # --------------------------------------------------------------------------
 # Reauthenticating with a different account is rejected outright (standard HA
 # pattern): the entry must be left completely untouched, and the user is
-# pointed at adding the other account as a new integration instead (see
-# commit b1fd26e for the earlier, since-reverted approach of dropping
-# site_reference and accepting the account change).
+# pointed at adding the other account as a new integration instead. An
+# earlier approach accepted the account change and only dropped
+# site_reference; that caused duplicate entries and stale unique IDs.
 # --------------------------------------------------------------------------
 
 async def test_reauth_same_account_different_case_and_whitespace_keeps_site_reference(
