@@ -14,6 +14,7 @@ from python_frank_energie.models import DeliverySite
 from .const import CONF_COORDINATOR, DOMAIN
 from .coordinator import FrankEnergieCoordinator
 from .services import async_setup_services
+from .sites import build_site_title, discover_in_delivery_sites
 
 PLATFORMS = [Platform.SENSOR]
 
@@ -26,17 +27,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
-def _build_site_title(site: DeliverySite) -> str | None:
-    """Build a config entry title from a delivery site's address."""
-    if site.address is None:
-        return None
-
-    title = f"{site.address.street} {site.address.houseNumber}"
-    if site.address.houseNumberAddition is not None:
-        title += f" {site.address.houseNumberAddition}"
-    return title
-
-
 async def _async_discover_site(api: FrankEnergie) -> DeliverySite:
     """Find the first delivery site that is currently 'IN_DELIVERY'."""
     try:
@@ -47,9 +37,7 @@ async def _async_discover_site(api: FrankEnergie) -> DeliverySite:
         # Covers RequestException, NetworkError and any other library error.
         raise ConfigEntryNotReady("No suitable sites found for this account") from ex
 
-    delivery_sites = [
-        site for site in user_sites.deliverySites if site is not None and site.status == "IN_DELIVERY"
-    ]
+    delivery_sites = discover_in_delivery_sites(user_sites)
 
     if len(delivery_sites) == 0:
         raise ConfigEntryNotReady("No suitable sites found for this account")
@@ -75,7 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.config_entries.async_update_entry(entry, data={**entry.data, "site_reference": site.reference})
 
         # Update title
-        title = _build_site_title(site)
+        title = build_site_title(site)
         if title is not None:
             hass.config_entries.async_update_entry(entry, title=title)
 

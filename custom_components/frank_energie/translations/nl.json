@@ -3,7 +3,10 @@
         "abort": {
             "already_configured": "Account is al toegevoegd",
             "reauth_successful": "Opnieuw inloggen gelukt",
-            "wrong_account": "Je bent ingelogd met een ander account dan voor deze integratie is ingesteld. Voeg het andere account toe als nieuwe Frank Energie-integratie."
+            "wrong_account": "Je bent ingelogd met een ander account dan voor deze integratie is ingesteld. Voeg het andere account toe als nieuwe Frank Energie-integratie.",
+            "no_sites": "Er is geen actief leveringsadres gevonden voor dit account.",
+            "reconfigure_successful": "Herconfigureren gelukt",
+            "reconfigure_not_supported": "Dit item is niet ingelogd, dus er is geen adres om te kiezen. Herconfigureren is alleen beschikbaar voor items met een Frank Energie-account."
         },
         "error": {
             "cannot_connect": "Verbinden mislukt, probeer het opnieuw.",
@@ -23,6 +26,18 @@
                 },
                 "title": "Wil je inloggen bij Frank Energie?",
                 "description": "Inloggen is niet nodig om deze integratie te kunnen gebruiken maar biedt wel de mogelijkheid extra gegevens op te halen."
+            },
+            "site": {
+                "title": "Kies je adres",
+                "data": {
+                    "site_reference": "Adres"
+                }
+            },
+            "reconfigure": {
+                "title": "Kies je adres",
+                "data": {
+                    "site_reference": "Adres"
+                }
             }
         }
     },

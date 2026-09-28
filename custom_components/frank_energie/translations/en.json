@@ -3,7 +3,10 @@
         "abort": {
             "already_configured": "Account is already configured",
             "reauth_successful": "Re-authentication was successful",
-            "wrong_account": "The account you logged in with differs from the one configured for this entry. Add the other account as a new Frank Energie integration instead."
+            "wrong_account": "The account you logged in with differs from the one configured for this entry. Add the other account as a new Frank Energie integration instead.",
+            "no_sites": "No active delivery address was found for this account.",
+            "reconfigure_successful": "Reconfiguration was successful",
+            "reconfigure_not_supported": "This entry is not signed in, so there is no address to choose. Reconfigure is only available for entries with a Frank Energie account."
         },
         "error": {
             "cannot_connect": "Failed to connect, please try again.",
@@ -23,6 +26,18 @@
                 },
                 "title": "Do you want to sign in to Frank Energie?",
                 "description": "Signing in is not required for obtaining energy price data but will add additional sensors specific to your account."
+            },
+            "site": {
+                "title": "Choose your address",
+                "data": {
+                    "site_reference": "Address"
+                }
+            },
+            "reconfigure": {
+                "title": "Choose your address",
+                "data": {
+                    "site_reference": "Address"
+                }
             }
         }
     },
