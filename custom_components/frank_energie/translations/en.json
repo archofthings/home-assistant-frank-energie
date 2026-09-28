@@ -41,6 +41,25 @@
             }
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Time zone for price times",
+                "description": "Choose the notation used for the 'from'/'till' times in the price sensors' attributes and the get_prices action. This only changes how those times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting.",
+                "data": {
+                    "prices_timezone": "Time zone for price times"
+                }
+            }
+        }
+    },
+    "selector": {
+        "prices_timezone": {
+            "options": {
+                "home_assistant": "Home Assistant's time zone",
+                "utc": "UTC"
+            }
+        }
+    },
     "services": {
         "get_prices": {
             "name": "Get prices",

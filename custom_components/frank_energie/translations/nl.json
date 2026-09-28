@@ -41,6 +41,25 @@
             }
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Tijdzone voor prijstijden",
+                "description": "Kies de notatie voor de 'van'/'tot'-tijden in de attributen van de prijssensoren en de actie get_prices. Dit verandert alleen hoe die tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt.",
+                "data": {
+                    "prices_timezone": "Tijdzone voor prijstijden"
+                }
+            }
+        }
+    },
+    "selector": {
+        "prices_timezone": {
+            "options": {
+                "home_assistant": "Tijdzone van Home Assistant",
+                "utc": "UTC"
+            }
+        }
+    },
     "services": {
         "get_prices": {
             "name": "Prijzen ophalen",

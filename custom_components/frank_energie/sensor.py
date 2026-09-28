@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -70,7 +71,7 @@ class FrankEnergieEntityDescription(SensorEntityDescription):
     authenticated: bool = False
     service_name: str | None = SERVICE_NAME_PRICES
     value_fn: Callable[[dict], StateType] = None
-    attr_fn: Callable[[dict], dict[str, StateType | list]] = lambda _: {}
+    attr_fn: Callable[[dict, ZoneInfo], dict[str, StateType | list]] = lambda _data, _tz: {}
 
 
 SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
@@ -81,7 +82,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].current_hour, "total"),
-        attr_fn=lambda data: {"prices": data[DATA_ELECTRICITY].asdict("total")},
+        attr_fn=lambda data, tz: {"prices": data[DATA_ELECTRICITY].asdict("total", timezone=tz.key)},
     ),
     FrankEnergieEntityDescription(
         key="elec_market",
@@ -90,7 +91,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].current_hour, "market_price"),
-        attr_fn=lambda data: {"prices": data[DATA_ELECTRICITY].asdict("market_price")},
+        attr_fn=lambda data, tz: {"prices": data[DATA_ELECTRICITY].asdict("market_price", timezone=tz.key)},
     ),
     FrankEnergieEntityDescription(
         key="elec_tax",
@@ -99,8 +100,8 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].current_hour, "market_price_with_tax"),
-        attr_fn=lambda data: {
-            "prices": data[DATA_ELECTRICITY].asdict("market_price_with_tax")
+        attr_fn=lambda data, tz: {
+            "prices": data[DATA_ELECTRICITY].asdict("market_price_with_tax", timezone=tz.key)
         },
     ),
     FrankEnergieEntityDescription(
@@ -137,7 +138,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_GAS].current_hour, "total"),
-        attr_fn=lambda data: {"prices": data[DATA_GAS].asdict("total")},
+        attr_fn=lambda data, tz: {"prices": data[DATA_GAS].asdict("total", timezone=tz.key)},
     ),
     FrankEnergieEntityDescription(
         key="gas_market",
@@ -146,7 +147,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_GAS].current_hour, "market_price"),
-        attr_fn=lambda data: {"prices": data[DATA_GAS].asdict("market_price")},
+        attr_fn=lambda data, tz: {"prices": data[DATA_GAS].asdict("market_price", timezone=tz.key)},
     ),
     FrankEnergieEntityDescription(
         key="gas_tax",
@@ -155,7 +156,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_GAS].current_hour, "market_price_with_tax"),
-        attr_fn=lambda data: {"prices": data[DATA_GAS].asdict("market_price_with_tax")},
+        attr_fn=lambda data, tz: {"prices": data[DATA_GAS].asdict("market_price_with_tax", timezone=tz.key)},
     ),
     FrankEnergieEntityDescription(
         key="gas_tax_vat",
@@ -191,8 +192,10 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_GAS].today_min, "total"),
-        attr_fn=lambda data: (
-            {ATTR_TIME: data[DATA_GAS].today_min.date_from} if data[DATA_GAS].today_min is not None else {}
+        attr_fn=lambda data, tz: (
+            {ATTR_TIME: data[DATA_GAS].today_min.date_from.astimezone(tz)}
+            if data[DATA_GAS].today_min is not None
+            else {}
         ),
     ),
     FrankEnergieEntityDescription(
@@ -202,8 +205,10 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_GAS].today_max, "total"),
-        attr_fn=lambda data: (
-            {ATTR_TIME: data[DATA_GAS].today_max.date_from} if data[DATA_GAS].today_max is not None else {}
+        attr_fn=lambda data, tz: (
+            {ATTR_TIME: data[DATA_GAS].today_max.date_from.astimezone(tz)}
+            if data[DATA_GAS].today_max is not None
+            else {}
         ),
     ),
     FrankEnergieEntityDescription(
@@ -213,8 +218,8 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].today_min, "total"),
-        attr_fn=lambda data: (
-            {ATTR_TIME: data[DATA_ELECTRICITY].today_min.date_from}
+        attr_fn=lambda data, tz: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].today_min.date_from.astimezone(tz)}
             if data[DATA_ELECTRICITY].today_min is not None
             else {}
         ),
@@ -226,8 +231,8 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].today_max, "total"),
-        attr_fn=lambda data: (
-            {ATTR_TIME: data[DATA_ELECTRICITY].today_max.date_from}
+        attr_fn=lambda data, tz: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].today_max.date_from.astimezone(tz)}
             if data[DATA_ELECTRICITY].today_max is not None
             else {}
         ),
@@ -247,8 +252,8 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].next_quarter_hour, "total"),
-        attr_fn=lambda data: (
-            {ATTR_TIME: data[DATA_ELECTRICITY].next_quarter_hour.date_from}
+        attr_fn=lambda data, tz: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].next_quarter_hour.date_from.astimezone(tz)}
             if data[DATA_ELECTRICITY].next_quarter_hour is not None
             else {}
         ),
@@ -268,8 +273,8 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].tomorrow_min, "total"),
-        attr_fn=lambda data: (
-            {ATTR_TIME: data[DATA_ELECTRICITY].tomorrow_min.date_from}
+        attr_fn=lambda data, tz: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].tomorrow_min.date_from.astimezone(tz)}
             if data[DATA_ELECTRICITY].tomorrow_min is not None
             else {}
         ),
@@ -281,8 +286,8 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].tomorrow_max, "total"),
-        attr_fn=lambda data: (
-            {ATTR_TIME: data[DATA_ELECTRICITY].tomorrow_max.date_from}
+        attr_fn=lambda data, tz: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].tomorrow_max.date_from.astimezone(tz)}
             if data[DATA_ELECTRICITY].tomorrow_max is not None
             else {}
         ),
@@ -294,8 +299,8 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].upcoming_min, "total"),
-        attr_fn=lambda data: (
-            {ATTR_TIME: data[DATA_ELECTRICITY].upcoming_min.date_from}
+        attr_fn=lambda data, tz: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].upcoming_min.date_from.astimezone(tz)}
             if data[DATA_ELECTRICITY].upcoming_min is not None
             else {}
         ),
@@ -307,8 +312,8 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _price_attr(data[DATA_ELECTRICITY].upcoming_max, "total"),
-        attr_fn=lambda data: (
-            {ATTR_TIME: data[DATA_ELECTRICITY].upcoming_max.date_from}
+        attr_fn=lambda data, tz: (
+            {ATTR_TIME: data[DATA_ELECTRICITY].upcoming_max.date_from.astimezone(tz)}
             if data[DATA_ELECTRICITY].upcoming_max is not None
             else {}
         ),
@@ -334,7 +339,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
             if data[DATA_MONTH_SUMMARY] is not None
             else None
         ),
-        attr_fn=lambda data: (
+        attr_fn=lambda data, tz: (
             {"Last update": data[DATA_MONTH_SUMMARY].lastMeterReadingDate}
             if data[DATA_MONTH_SUMMARY] is not None
             else {}
@@ -353,7 +358,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
             if data[DATA_MONTH_SUMMARY] is not None
             else None
         ),
-        attr_fn=lambda data: (
+        attr_fn=lambda data, tz: (
             {"Last update": data[DATA_MONTH_SUMMARY].lastMeterReadingDate}
             if data[DATA_MONTH_SUMMARY] is not None
             else {}
@@ -384,7 +389,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
             if data[DATA_INVOICES] and data[DATA_INVOICES].previous_period_invoice
             else None
         ),
-        attr_fn=lambda data: (
+        attr_fn=lambda data, tz: (
             {
                 "Start date": data[DATA_INVOICES].previous_period_invoice.StartDate,
                 "Description": data[DATA_INVOICES].previous_period_invoice.PeriodDescription,
@@ -406,7 +411,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
             if data[DATA_INVOICES] and data[DATA_INVOICES].current_period_invoice
             else None
         ),
-        attr_fn=lambda data: (
+        attr_fn=lambda data, tz: (
             {
                 "Start date": data[DATA_INVOICES].current_period_invoice.StartDate,
                 "Description": data[DATA_INVOICES].current_period_invoice.PeriodDescription,
@@ -428,7 +433,7 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
             if data[DATA_INVOICES] and data[DATA_INVOICES].upcoming_period_invoice
             else None
         ),
-        attr_fn=lambda data: (
+        attr_fn=lambda data, tz: (
             {
                 "Start date": data[DATA_INVOICES].upcoming_period_invoice.StartDate,
                 "Description": data[DATA_INVOICES].upcoming_period_invoice.PeriodDescription,
@@ -535,7 +540,7 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
         try:
-            return self.entity_description.attr_fn(self.coordinator.data)
+            return self.entity_description.attr_fn(self.coordinator.data, self.coordinator.prices_tzinfo)
         except _NO_DATA_ERRORS:
             return {}
 

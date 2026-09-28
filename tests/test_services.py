@@ -85,6 +85,11 @@ async def test_get_prices_item_keys_and_value_mapping(hass, mock_frank_energie_c
     """Each price item exposes the documented keys, mapped from the right Price fields, rounded to 5 decimals."""
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     freezer.move_to("2026-01-15 10:00:00+01:00")
+    # config_entry has no options, so prices_timezone defaults to "utc"; opt into
+    # "home_assistant" explicitly to test the local (Europe/Amsterdam) notation here.
+    hass.config_entries.async_update_entry(
+        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
 
     # price_dicts() derives marketPrice/marketPriceTax/sourcingMarkupPrice/energyTaxPrice from
     # the input price and rounds each to 6 decimals; the service then rounds each field to 5.
@@ -134,6 +139,11 @@ async def test_get_prices_start_local_iso_time_has_amsterdam_offset(
     """ISO local times use the Europe/Amsterdam offset, not UTC."""
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     freezer.move_to("2026-01-15 10:00:00+01:00")  # CET, winter: +01:00
+    # config_entry has no options, so prices_timezone defaults to "utc"; opt into
+    # "home_assistant" explicitly to test the local (Europe/Amsterdam) notation here.
+    hass.config_entries.async_update_entry(
+        config_entry, options={const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    )
 
     install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])
 

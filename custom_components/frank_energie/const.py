@@ -10,6 +10,10 @@ COMPONENT_TITLE = "Frank Energie"
 CONF_COORDINATOR = "coordinator"
 ATTR_TIME = "from_time"
 
+CONF_PRICES_TIMEZONE = "prices_timezone"
+PRICES_TIMEZONE_HOME_ASSISTANT = "home_assistant"
+PRICES_TIMEZONE_UTC = "utc"
+
 DATA_ELECTRICITY = "electricity"
 DATA_GAS = "gas"
 DATA_MONTH_SUMMARY = "month_summary"

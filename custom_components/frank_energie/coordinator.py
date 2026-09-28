@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 from typing import TypedDict
+from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -21,7 +22,15 @@ from python_frank_energie.exceptions import (
 )
 from python_frank_energie.models import PriceData, MonthSummary, Invoices, MarketPrices
 
-from .const import DATA_ELECTRICITY, DATA_GAS, DATA_MONTH_SUMMARY, DATA_INVOICES
+from .const import (
+    CONF_PRICES_TIMEZONE,
+    DATA_ELECTRICITY,
+    DATA_GAS,
+    DATA_MONTH_SUMMARY,
+    DATA_INVOICES,
+    PRICES_TIMEZONE_HOME_ASSISTANT,
+    PRICES_TIMEZONE_UTC,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -200,6 +209,24 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             # E.g. mismatched energy types/resolutions between today and tomorrow.
             LOGGER.warning("Could not merge today's and tomorrow's prices (%s), using today's prices only", ex)
             return today
+
+    @property
+    def prices_timezone(self) -> str:
+        """Return the effective prices_timezone option ("home_assistant" or "utc").
+
+        Entries created since this option was introduced default to
+        "home_assistant" at creation time. Existing entries without the
+        option (pre-dating this feature) are treated as "utc" here, so they
+        keep their historical UTC notation unless the user opts in.
+        """
+        return self.entry.options.get(CONF_PRICES_TIMEZONE, PRICES_TIMEZONE_UTC)
+
+    @property
+    def prices_tzinfo(self) -> ZoneInfo:
+        """Return the ZoneInfo to localize price times with, per the prices_timezone option."""
+        if self.prices_timezone == PRICES_TIMEZONE_HOME_ASSISTANT:
+            return ZoneInfo(self.hass.config.time_zone)
+        return ZoneInfo("UTC")
 
     @property
     def user_country(self) -> str | None:

@@ -64,6 +64,7 @@ def _diagnostics_coordinator(coordinator: FrankEnergieCoordinator) -> dict[str, 
         "last_exception": _serialize_exception(coordinator.last_exception),
         "update_interval": update_interval.total_seconds() if update_interval is not None else None,
         "user_country": coordinator.user_country,
+        "prices_timezone": coordinator.prices_timezone,
     }
 
 

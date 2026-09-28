@@ -7,7 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, OptionsFlow, OptionsFlowWithReload
 from homeassistant.const import (
     CONF_ACCESS_TOKEN,
     CONF_AUTHENTICATION,
@@ -15,6 +15,7 @@ from homeassistant.const import (
     CONF_TOKEN,
     CONF_USERNAME,
 )
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -22,7 +23,7 @@ from python_frank_energie import FrankEnergie
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, FrankEnergieException
 from python_frank_energie.models import DeliverySite
 
-from .const import DOMAIN
+from .const import CONF_PRICES_TIMEZONE, DOMAIN, PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC
 from .sites import build_site_title, discover_in_delivery_sites
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,6 +60,21 @@ def _merge_reauth_data(entry_data: Mapping[str, Any], new_data: dict, *, drop_si
         base.pop(SITE_REFERENCE, None)
 
     return {**base, **new_data}
+
+
+def _prices_timezone_schema(default: str) -> vol.Schema:
+    """Build the options flow schema for the prices_timezone field."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_PRICES_TIMEZONE, default=default): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key=CONF_PRICES_TIMEZONE,
+                )
+            )
+        }
+    )
 
 
 def _site_selection_schema(sites: list[DeliverySite], default: str | None = None) -> vol.Schema:
@@ -289,5 +305,30 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
 
         return self.async_create_entry(
-            title=title or data.get(CONF_USERNAME, "Frank Energie"), data=data
+            title=title or data.get(CONF_USERNAME, "Frank Energie"),
+            data=data,
+            options={CONF_PRICES_TIMEZONE: PRICES_TIMEZONE_HOME_ASSISTANT},
         )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Get the options flow for this handler."""
+        return OptionsFlowHandler()
+
+
+class OptionsFlowHandler(OptionsFlowWithReload):
+    """Handle the Frank Energie options flow (currently just the prices_timezone field).
+
+    Inherits from OptionsFlowWithReload so a changed option automatically
+    reloads the config entry; do not also register an update listener in
+    async_setup_entry for this (they cannot both be used at once).
+    """
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Manage the single options step: choose the prices_timezone."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        default = self.config_entry.options.get(CONF_PRICES_TIMEZONE, PRICES_TIMEZONE_UTC)
+        return self.async_show_form(step_id="init", data_schema=_prices_timezone_schema(default))

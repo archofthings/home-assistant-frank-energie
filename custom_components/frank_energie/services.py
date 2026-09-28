@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
@@ -58,11 +59,11 @@ def _filter_slots(price_data: PriceData, start, end) -> list[Price]:
     ]
 
 
-def _serialize_price(price: Price) -> dict[str, Any]:
+def _serialize_price(price: Price, tz: ZoneInfo) -> dict[str, Any]:
     """Serialize a single Price slot for the get_prices service response."""
     return {
-        "start": dt_util.as_local(price.date_from).isoformat(),
-        "end": dt_util.as_local(price.date_till).isoformat(),
+        "start": price.date_from.astimezone(tz).isoformat(),
+        "end": price.date_till.astimezone(tz).isoformat(),
         "price": round(price.total, 5),
         "market_price": round(price.market_price, 5),
         "market_price_including_tax": round(price.market_price_with_tax, 5),
@@ -88,13 +89,14 @@ async def _async_get_prices(call: ServiceCall) -> ServiceResponse:
 
     coordinator = hass.data[DOMAIN][entry.entry_id][CONF_COORDINATOR]
     data = coordinator.data
+    tz = coordinator.prices_tzinfo
 
     electricity = _filter_slots(data[DATA_ELECTRICITY], start, end) if data else []
     gas = _filter_slots(data[DATA_GAS], start, end) if data else []
 
     return {
-        "electricity": [_serialize_price(price) for price in electricity],
-        "gas": [_serialize_price(price) for price in gas],
+        "electricity": [_serialize_price(price, tz) for price in electricity],
+        "gas": [_serialize_price(price, tz) for price in gas],
     }
 
 
