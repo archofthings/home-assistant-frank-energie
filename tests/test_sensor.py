@@ -630,3 +630,154 @@ async def test_no_current_slot_after_midnight_shows_unavailable_not_stale(
     # today_min/today_max must render (no exception), even with no data left.
     assert state_for_key(hass, config_entry, "elec_min").state == STATE_UNAVAILABLE
     assert state_for_key(hass, config_entry, "elec_max").state == STATE_UNAVAILABLE
+
+
+# --------------------------------------------------------------------------
+# New sensors: elec_next, elec_tomorrow_avg/min/max, elec_upcoming_min/max,
+# gas_tomorrow_avg (see commit bad4b3a, "Add upcoming and tomorrow price
+# sensors").
+# --------------------------------------------------------------------------
+
+NEW_SENSOR_KEYS = (
+    "elec_next",
+    "elec_tomorrow_avg",
+    "elec_tomorrow_min",
+    "elec_tomorrow_max",
+    "elec_upcoming_min",
+    "elec_upcoming_max",
+    "gas_tomorrow_avg",
+)
+
+
+def test_new_price_sensors_are_enabled_by_default():
+    """All 7 new sensors must be enabled by default (no opt-in required)."""
+    descriptions = {desc.key: desc for desc in sensor.SENSOR_TYPES}
+    for key in NEW_SENSOR_KEYS:
+        assert key in descriptions, f"missing sensor description for key={key}"
+        assert descriptions[key].entity_registry_enabled_default is not False, (
+            f"{key} must be enabled by default"
+        )
+
+
+async def test_new_price_sensors_with_today_and_tomorrow_data(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """With today and tomorrow data, the 7 new sensors report the right values and from_time."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")  # local slot index 40 (10:00-10:15) is "now"
+
+    electricity_today = [0.20] * 96
+    electricity_today[50] = 0.05  # a later-today slot: the lowest "upcoming" price
+    tomorrow_midnight = local_midnight() + timedelta(days=1)
+
+    electricity_tomorrow = price_generator(0.30, 0.02, count=96)
+    electricity_tomorrow[5] = 9.99  # tomorrow's highest price, also the highest "upcoming" price
+    gas_tomorrow = [1.75] * 48 + [1.23] * 48
+
+    install_public_prices(
+        mock_frank_energie_class,
+        electricity_today,
+        [1.0] * 96,
+        tomorrow_electricity=electricity_tomorrow,
+        tomorrow_gas=gas_tomorrow,
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # elec_next: the slot right after "now" (10:15-10:30, index 41).
+    next_state = state_for_key(hass, config_entry, "elec_next")
+    assert float(next_state.state) == pytest.approx(electricity_today[41])
+    expected_next_from = local_midnight() + timedelta(minutes=15 * 41)
+    assert next_state.attributes["from_time"] == expected_next_from
+
+    # elec_tomorrow_avg / gas_tomorrow_avg.
+    tomorrow_avg_state = state_for_key(hass, config_entry, "elec_tomorrow_avg")
+    assert float(tomorrow_avg_state.state) == pytest.approx(
+        sum(electricity_tomorrow) / len(electricity_tomorrow)
+    )
+    gas_tomorrow_avg_state = state_for_key(hass, config_entry, "gas_tomorrow_avg")
+    assert float(gas_tomorrow_avg_state.state) == pytest.approx(sum(gas_tomorrow) / len(gas_tomorrow))
+
+    # elec_tomorrow_min / elec_tomorrow_max.
+    tomorrow_min_state = state_for_key(hass, config_entry, "elec_tomorrow_min")
+    assert float(tomorrow_min_state.state) == pytest.approx(min(electricity_tomorrow))
+    tomorrow_max_state = state_for_key(hass, config_entry, "elec_tomorrow_max")
+    assert float(tomorrow_max_state.state) == pytest.approx(max(electricity_tomorrow))
+    max_index = electricity_tomorrow.index(max(electricity_tomorrow))
+    assert tomorrow_max_state.attributes["from_time"] == tomorrow_midnight + timedelta(minutes=15 * max_index)
+
+    # elec_upcoming_min/max span both the rest of today and all of tomorrow.
+    upcoming_min_state = state_for_key(hass, config_entry, "elec_upcoming_min")
+    assert float(upcoming_min_state.state) == pytest.approx(0.05)
+    assert upcoming_min_state.attributes["from_time"] == local_midnight() + timedelta(minutes=15 * 50)
+
+    upcoming_max_state = state_for_key(hass, config_entry, "elec_upcoming_max")
+    assert float(upcoming_max_state.state) == pytest.approx(9.99)
+    assert upcoming_max_state.attributes["from_time"] == tomorrow_midnight + timedelta(minutes=15 * 5)
+
+
+async def test_new_price_sensors_without_tomorrow_data(hass, mock_frank_energie_class, config_entry, freezer, caplog):
+    """Without tomorrow data, tomorrow sensors are unavailable (no errors); next/upcoming still work from today."""
+    caplog.set_level(logging.DEBUG)
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+
+    electricity_today = [0.20] * 96
+    electricity_today[41] = 0.42  # next slot after "now"
+    electricity_today[80] = 0.01  # a later-today slot: the lowest upcoming price
+
+    install_public_prices(
+        mock_frank_energie_class,
+        electricity_today,
+        [1.0] * 96,
+        tomorrow_electricity=[],
+        tomorrow_gas=[],
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    for key in ("elec_tomorrow_avg", "elec_tomorrow_min", "elec_tomorrow_max", "gas_tomorrow_avg"):
+        state = state_for_key(hass, config_entry, key)
+        assert state is not None, f"expected an entity for key={key}"
+        assert state.state == STATE_UNAVAILABLE, f"{key} expected unavailable, got {state.state!r}"
+
+    next_state = state_for_key(hass, config_entry, "elec_next")
+    assert float(next_state.state) == pytest.approx(0.42)
+
+    upcoming_min_state = state_for_key(hass, config_entry, "elec_upcoming_min")
+    assert float(upcoming_min_state.state) == pytest.approx(0.01)
+    upcoming_max_state = state_for_key(hass, config_entry, "elec_upcoming_max")
+    assert upcoming_max_state.state != STATE_UNAVAILABLE
+
+    errors = [
+        record
+        for record in caplog.records
+        if record.name.startswith("custom_components.frank_energie") and record.levelno >= logging.ERROR
+    ]
+    assert not errors, f"unexpected error log(s) from the sensor platform: {errors}"
+
+
+async def test_new_price_sensors_late_in_day_next_and_upcoming_unavailable(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """Late in the day, with only today's data, next/upcoming sensors become unavailable once no slots remain."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 23:50:00+01:00")  # inside the last slot (23:45-00:00)
+
+    install_public_prices(
+        mock_frank_energie_class,
+        [0.20] * 96,
+        [1.0] * 96,
+        tomorrow_electricity=[],
+        tomorrow_gas=[],
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    for key in ("elec_next", "elec_upcoming_min", "elec_upcoming_max"):
+        state = state_for_key(hass, config_entry, key)
+        assert state is not None, f"expected an entity for key={key}"
+        assert state.state == STATE_UNAVAILABLE, f"{key} expected unavailable, got {state.state!r}"
