@@ -1,4 +1,4 @@
-"""Config flow for Picnic integration."""
+"""Config flow for the Frank Energie integration."""
 from __future__ import annotations
 
 import logging
