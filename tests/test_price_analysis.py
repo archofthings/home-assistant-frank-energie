@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import timedelta, timezone
 from unittest.mock import AsyncMock
 
+import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import State
 from homeassistant.helpers import entity_registry as er
@@ -41,7 +42,14 @@ def timestamp_state(value):
 
 
 async def setup_price_analysis_entry(
-    hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch, *, with_tomorrow: bool = False
+    hass,
+    enable_custom_integrations,
+    mock_frank_energie_class,
+    freezer,
+    monkeypatch,
+    *,
+    with_tomorrow: bool = False,
+    prices_timezone: str = const.PRICES_TIMEZONE_HOME_ASSISTANT,
 ) -> MockConfigEntry:
     """Set up a Frank Energie entry with a known price pattern, thresholds and a fake solar forecast.
 
@@ -99,7 +107,7 @@ async def setup_price_analysis_entry(
         domain=const.DOMAIN,
         data={"site_reference": "site-1"},
         options={
-            const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+            const.CONF_PRICES_TIMEZONE: prices_timezone,
             const.CONF_CHEAP_PRICE_THRESHOLD: 0.15,
             const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.35,
             const.CONF_CHEAPEST_PERIOD_MINUTES: 30,
@@ -239,3 +247,88 @@ async def test_next_cheapest_period_sensor(
     assert state.state == timestamp_state(expected_start)
     assert state.attributes["average_price"] == 0.1
     assert state.attributes["minutes"] == 30
+
+
+async def test_next_cheapest_period_crosses_midnight(
+    hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch
+):
+    """next_cheapest_period can span today's last slot and tomorrow's first slot(s)."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 23:50:00+01:00")
+
+    electricity_today = [0.20] * 96
+    electricity_today[95] = 0.05  # 23:45-00:00 local, the last slot of today
+
+    electricity_tomorrow = [0.20] * 96
+    electricity_tomorrow[0] = 0.05  # 00:00-00:15 local, the first slot of tomorrow
+
+    install_prices(
+        mock_frank_energie_class,
+        electricity_today,
+        [1.0] * 96,
+        tomorrow_electricity=electricity_tomorrow,
+        tomorrow_gas=[1.0] * 96,
+        resolution_minutes=15,
+    )
+
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        options={
+            const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+            const.CONF_CHEAP_PRICE_THRESHOLD: 0.15,
+            const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.35,
+            const.CONF_CHEAPEST_PERIOD_MINUTES: 30,
+        },
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, entry, "sensor", "next_cheapest_period")
+
+    today_midnight = local_midnight()
+    expected_start = today_midnight + timedelta(minutes=15 * 95)
+    expected_end = today_midnight + timedelta(days=1, minutes=15)
+
+    assert state.state == timestamp_state(expected_start)
+    assert state.attributes["end"] == expected_end
+    assert state.attributes["average_price"] == pytest.approx(0.05)
+    assert state.attributes["minutes"] == 30
+
+
+@pytest.mark.parametrize(
+    "prices_timezone, expected_offset",
+    [
+        (const.PRICES_TIMEZONE_UTC, timedelta(0)),
+        (const.PRICES_TIMEZONE_HOME_ASSISTANT, timedelta(hours=1)),
+    ],
+    ids=["utc", "home_assistant"],
+)
+async def test_price_analysis_today_attribute_times_follow_prices_timezone_option(
+    hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch, prices_timezone, expected_offset
+):
+    """The cheapest_period start/end in price_analysis_today's attributes follow prices_timezone.
+
+    The frozen "now" (2026-01-15, Europe/Amsterdam) is in winter time (UTC+1),
+    so "home_assistant" localizes to a +1h offset while "utc" stays at +0h,
+    even though the underlying instant is identical either way.
+    """
+    entry = await setup_price_analysis_entry(
+        hass,
+        enable_custom_integrations,
+        mock_frank_energie_class,
+        freezer,
+        monkeypatch,
+        prices_timezone=prices_timezone,
+    )
+
+    state = state_for_key(hass, entry, "sensor", "price_analysis_today")
+
+    expected_start = local_midnight() + timedelta(minutes=15 * CHEAP_SLOT_1)
+    cheapest_period = state.attributes["cheapest_period"]
+
+    assert cheapest_period["start"] == expected_start
+    assert cheapest_period["start"].utcoffset() == expected_offset
