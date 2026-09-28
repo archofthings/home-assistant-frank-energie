@@ -705,3 +705,204 @@ async def test_today_value_error_with_previous_data_returns_stale_data(coordinat
 
     assert data is coordinator.data
     assert data[const.DATA_ELECTRICITY] is stale_electricity
+
+
+# --------------------------------------------------------------------------
+# 10. Retry the update once after a successful token renewal (see commit
+# 088606a, "Retry the update once after a successful token renewal").
+# --------------------------------------------------------------------------
+
+def _fake_renew_token(api, new_access_token="new-access-token", new_refresh_token="new-refresh-token"):
+    """Build a renew_token() side effect mirroring the real library's api._auth mutation."""
+    renewed = AsyncMock()
+    renewed.authToken = new_access_token
+    renewed.refreshToken = new_refresh_token
+
+    async def fake_renew_token():
+        api._auth = renewed
+        return renewed
+
+    return fake_renew_token
+
+
+async def test_auth_exception_retry_succeeds_returns_fresh_data(coordinator, api):
+    """AuthException on the first fetch, successful renewal, then a successful retry returns fresh data."""
+    today = dt_util.now().date()
+    tomorrow = today + timedelta(days=1)
+    today_prices = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    tomorrow_prices = build_market_prices(dt_util.now() + timedelta(days=1), [0.3] * 24, [1.1] * 24)
+
+    today_call_count = 0
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        nonlocal today_call_count
+        if start_date == today:
+            today_call_count += 1
+            if today_call_count == 1:
+                raise AuthException("token expired")
+            return today_prices
+        if start_date == tomorrow:
+            return tomorrow_prices
+        raise AssertionError(f"Unexpected date {start_date}")
+
+    api.prices.side_effect = prices_side_effect
+    api.renew_token.side_effect = _fake_renew_token(api)
+
+    data = await coordinator._async_update_data()
+
+    assert data is not None
+    assert len(data[const.DATA_ELECTRICITY].all) == 48
+    assert data[const.DATA_ELECTRICITY].all[0].total == pytest.approx(0.2)
+    api.renew_token.assert_awaited_once()
+    assert today_call_count == 2
+
+
+async def test_auth_exception_retry_fails_again_no_second_renewal_with_stale_data(coordinator, api):
+    """An AuthException on the retry itself must not trigger a second renewal; stale data is served instead."""
+    future = dt_util.now() + timedelta(hours=1)
+    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
+    stale_gas = build_price_data(future, [1.2] * 5, "gas")
+    coordinator.data = {
+        const.DATA_ELECTRICITY: stale_electricity,
+        const.DATA_GAS: stale_gas,
+        const.DATA_MONTH_SUMMARY: None,
+        const.DATA_INVOICES: None,
+    }
+
+    # Every prices() call raises, including the retry's.
+    api.prices.side_effect = AuthException("token expired")
+    api.renew_token.side_effect = _fake_renew_token(api)
+
+    data = await coordinator._async_update_data()
+
+    assert data is coordinator.data
+    assert data[const.DATA_ELECTRICITY] is stale_electricity
+    api.renew_token.assert_awaited_once()
+
+
+async def test_auth_exception_retry_fails_again_no_second_renewal_without_stale_data(coordinator, api):
+    """Same as above, but with no cached data: UpdateFailed is raised and renewal still only happens once."""
+    api.prices.side_effect = AuthException("token expired")
+    api.renew_token.side_effect = _fake_renew_token(api)
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    api.renew_token.assert_awaited_once()
+
+
+async def test_retry_user_error_raises_config_entry_auth_failed(coordinator, api):
+    """A 'user-error:' RequestException on the retry must be treated as an auth failure, not another renewal."""
+    today = dt_util.now().date()
+    today_call_count = 0
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        nonlocal today_call_count
+        if start_date == today:
+            today_call_count += 1
+            if today_call_count == 1:
+                raise AuthException("token expired")
+            raise RequestException("user-error:different-account")
+        return build_market_prices(dt_util.now() + timedelta(days=1), [0.3] * 24, [1.1] * 24)
+
+    api.prices.side_effect = prices_side_effect
+    api.renew_token.side_effect = _fake_renew_token(api)
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+    api.renew_token.assert_awaited_once()
+
+
+async def test_retry_network_error_with_stale_data_returns_stale_data(coordinator, api):
+    """A NetworkError on the retry must fall back to stale data, like the first attempt would."""
+    today = dt_util.now().date()
+    today_call_count = 0
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        nonlocal today_call_count
+        if start_date == today:
+            today_call_count += 1
+            if today_call_count == 1:
+                raise AuthException("token expired")
+            raise NetworkError("retry network unreachable")
+        return build_market_prices(dt_util.now() + timedelta(days=1), [0.3] * 24, [1.1] * 24)
+
+    api.prices.side_effect = prices_side_effect
+    api.renew_token.side_effect = _fake_renew_token(api)
+
+    future = dt_util.now() + timedelta(hours=1)
+    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
+    stale_gas = build_price_data(future, [1.2] * 5, "gas")
+    coordinator.data = {
+        const.DATA_ELECTRICITY: stale_electricity,
+        const.DATA_GAS: stale_gas,
+        const.DATA_MONTH_SUMMARY: None,
+        const.DATA_INVOICES: None,
+    }
+
+    data = await coordinator._async_update_data()
+
+    assert data is coordinator.data
+    assert data[const.DATA_ELECTRICITY] is stale_electricity
+    api.renew_token.assert_awaited_once()
+
+
+async def test_retry_network_error_without_stale_data_raises_update_failed(coordinator, api):
+    """A NetworkError on the retry with no cached data must raise UpdateFailed."""
+    today = dt_util.now().date()
+    today_call_count = 0
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        nonlocal today_call_count
+        if start_date == today:
+            today_call_count += 1
+            if today_call_count == 1:
+                raise AuthException("token expired")
+            raise NetworkError("retry network unreachable")
+        return build_market_prices(dt_util.now() + timedelta(days=1), [0.3] * 24, [1.1] * 24)
+
+    api.prices.side_effect = prices_side_effect
+    api.renew_token.side_effect = _fake_renew_token(api)
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    api.renew_token.assert_awaited_once()
+
+
+async def test_renew_token_network_error_does_not_retry_fetch(coordinator, api):
+    """If renew_token() itself fails with a non-auth error, _fetch_all() must not be retried."""
+    api.prices.side_effect = AuthException("token expired")
+    api.renew_token.side_effect = NetworkError("renewal network unreachable")
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    # Only the first attempt's call to today's prices, never a retry.
+    assert api.prices.await_count == 1
+    api.renew_token.assert_awaited_once()
+
+
+async def test_retry_success_persists_renewed_tokens(hass, entry, coordinator, api):
+    """Tokens renewed via renew_token() ahead of a successful retry are persisted, keeping site_reference."""
+    today = dt_util.now().date()
+    today_call_count = 0
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        nonlocal today_call_count
+        if start_date == today:
+            today_call_count += 1
+            if today_call_count == 1:
+                raise AuthException("token expired")
+            return build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+        return build_market_prices(dt_util.now() + timedelta(days=1), [0.3] * 24, [1.1] * 24)
+
+    api.prices.side_effect = prices_side_effect
+    api.renew_token.side_effect = _fake_renew_token(api, "retry-access-token", "retry-refresh-token")
+
+    await coordinator._async_update_data()
+
+    assert entry.data[CONF_ACCESS_TOKEN] == "retry-access-token"
+    assert entry.data[CONF_TOKEN] == "retry-refresh-token"
+    assert entry.data["site_reference"] == "site-1"
