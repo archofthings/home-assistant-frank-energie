@@ -907,5 +907,71 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
     await hass.async_block_till_done()
 
     assert result2["type"] == "create_entry"
-    assert entry.options == {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+    assert entry.options == {
+        const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+        const.CONF_CHEAP_PRICE_THRESHOLD: const.DEFAULT_CHEAP_PRICE_THRESHOLD,
+        const.CONF_EXPENSIVE_PRICE_THRESHOLD: const.DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
+        const.CONF_CHEAPEST_PERIOD_MINUTES: const.DEFAULT_CHEAPEST_PERIOD_MINUTES,
+        const.CONF_SOLAR_THRESHOLD_KWH: const.DEFAULT_SOLAR_THRESHOLD_KWH,
+    }
     assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_options_flow_rejects_cheap_threshold_not_below_expensive(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """Submitting cheap >= expensive re-shows the form with a thresholds_invalid error, without saving."""
+    entry = MockConfigEntry(domain=const.DOMAIN, data={"site_reference": "site-1"}, unique_id="frank_energie")
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC,
+            const.CONF_CHEAP_PRICE_THRESHOLD: 0.40,
+            const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.40,
+            const.CONF_CHEAPEST_PERIOD_MINUTES: 120,
+            const.CONF_SOLAR_THRESHOLD_KWH: 1.5,
+        },
+    )
+
+    assert result2["type"] == "form"
+    assert result2["step_id"] == "init"
+    assert result2["errors"] == {"base": "thresholds_invalid"}
+    assert const.CONF_CHEAP_PRICE_THRESHOLD not in entry.options
+
+
+async def test_options_flow_solar_forecast_entry_lists_entries_with_a_solar_forecast_platform(
+    hass, enable_custom_integrations, mock_frank_energie_class, monkeypatch
+):
+    """The solar_forecast_entry selector only lists entries whose domain provides a solar forecast platform."""
+    entry = MockConfigEntry(domain=const.DOMAIN, data={"site_reference": "site-1"}, unique_id="frank_energie")
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    solar_entry = MockConfigEntry(domain="fake_solar", title="My Roof", unique_id="solar-1")
+    solar_entry.add_to_hass(hass)
+    other_entry = MockConfigEntry(domain="fake_other", title="Not solar", unique_id="other-1")
+    other_entry.add_to_hass(hass)
+
+    async def fake_get_energy_platforms(_hass):
+        return {"fake_solar": AsyncMock(return_value={"wh_hours": {}})}
+
+    monkeypatch.setattr(
+        "homeassistant.components.energy.websocket_api.async_get_energy_platforms",
+        fake_get_energy_platforms,
+    )
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    schema = result["data_schema"].schema
+    solar_key = next(k for k in schema if getattr(k, "schema", None) == const.CONF_SOLAR_FORECAST_ENTRY)
+    options = schema[solar_key].config["options"]
+    assert {opt["value"] for opt in options} == {solar_entry.entry_id}
+    assert options[0]["label"] == "My Roof (fake_solar)"

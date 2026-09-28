@@ -14,8 +14,10 @@ from homeassistant.const import (
     CONF_PASSWORD,
     CONF_TOKEN,
     CONF_USERNAME,
+    CURRENCY_EURO,
+    UnitOfEnergy,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -23,7 +25,22 @@ from python_frank_energie import FrankEnergie
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, FrankEnergieException
 from python_frank_energie.models import DeliverySite
 
-from .const import CONF_COORDINATOR, CONF_PRICES_TIMEZONE, DOMAIN, PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC
+from .const import (
+    CONF_CHEAP_PRICE_THRESHOLD,
+    CONF_CHEAPEST_PERIOD_MINUTES,
+    CONF_COORDINATOR,
+    CONF_EXPENSIVE_PRICE_THRESHOLD,
+    CONF_PRICES_TIMEZONE,
+    CONF_SOLAR_FORECAST_ENTRY,
+    CONF_SOLAR_THRESHOLD_KWH,
+    DEFAULT_CHEAP_PRICE_THRESHOLD,
+    DEFAULT_CHEAPEST_PERIOD_MINUTES,
+    DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
+    DEFAULT_SOLAR_THRESHOLD_KWH,
+    DOMAIN,
+    PRICES_TIMEZONE_HOME_ASSISTANT,
+    PRICES_TIMEZONE_UTC,
+)
 from .sites import build_site_title, discover_in_delivery_sites
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,19 +79,85 @@ def _merge_reauth_data(entry_data: Mapping[str, Any], new_data: dict, *, drop_si
     return {**base, **new_data}
 
 
-def _prices_timezone_schema(default: str) -> vol.Schema:
-    """Build the options flow schema for the prices_timezone field."""
-    return vol.Schema(
-        {
-            vol.Required(CONF_PRICES_TIMEZONE, default=default): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC],
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                    translation_key=CONF_PRICES_TIMEZONE,
-                )
-            )
-        }
+def _price_number_selector(step: float, unit: str) -> selector.NumberSelector:
+    """Build a box-mode NumberSelector for a price/threshold field."""
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(mode=selector.NumberSelectorMode.BOX, step=step, unit_of_measurement=unit)
     )
+
+
+async def _solar_forecast_entry_options(hass: HomeAssistant) -> list[selector.SelectOptionDict]:
+    """Build the solar_forecast_entry selector options.
+
+    Options are the config entries whose domain provides an energy solar
+    forecast platform (`async_get_solar_forecast`), labeled "<entry title>
+    (<domain>)". Returns an empty list (never raises) if the energy
+    websocket API can't be imported/queried for any reason.
+    """
+    try:
+        from homeassistant.components.energy.websocket_api import (  # pylint: disable=import-outside-toplevel
+            async_get_energy_platforms,
+        )
+
+        platforms = await async_get_energy_platforms(hass)
+    except Exception as ex:  # noqa: BLE001 - defensive; energy always ships with HA, but never break the form
+        _LOGGER.debug("Could not determine solar forecast platforms: %s", ex)
+        return []
+
+    return [
+        selector.SelectOptionDict(value=entry.entry_id, label=f"{entry.title} ({entry.domain})")
+        for entry in hass.config_entries.async_entries()
+        if entry.domain in platforms
+    ]
+
+
+def _options_schema(options: Mapping[str, Any], solar_entry_options: list[selector.SelectOptionDict]) -> vol.Schema:
+    """Build the options flow schema: prices_timezone plus the price analysis fields."""
+    price_unit = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
+    schema: dict[Any, Any] = {
+        vol.Required(
+            CONF_PRICES_TIMEZONE, default=options.get(CONF_PRICES_TIMEZONE, PRICES_TIMEZONE_UTC)
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC],
+                mode=selector.SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_PRICES_TIMEZONE,
+            )
+        ),
+        vol.Required(
+            CONF_CHEAP_PRICE_THRESHOLD,
+            default=options.get(CONF_CHEAP_PRICE_THRESHOLD, DEFAULT_CHEAP_PRICE_THRESHOLD),
+        ): _price_number_selector(0.001, price_unit),
+        vol.Required(
+            CONF_EXPENSIVE_PRICE_THRESHOLD,
+            default=options.get(CONF_EXPENSIVE_PRICE_THRESHOLD, DEFAULT_EXPENSIVE_PRICE_THRESHOLD),
+        ): _price_number_selector(0.001, price_unit),
+        vol.Required(
+            CONF_CHEAPEST_PERIOD_MINUTES,
+            default=options.get(CONF_CHEAPEST_PERIOD_MINUTES, DEFAULT_CHEAPEST_PERIOD_MINUTES),
+        ): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                mode=selector.NumberSelectorMode.BOX, min=15, max=360, step=15, unit_of_measurement="min"
+            )
+        ),
+        vol.Required(
+            CONF_SOLAR_THRESHOLD_KWH,
+            default=options.get(CONF_SOLAR_THRESHOLD_KWH, DEFAULT_SOLAR_THRESHOLD_KWH),
+        ): _price_number_selector(0.1, UnitOfEnergy.KILO_WATT_HOUR),
+    }
+
+    # Only set a default when a solar forecast entry is currently configured,
+    # so the SelectSelector can be submitted empty (cleared) to mean "none".
+    solar_forecast_entry_key = (
+        vol.Optional(CONF_SOLAR_FORECAST_ENTRY, default=options[CONF_SOLAR_FORECAST_ENTRY])
+        if options.get(CONF_SOLAR_FORECAST_ENTRY)
+        else vol.Optional(CONF_SOLAR_FORECAST_ENTRY)
+    )
+    schema[solar_forecast_entry_key] = selector.SelectSelector(
+        selector.SelectSelectorConfig(options=solar_entry_options, mode=selector.SelectSelectorMode.DROPDOWN)
+    )
+
+    return vol.Schema(schema)
 
 
 def _site_selection_schema(sites: list[DeliverySite], default: str | None = None) -> vol.Schema:
@@ -345,7 +428,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(OptionsFlowWithReload):
-    """Handle the Frank Energie options flow (currently just the prices_timezone field).
+    """Handle the Frank Energie options flow: prices_timezone and the price analysis settings.
 
     Inherits from OptionsFlowWithReload so a changed option automatically
     reloads the config entry; do not also register an update listener in
@@ -353,9 +436,18 @@ class OptionsFlowHandler(OptionsFlowWithReload):
     """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Manage the single options step: choose the prices_timezone."""
+        """Manage the single options step: prices_timezone plus the price analysis fields."""
+        solar_entry_options = await _solar_forecast_entry_options(self.hass)
+
         if user_input is not None:
+            if user_input[CONF_CHEAP_PRICE_THRESHOLD] >= user_input[CONF_EXPENSIVE_PRICE_THRESHOLD]:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_options_schema(user_input, solar_entry_options),
+                    errors={"base": "thresholds_invalid"},
+                )
             return self.async_create_entry(data=user_input)
 
-        default = self.config_entry.options.get(CONF_PRICES_TIMEZONE, PRICES_TIMEZONE_UTC)
-        return self.async_show_form(step_id="init", data_schema=_prices_timezone_schema(default))
+        return self.async_show_form(
+            step_id="init", data_schema=_options_schema(self.config_entry.options, solar_entry_options)
+        )

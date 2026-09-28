@@ -45,12 +45,28 @@
     "options": {
         "step": {
             "init": {
-                "title": "Tijdzone voor prijstijden",
-                "description": "Kies de notatie voor de 'van'/'tot'-tijden in de attributen van de prijssensoren en de actie get_prices. Dit verandert alleen hoe die tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt.",
+                "title": "Frank Energie-opties",
+                "description": "Kies de notatie voor de 'van'/'tot'-tijden in de attributen van de prijssensoren en de actie get_prices, en stel de prijsanalyse voor elektriciteit in (grenzen voor goedkoop/duur, de lengte van de goedkoopste periode en, optioneel, een zonprognose).",
                 "data": {
-                    "prices_timezone": "Tijdzone voor prijstijden"
+                    "prices_timezone": "Tijdzone voor prijstijden",
+                    "cheap_price_threshold": "Grens goedkope prijs",
+                    "expensive_price_threshold": "Grens dure prijs",
+                    "cheapest_period_minutes": "Lengte goedkoopste periode",
+                    "solar_forecast_entry": "Zonprognose",
+                    "solar_threshold_kwh": "Zon-drempel"
+                },
+                "data_description": {
+                    "prices_timezone": "Dit verandert alleen hoe de 'van'/'tot'-tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt.",
+                    "cheap_price_threshold": "All-in elektriciteitsprijzen op of onder deze grens worden als goedkoop beschouwd.",
+                    "expensive_price_threshold": "All-in elektriciteitsprijzen boven deze grens worden als duur beschouwd.",
+                    "cheapest_period_minutes": "De lengte van de aaneengesloten periode met de laagste gemiddelde prijs waar de prijsanalyse naar zoekt.",
+                    "solar_forecast_entry": "Een optionele integratie die zonopwekking voorspelt, gebruikt om goedkope blokken met voldoende verwachte zonopwekking te markeren als 'goedkoop + zon'.",
+                    "solar_threshold_kwh": "De verwachte zonopwekking (kWh per uur) vanaf waar een goedkoop blok wordt gemarkeerd als 'goedkoop + zon'."
                 }
             }
+        },
+        "error": {
+            "thresholds_invalid": "De grens voor goedkope prijs moet lager zijn dan de grens voor dure prijs."
         }
     },
     "selector": {
@@ -58,6 +74,18 @@
             "options": {
                 "home_assistant": "Tijdzone van Home Assistant",
                 "utc": "UTC"
+            }
+        }
+    },
+    "entity": {
+        "sensor": {
+            "price_level": {
+                "state": {
+                    "cheap_solar": "Goedkoop + zon",
+                    "cheap": "Goedkoop",
+                    "normal": "Normaal",
+                    "expensive": "Duur"
+                }
             }
         }
     },
