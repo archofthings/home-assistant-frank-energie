@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from homeassistant.util import dt as dt_util
 from python_frank_energie.models import MarketPrices, PriceData
 
 # A non-JWT-shaped token. python_frank_energie's Authentication.is_expired
@@ -76,3 +77,45 @@ def build_market_prices(
 def price_generator(base: float, var: float, count: int = 24) -> list:
     """Return a list of prices which has two peaks of price `base` and bottoms of `base - 6 * var`."""
     return [round(base - var * abs(6 - (i % 12)), 3) for i in range(count)]
+
+
+def build_price_data_from_local_midnight(
+    local_midnight: datetime,
+    prices: list[float],
+    energy_type: str,
+    resolution_minutes: int = 15,
+) -> PriceData:
+    """Build a real ``PriceData`` instance for N slots starting at a local midnight.
+
+    Unlike ``build_price_data``, slots are stepped in fixed real-time (UTC)
+    increments rather than local wall-clock increments: ``local_midnight`` (an
+    aware datetime, typically in a DST-observing zone such as Europe/Amsterdam)
+    is first converted to UTC, and ``prices`` is then laid out from there via
+    ``build_price_data``. This lets tests model DST transition days correctly:
+    a "spring forward" day needs fewer slots to cover the same local calendar
+    day and a "fall back" day needs more (e.g. 100 PT15M slots for a 25-hour
+    day), matching how the Frank Energie API represents such days.
+    """
+    start_utc = local_midnight.astimezone(dt_util.UTC)
+    return build_price_data(start_utc, prices, energy_type, resolution_minutes)
+
+
+def build_market_prices_from_local_midnight(
+    local_midnight: datetime,
+    electricity_prices: list[float],
+    gas_prices: list[float],
+    energy_country: str = "NL",
+    resolution_minutes: int = 15,
+) -> MarketPrices:
+    """Build a real ``MarketPrices`` instance for N slots starting at a local midnight.
+
+    See ``build_price_data_from_local_midnight`` for why this steps in UTC
+    rather than local wall-clock time.
+    """
+    return MarketPrices(
+        electricity=build_price_data_from_local_midnight(
+            local_midnight, electricity_prices, "electricity", resolution_minutes
+        ),
+        gas=build_price_data_from_local_midnight(local_midnight, gas_prices, "gas", resolution_minutes),
+        energy_country=energy_country,
+    )

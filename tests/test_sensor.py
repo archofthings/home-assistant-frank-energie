@@ -11,7 +11,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from python_frank_energie.models import Invoice, Invoices, Me, MonthSummary
 
 from custom_components.frank_energie import const, sensor
-from tests.utils import build_market_prices, price_generator
+from tests.utils import build_market_prices, build_market_prices_from_local_midnight, price_generator
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -357,3 +357,170 @@ async def test_unload_entry_cancels_update_timers(
     await hass.async_block_till_done()
 
     assert all(unsub.call_count == 1 for unsub in unsubscribers)
+
+
+# --------------------------------------------------------------------------
+# Recorder exclusion / error handling (unit tests, no hass setup needed)
+# --------------------------------------------------------------------------
+
+def test_unrecorded_attributes_excludes_prices():
+    """The "prices" attribute must be excluded from the recorder (it can exceed the 16 KB limit)."""
+    assert "prices" in sensor.FrankEnergieSensor._unrecorded_attributes
+
+
+def test_no_data_errors_excludes_attribute_error():
+    """AttributeError must not be swallowed as a generic 'no data' error.
+
+    A renamed/removed library field should surface as a real error instead of
+    silently showing the entity as unavailable.
+    """
+    assert AttributeError not in sensor._NO_DATA_ERRORS
+
+
+async def test_attribute_error_from_value_fn_is_not_swallowed(hass, config_entry):
+    """A value_fn raising AttributeError must propagate out of _compute_native_value."""
+    coordinator = MagicMock()
+    coordinator.data = {}
+    description = sensor.FrankEnergieEntityDescription(
+        key="broken",
+        value_fn=lambda data: data["missing"].some_attribute,
+    )
+    entity = sensor.FrankEnergieSensor(coordinator, description, config_entry)
+
+    with pytest.raises((AttributeError, KeyError)):
+        entity._compute_native_value()
+
+
+# --------------------------------------------------------------------------
+# Missing invoices while authenticated
+# --------------------------------------------------------------------------
+
+async def test_invoices_none_leaves_invoice_sensors_unavailable_with_empty_attrs(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """DATA_INVOICES can legitimately be None; invoice sensors must be unavailable with no invoice attrs."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    setup_authenticated_api(mock_frank_energie_class, invoices=None, month_summary=make_month_summary())
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    for key in ("invoice_previous_period", "invoice_current_period", "invoice_upcoming_period"):
+        state = state_for_key(hass, authenticated_config_entry, key)
+        assert state is not None, f"expected an entity for key={key}"
+        assert state.state == STATE_UNAVAILABLE
+        assert "Start date" not in state.attributes
+        assert "Description" not in state.attributes
+
+
+# --------------------------------------------------------------------------
+# Immediate coordinator-refresh updates
+# --------------------------------------------------------------------------
+
+async def test_coordinator_refresh_updates_state_without_quarter_hour_tick(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """A coordinator refresh with new data updates sensor state immediately, without a scheduled tick."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert state_for_key(hass, config_entry, "elec_markup").state == "0.2"
+
+    install_public_prices(mock_frank_energie_class, [0.77] * 96, [1.0] * 96)
+
+    coordinator = hass.data[const.DOMAIN][config_entry.entry_id][const.CONF_COORDINATOR]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert state_for_key(hass, config_entry, "elec_markup").state == "0.77"
+
+
+# --------------------------------------------------------------------------
+# DST: 2026-10-25 "fall back" day (25 hours = 100 PT15M slots)
+# --------------------------------------------------------------------------
+
+async def test_dst_fall_back_day_min_max_avg_and_current_price(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """On the DST 'fall back' day, today_min/max/avg reflect all 100 slots and current price is correct.
+
+    2026-10-25 is 25 hours long (100 PT15M slots) because clocks are set back
+    an hour. Local 02:30-02:45 therefore occurs twice: once at UTC+2 (CEST,
+    slot index 10) and once at UTC+1 (CET, slot index 14).
+    """
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    # Set up before the ambiguous hour so later moves (to 02:30 CEST, then
+    # 02:30 CET) are always forward in absolute time; HA's scheduled time
+    # trackers only fire for moments after the time they were registered at.
+    freezer.move_to("2026-10-25 00:00:00+02:00")
+
+    local_midnight = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    electricity_prices = [0.20] * 100
+    electricity_prices[10] = 0.41  # first occurrence of local 02:30-02:45 (CEST, UTC+2)
+    electricity_prices[14] = 0.63  # second occurrence of local 02:30-02:45 (CET, UTC+1)
+    gas_prices = [1.10] * 100
+
+    today = build_market_prices_from_local_midnight(local_midnight, electricity_prices, gas_prices)
+    tomorrow_midnight = local_midnight + timedelta(days=1)
+    tomorrow = build_market_prices_from_local_midnight(tomorrow_midnight, [0.3] * 96, [1.2] * 96)
+
+    async def prices_side_effect(start_date, resolution="PT15M"):
+        if start_date == local_midnight.date():
+            return today
+        return tomorrow
+
+    mock_frank_energie_class.prices.side_effect = prices_side_effect
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    elec_min = float(state_for_key(hass, config_entry, "elec_min").state)
+    elec_max = float(state_for_key(hass, config_entry, "elec_max").state)
+    elec_avg = float(state_for_key(hass, config_entry, "elec_avg").state)
+    assert elec_min == pytest.approx(min(electricity_prices))
+    assert elec_max == pytest.approx(max(electricity_prices))
+    assert elec_avg == pytest.approx(sum(electricity_prices) / len(electricity_prices))
+
+    # First occurrence of local 02:30 (CEST, UTC+2) -> slot index 10.
+    freezer.move_to("2026-10-25 02:30:00+02:00")
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert state_for_key(hass, config_entry, "elec_markup").state == "0.41"
+
+    # Second occurrence of local 02:30 (CET, UTC+1, after the clock is set back) -> slot index 14.
+    freezer.move_to("2026-10-25 02:30:00+01:00")
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert state_for_key(hass, config_entry, "elec_markup").state == "0.63"
+
+
+# --------------------------------------------------------------------------
+# Midnight rollover
+# --------------------------------------------------------------------------
+
+async def test_midnight_rollover_shows_tomorrows_first_slot(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """At the moment of midnight rollover, the sensor state should switch to tomorrow's first slot."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 23:59:59+01:00")
+
+    today_electricity = [0.20] * 96
+    tomorrow_electricity = [0.55] * 96
+    install_public_prices(mock_frank_energie_class, today_electricity, [1.0] * 96, tomorrow_electricity, [1.2] * 96)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert state_for_key(hass, config_entry, "elec_markup").state == "0.2"
+
+    freezer.move_to("2026-01-16 00:00:00+01:00")
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+
+    assert state_for_key(hass, config_entry, "elec_markup").state == "0.55"
