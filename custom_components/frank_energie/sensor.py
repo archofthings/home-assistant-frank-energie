@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from homeassistant.components.sensor import (
@@ -20,8 +20,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HassJob, HomeAssistant
 from homeassistant.helpers import event
-from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -43,6 +42,12 @@ from .const import (
 from .coordinator import FrankEnergieCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def next_quarter_hour(now: datetime) -> datetime:
+    """Return the next 15-minute boundary after now (UTC)."""
+    boundary = now.replace(minute=(now.minute // 15) * 15, second=0, microsecond=0)
+    return boundary + timedelta(minutes=15)
 
 
 @dataclass
@@ -258,12 +263,12 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
-        value_fn=lambda data: data[DATA_INVOICES].previousPeriodInvoice.TotalAmount
-        if data[DATA_INVOICES].previousPeriodInvoice
+        value_fn=lambda data: data[DATA_INVOICES].previous_period_invoice.TotalAmount
+        if data[DATA_INVOICES].previous_period_invoice
         else None,
         attr_fn=lambda data: {
-            "Start date": data[DATA_INVOICES].previousPeriodInvoice.StartDate,
-            "Description": data[DATA_INVOICES].previousPeriodInvoice.PeriodDescription,
+            "Start date": data[DATA_INVOICES].previous_period_invoice.StartDate,
+            "Description": data[DATA_INVOICES].previous_period_invoice.PeriodDescription,
         },
     ),
     FrankEnergieEntityDescription(
@@ -274,12 +279,12 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
-        value_fn=lambda data: data[DATA_INVOICES].currentPeriodInvoice.TotalAmount
-        if data[DATA_INVOICES].currentPeriodInvoice
+        value_fn=lambda data: data[DATA_INVOICES].current_period_invoice.TotalAmount
+        if data[DATA_INVOICES].current_period_invoice
         else None,
         attr_fn=lambda data: {
-            "Start date": data[DATA_INVOICES].currentPeriodInvoice.StartDate,
-            "Description": data[DATA_INVOICES].currentPeriodInvoice.PeriodDescription,
+            "Start date": data[DATA_INVOICES].current_period_invoice.StartDate,
+            "Description": data[DATA_INVOICES].current_period_invoice.PeriodDescription,
         },
     ),
     FrankEnergieEntityDescription(
@@ -290,12 +295,12 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
-        value_fn=lambda data: data[DATA_INVOICES].upcomingPeriodInvoice.TotalAmount
-        if data[DATA_INVOICES].upcomingPeriodInvoice
+        value_fn=lambda data: data[DATA_INVOICES].upcoming_period_invoice.TotalAmount
+        if data[DATA_INVOICES].upcoming_period_invoice
         else None,
         attr_fn=lambda data: {
-            "Start date": data[DATA_INVOICES].upcomingPeriodInvoice.StartDate,
-            "Description": data[DATA_INVOICES].upcomingPeriodInvoice.PeriodDescription,
+            "Start date": data[DATA_INVOICES].upcoming_period_invoice.StartDate,
+            "Description": data[DATA_INVOICES].upcoming_period_invoice.PeriodDescription,
         },
     ),
 )
@@ -371,11 +376,11 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
             self._unsub_update()
             self._unsub_update = None
 
-        # Schedule the next update at exactly the next whole hour sharp
+        # Schedule the next update at the next 15-minute boundary
         self._unsub_update = event.async_track_point_in_utc_time(
             self.hass,
             self._update_job,
-            utcnow().replace(minute=0, second=0) + timedelta(hours=1),
+            next_quarter_hour(utcnow()),
         )
 
     async def _handle_scheduled_update(self, _):
