@@ -11,7 +11,7 @@ A Home Assistant custom integration that brings [Frank Energie](https://www.fran
 Use the price sensors to run appliances, charge a car or battery, or heat water when energy is cheapest.
 
 > [!NOTE]
-> This is a maintained fork of [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie). In 2026 Frank Energie changed its API, which broke the original integration. This fork moves to the new API (`python-frank-energie` 2026.9.20) and to Frank Energie's **15-minute prices**.
+> This project continues [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie), which is no longer actively maintained. See [Project history](#project-history).
 
 ## Contents
 
@@ -25,6 +25,7 @@ Use the price sensors to run appliances, charge a car or battery, or heat water 
 - [Upgrading from the original integration](#upgrading-from-the-original-integration)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
+- [Project history](#project-history)
 - [Credits and license](#credits-and-license)
 
 ## Features
@@ -238,6 +239,15 @@ series:
 
 ## Upgrading from the original integration
 
+**Switching an existing HACS installation:**
+
+1. In HACS, open **Frank Energie** and choose **Remove**. This removes the integration's files only; your configured integration, entities and history stay in Home Assistant.
+2. Remove `https://github.com/bajansen/home-assistant-frank_energie` from **Custom repositories**.
+3. Add this repository and download it as described under [Installation](#installation).
+4. Restart Home Assistant.
+
+**What changes:**
+
 - **Home Assistant 2026.9 or newer** is required.
 - **Prices are per 15 minutes** instead of per hour. Automations and templates that assume hourly values, or 24 entries per day in `prices`, may need adjusting (a day now has 96 entries, or 92/100 on daylight-saving days).
 - **Lowest and highest price today** now pick a 15-minute slot, so they can be more extreme than the old hourly values.
@@ -289,6 +299,18 @@ pytest
 ```
 
 CI runs flake8 and pytest on every push and pull request. Publishing a GitHub release builds `frank_energie.zip` and attaches it to the release for HACS.
+
+## Project history
+
+This integration was created as [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie) by [@bajansen](https://github.com/bajansen) and contributors, and was developed there until early 2025.
+
+In 2026 Frank Energie changed its API, which broke the original integration. This repository picks up from there and continues its development:
+
+- moved to the new API (`python-frank-energie` 2026.9.20) and Frank Energie's 15-minute prices
+- more robust error handling, automatic token renewal, and support for accounts without gas or outside the Netherlands
+- a rewritten test suite and updated CI and release workflows
+
+The full commit history of the original project is kept in this repository. The integration domain (`frank_energie`) and entity unique IDs are unchanged, so existing installations can switch to this repository without losing their entities or history (see [Upgrading from the original integration](#upgrading-from-the-original-integration)).
 
 ## Credits and license
 
