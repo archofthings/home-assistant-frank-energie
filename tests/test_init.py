@@ -7,55 +7,10 @@ from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, NetworkError, RequestException
-from python_frank_energie.models import Address, DeliverySite, Invoices, MonthSummary, UserSites
+from python_frank_energie.models import DeliverySite, Invoices, MonthSummary
 
 from custom_components.frank_energie import const
-from tests.utils import FAKE_ACCESS_TOKEN, FAKE_REFRESH_TOKEN, build_market_prices
-
-
-def make_delivery_site(
-    reference: str,
-    status: str,
-    street: str = "Teststraat",
-    house_number: str = "12",
-    addition: str | None = None,
-) -> DeliverySite:
-    address = Address(
-        street=street,
-        houseNumber=house_number,
-        zipCode="1234 AB",
-        city="Amsterdam",
-        houseNumberAddition=addition,
-    )
-    return DeliverySite(
-        addressHasMultipleSites=False,
-        propositionType=None,
-        reference=reference,
-        segments=["ELECTRICITY", "GAS"],
-        address=address,
-        status=status,
-        deliveryStartDate=None,
-        deliveryEndDate=None,
-        firstMeterReadingDate=None,
-        lastMeterReadingDate=None,
-    )
-
-
-def make_user_sites(sites: list[DeliverySite]) -> UserSites:
-    first = sites[0] if sites else None
-    return UserSites(
-        deliverySites=sites,
-        addressFormatted="x",
-        addressHasMultipleSites=False,
-        deliveryEndDate=None,
-        deliveryStartDate=None,
-        firstMeterReadingDate=None,
-        lastMeterReadingDate=None,
-        propositionType=None,
-        reference=first.reference if first else "",
-        segments=[],
-        status="IN_DELIVERY",
-    )
+from tests.utils import FAKE_ACCESS_TOKEN, FAKE_REFRESH_TOKEN, build_market_prices, make_delivery_site, make_user_sites
 
 
 @pytest.fixture

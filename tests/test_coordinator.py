@@ -882,7 +882,89 @@ async def test_renew_token_network_error_does_not_retry_fetch(coordinator, api):
     api.renew_token.assert_awaited_once()
 
 
-async def test_retry_success_persists_renewed_tokens(hass, entry, coordinator, api):
+async def test_auth_exception_from_month_summary_retry_succeeds_returns_fresh_data(coordinator, api):
+    """An AuthException from month_summary() (prices already succeeded) triggers a renewal, then a retry.
+
+    _fetch_all() fetches prices before month_summary/invoices, so an
+    AuthException raised by month_summary() still propagates out of
+    _fetch_all() as a whole and is handled the same way as one from prices():
+    a token renewal followed by one full retry of _fetch_all(), including
+    prices again.
+    """
+    today = dt_util.now().date()
+
+    async def user_prices_side_effect(site_reference, country, start_date):
+        if start_date == today:
+            return build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+        return build_market_prices(dt_util.now() + timedelta(days=1), [0.3] * 24, [1.1] * 24)
+
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.side_effect = user_prices_side_effect
+    api.invoices.return_value = Invoices.empty()
+
+    month_summary_call_count = 0
+    fresh_summary = make_month_summary()
+
+    async def month_summary_side_effect(site_reference):
+        nonlocal month_summary_call_count
+        month_summary_call_count += 1
+        if month_summary_call_count == 1:
+            raise AuthException("token expired")
+        return fresh_summary
+
+    api.month_summary.side_effect = month_summary_side_effect
+    api.renew_token.side_effect = _fake_renew_token(api)
+
+    data = await coordinator._async_update_data()
+
+    assert data is not None
+    assert data[const.DATA_MONTH_SUMMARY] is fresh_summary
+    assert len(data[const.DATA_ELECTRICITY].all) == 48
+    api.renew_token.assert_awaited_once()
+    assert month_summary_call_count == 2
+    # user_prices is called twice (today + tomorrow) per full attempt.
+    assert api.user_prices.await_count == 4
+
+
+async def test_auth_exception_from_invoices_retry_succeeds_returns_fresh_data(coordinator, api):
+    """An AuthException from invoices() (prices and month_summary already succeeded) triggers a renewal + retry."""
+    today = dt_util.now().date()
+
+    async def user_prices_side_effect(site_reference, country, start_date):
+        if start_date == today:
+            return build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+        return build_market_prices(dt_util.now() + timedelta(days=1), [0.3] * 24, [1.1] * 24)
+
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.side_effect = user_prices_side_effect
+    api.month_summary.return_value = make_month_summary()
+
+    invoices_call_count = 0
+    fresh_invoices = Invoices.empty()
+
+    async def invoices_side_effect(site_reference):
+        nonlocal invoices_call_count
+        invoices_call_count += 1
+        if invoices_call_count == 1:
+            raise AuthException("token expired")
+        return fresh_invoices
+
+    api.invoices.side_effect = invoices_side_effect
+    api.renew_token.side_effect = _fake_renew_token(api)
+
+    data = await coordinator._async_update_data()
+
+    assert data is not None
+    assert data[const.DATA_INVOICES] is fresh_invoices
+    assert len(data[const.DATA_ELECTRICITY].all) == 48
+    api.renew_token.assert_awaited_once()
+    assert invoices_call_count == 2
+    assert api.user_prices.await_count == 4
+
+
+async def test_renewed_tokens_end_up_in_entry_data_after_successful_retry(hass, entry, coordinator, api):
     """Tokens renewed via renew_token() ahead of a successful retry are persisted, keeping site_reference."""
     today = dt_util.now().date()
     today_call_count = 0
