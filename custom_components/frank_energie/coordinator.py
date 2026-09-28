@@ -59,8 +59,9 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         """Get the latest data from Frank Energie."""
         LOGGER.debug("Fetching Frank Energie data")
 
-        # Prices are published per local day.
-        today = dt_util.now().date()
+        # Prices are published per Frank Energie's market day, which is fixed
+        # to Europe/Amsterdam regardless of the HA instance's own timezone.
+        today = dt_util.now(dt_util.get_time_zone("Europe/Amsterdam")).date()
 
         try:
             prices_today = await self.__fetch_prices_with_fallback(today)
@@ -154,7 +155,12 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         if tomorrow is None or len(tomorrow.all) == 0:
             return today
 
-        return today + tomorrow
+        try:
+            return today + tomorrow
+        except ValueError as ex:
+            # E.g. mismatched energy types/resolutions between today and tomorrow.
+            LOGGER.warning("Could not merge today's and tomorrow's prices (%s), using today's prices only", ex)
+            return today
 
     async def _get_user_country(self) -> str:
         """Fetch and cache the authenticated user's country code."""
@@ -165,28 +171,84 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         return self._user_country
 
     async def __fetch_prices_with_fallback(self, start_date: date) -> MarketPrices:
+        """Fetch prices for an authenticated or unauthenticated account.
+
+        For authenticated accounts this prefers the user's contract prices, and
+        falls back to public prices per-segment (electricity/gas) when either is
+        missing.
+        """
         if not self.api.is_authenticated:
             return await self.api.prices(start_date)
-        else:
-            user_country = await self._get_user_country()
+
+        user_country = await self._get_user_country()
+
+        try:
             user_prices = await self.api.user_prices(self.site_reference, user_country, start_date)
+        except NoMarketPricesAvailableException as ex:
+            # No user prices at all for this date; treat it the same as an empty
+            # response so the per-segment public-price fallback below kicks in
+            # for both electricity and gas.
+            LOGGER.info("No user prices available, falling back to public prices for both segments: %s", ex)
+            user_prices = MarketPrices(
+                electricity=PriceData([], energy_type="electricity"),
+                gas=PriceData([], energy_type="gas"),
+                energy_country=user_country,
+            )
 
-            if len(user_prices.gas.all) > 0 and len(user_prices.electricity.all) > 0:
-                # If user_prices are available for both gas and electricity return them
-                return user_prices
-            else:
-                public_prices = await self.api.prices(start_date)
+        if len(user_prices.gas.all) > 0 and len(user_prices.electricity.all) > 0:
+            # If user_prices are available for both gas and electricity return them
+            return user_prices
 
-                # Use public prices if no user prices are available
-                if len(user_prices.gas.all) == 0:
-                    LOGGER.info("No gas prices found for user, falling back to public prices")
-                    user_prices.gas = public_prices.gas
+        await self.__fill_missing_segments(user_prices, user_country, start_date)
+        return user_prices
 
-                if len(user_prices.electricity.all) == 0:
-                    LOGGER.info("No electricity prices found for user, falling back to public prices")
-                    user_prices.electricity = public_prices.electricity
+    async def __fill_missing_segments(
+        self, user_prices: MarketPrices, user_country: str, start_date: date
+    ) -> None:
+        """Fill empty electricity/gas segments of `user_prices` with public prices, in place."""
+        missing_gas = len(user_prices.gas.all) == 0
+        missing_electricity = len(user_prices.electricity.all) == 0
 
-                return user_prices
+        # The user's contract can use a different resolution than the public
+        # prices' PT15M default (e.g. PT60M). When only one segment is missing,
+        # request the public fallback at the resolution of the user's other,
+        # non-empty segment so _merge() doesn't have to reconcile mismatched
+        # resolutions later. When both segments are missing there is no
+        # resolution to match, so fall back to the public default.
+        if missing_gas and not missing_electricity:
+            resolution = f"PT{user_prices.electricity.resolution_minutes}M"
+        elif missing_electricity and not missing_gas:
+            resolution = f"PT{user_prices.gas.resolution_minutes}M"
+        else:
+            resolution = "PT15M"
+
+        public_prices = await self.__fetch_public_prices(user_country, start_date, resolution)
+
+        if missing_gas:
+            LOGGER.info("No gas prices found for user, falling back to public prices")
+            user_prices.gas = public_prices.gas
+
+        if missing_electricity:
+            LOGGER.info("No electricity prices found for user, falling back to public prices")
+            user_prices.electricity = public_prices.electricity
+
+            if len(user_prices.electricity.all) == 0:
+                # Unlike gas (which some customers legitimately don't have),
+                # every customer has electricity. If even the public fallback
+                # has no electricity data, surface this as a real failure
+                # (NoMarketPricesAvailableException is a RequestException, so
+                # it is handled by _async_update_data's stale-data-or-raise
+                # path) rather than silently handing sensors an empty series.
+                raise NoMarketPricesAvailableException(
+                    f"No electricity prices available (user or public) for {start_date}"
+                )
+
+    async def __fetch_public_prices(self, user_country: str, start_date: date, resolution: str) -> MarketPrices:
+        """Fetch public market prices, using the country-specific query when needed."""
+        if user_country == "NL":
+            return await self.api.prices(start_date, resolution=resolution)
+
+        return await self.api.country_prices(user_country, start_date, resolution=resolution)
 
     async def __try_renew_token(self):
         try:
