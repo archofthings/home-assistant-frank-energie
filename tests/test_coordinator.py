@@ -599,3 +599,102 @@ async def test_market_day_uses_amsterdam_timezone_not_ha_timezone(hass, coordina
     # already on 2026-03-11 at this UTC instant, even though UTC (the HA
     # instance's own timezone here) is still on 2026-03-10.
     assert api.prices.await_args_list[0].args[0] == date(2026, 3, 11)
+
+
+# --------------------------------------------------------------------------
+# 9. Token renewal hardening / persistence on failure (see commit 3a57d03,
+# "Harden token renewal and persist tokens on failed updates").
+# --------------------------------------------------------------------------
+
+async def test_renew_token_network_error_with_previous_data_returns_stale_data(coordinator, api):
+    """A NetworkError raised by renew_token() (during an AuthException) must not crash; stale data is served.
+
+    _try_renew_token() must catch the non-auth FrankEnergieException (here
+    NetworkError) from renew_token() and return normally so the caller falls
+    through to _stale_data_or_raise() instead of the exception propagating
+    uncaught.
+    """
+    api.prices.side_effect = AuthException("token expired")
+    api.renew_token.side_effect = NetworkError("renewal network unreachable")
+
+    future = dt_util.now() + timedelta(hours=1)
+    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
+    stale_gas = build_price_data(future, [1.2] * 5, "gas")
+    coordinator.data = {
+        const.DATA_ELECTRICITY: stale_electricity,
+        const.DATA_GAS: stale_gas,
+        const.DATA_MONTH_SUMMARY: None,
+        const.DATA_INVOICES: None,
+    }
+
+    data = await coordinator._async_update_data()
+
+    assert data is coordinator.data
+    assert data[const.DATA_ELECTRICITY] is stale_electricity
+
+
+async def test_renew_token_network_error_without_previous_data_raises_update_failed(coordinator, api):
+    """A NetworkError from renew_token() with no cached data must raise UpdateFailed, not propagate raw."""
+    api.prices.side_effect = AuthException("token expired")
+    api.renew_token.side_effect = NetworkError("renewal network unreachable")
+
+    with pytest.raises(UpdateFailed) as excinfo:
+        await coordinator._async_update_data()
+
+    # Must surface as the controlled UpdateFailed retry signal, not the raw
+    # NetworkError from renew_token() propagating out uncaught.
+    assert excinfo.type is UpdateFailed
+
+
+async def test_internally_renewed_tokens_persisted_when_today_fetch_fails(hass, entry, coordinator, api):
+    """Tokens renewed internally (api._auth) must be persisted even when the update itself fails.
+
+    The finally block in _async_update_data() persists tokens the library may
+    have renewed transparently inside _query() during any of the awaited
+    calls, including ones that ultimately raised, so a renewed token is never
+    lost when the update fails later in the same cycle.
+    """
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.side_effect = NetworkError("network unreachable")
+
+    renewed = AsyncMock()
+    renewed.authToken = "internally-renewed-access"
+    renewed.refreshToken = "internally-renewed-refresh"
+    api._auth = renewed
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    assert entry.data[CONF_ACCESS_TOKEN] == "internally-renewed-access"
+    assert entry.data[CONF_TOKEN] == "internally-renewed-refresh"
+    assert entry.data["site_reference"] == "site-1"
+    assert entry.data[CONF_USERNAME] == "someuser"
+
+
+async def test_today_value_error_without_previous_data_raises_update_failed(coordinator, api):
+    """A plain ValueError fetching today's prices (e.g. library parsing) with no cached data raises UpdateFailed."""
+    api.prices.side_effect = ValueError("invalid site_reference")
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+
+async def test_today_value_error_with_previous_data_returns_stale_data(coordinator, api):
+    """A plain ValueError with usable previous data should return stale data instead of failing."""
+    future = dt_util.now() + timedelta(hours=1)
+    stale_electricity = build_price_data(future, [0.3] * 5, "electricity")
+    stale_gas = build_price_data(future, [1.2] * 5, "gas")
+    coordinator.data = {
+        const.DATA_ELECTRICITY: stale_electricity,
+        const.DATA_GAS: stale_gas,
+        const.DATA_MONTH_SUMMARY: None,
+        const.DATA_INVOICES: None,
+    }
+
+    api.prices.side_effect = ValueError("invalid site_reference")
+
+    data = await coordinator._async_update_data()
+
+    assert data is coordinator.data
+    assert data[const.DATA_ELECTRICITY] is stale_electricity

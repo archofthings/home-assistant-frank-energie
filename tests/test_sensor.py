@@ -1,4 +1,5 @@
 """Tests for Frank Energie sensors."""
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -524,3 +525,102 @@ async def test_midnight_rollover_shows_tomorrows_first_slot(
     await hass.async_block_till_done()
 
     assert state_for_key(hass, config_entry, "elec_markup").state == "0.55"
+
+
+# --------------------------------------------------------------------------
+# Regression: unavailable (not crashing/stale) when no price slot matches
+# (see commit 2b938ed, "Show sensors as unavailable when no price slot
+# matches").
+# --------------------------------------------------------------------------
+
+async def test_empty_gas_price_data_leaves_gas_sensors_unavailable_without_errors(
+    hass, mock_frank_energie_class, config_entry, freezer, caplog
+):
+    """Empty gas PriceData (electricity normal) must not crash sensor updates.
+
+    Every gas price sensor (current all-in/market/tax and the
+    disabled-by-default ones once enabled, plus gas_min/gas_max) should be
+    unavailable, with no error logged by the sensor platform, and
+    gas_min/gas_max should render with no "from_time" attribute.
+    """
+    caplog.set_level(logging.DEBUG)
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+
+    # Gas is empty both today and tomorrow; electricity is normal.
+    install_public_prices(mock_frank_energie_class, [0.2] * 96, [], tomorrow_gas=[])
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    await enable_all_sensors(hass, config_entry)
+
+    gas_keys = (
+        "gas_markup",
+        "gas_market",
+        "gas_tax",
+        "gas_tax_vat",
+        "gas_sourcing",
+        "gas_tax_only",
+        "gas_min",
+        "gas_max",
+    )
+    for key in gas_keys:
+        state = state_for_key(hass, config_entry, key)
+        assert state is not None, f"expected an entity for key={key}"
+        assert state.state == STATE_UNAVAILABLE, f"{key} expected unavailable, got {state.state!r}"
+
+    for key in ("gas_min", "gas_max"):
+        state = state_for_key(hass, config_entry, key)
+        assert "from_time" not in state.attributes
+
+    # Electricity is unaffected by the empty gas data.
+    assert state_for_key(hass, config_entry, "elec_markup").state == "0.2"
+
+    errors = [
+        record
+        for record in caplog.records
+        if record.name.startswith("custom_components.frank_energie") and record.levelno >= logging.ERROR
+    ]
+    assert not errors, f"unexpected error log(s) from the sensor platform: {errors}"
+
+
+async def test_no_current_slot_after_midnight_shows_unavailable_not_stale(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """With no tomorrow price data, current-price sensors go unavailable at midnight, not stale.
+
+    Prices are only available for today (public fallback for tomorrow is
+    empty). Once the clock crosses local midnight, there is no slot left that
+    matches "now", so the current-price sensors must become unavailable
+    instead of continuing to show the last (now stale) price. today_min/
+    today_max must also render without raising, even though there is no
+    longer any "today" data either.
+    """
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 23:59:59+01:00")
+
+    install_public_prices(
+        mock_frank_energie_class,
+        [0.20] * 96,
+        [1.00] * 96,
+        tomorrow_electricity=[],
+        tomorrow_gas=[],
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert state_for_key(hass, config_entry, "elec_markup").state == "0.2"
+    assert state_for_key(hass, config_entry, "gas_markup").state == "1.0"
+
+    freezer.move_to("2026-01-16 00:00:00+01:00")
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+
+    assert state_for_key(hass, config_entry, "elec_markup").state == STATE_UNAVAILABLE
+    assert state_for_key(hass, config_entry, "gas_markup").state == STATE_UNAVAILABLE
+
+    # today_min/today_max must render (no exception), even with no data left.
+    assert state_for_key(hass, config_entry, "elec_min").state == STATE_UNAVAILABLE
+    assert state_for_key(hass, config_entry, "elec_max").state == STATE_UNAVAILABLE
