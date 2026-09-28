@@ -1,0 +1,16 @@
+{
+  "model": "claude-opus-5-5",
+  "permissions": {
+    "allow": [
+      "Bash(pytest*)",
+      "Bash(python -m pytest*)",
+      "Bash(flake8*)",
+      "Bash(git diff*)",
+      "Bash(git status*)",
+      "Bash(git log*)"
+    ],
+    "ask": [
+      "Bash(git push*)"
+    ]
+  }
+}

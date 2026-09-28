@@ -5,6 +5,7 @@
             "reauth_successful": "Opnieuw inloggen gelukt"
         },
         "error": {
+            "cannot_connect": "Verbinden mislukt, probeer het opnieuw.",
             "invalid_auth": "Inloggegevens niet geaccepteerd, controleer de gegevens en probeer het opnieuw."
         },
         "step": {
