@@ -160,6 +160,19 @@ async def test_diagnostics_coordinator_section(
     """The coordinator section reports last_update_success, update_interval and user_country."""
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     setup_authenticated_api(mock_frank_energie_class)
+    # Also provide tomorrow's electricity prices, so update_interval is
+    # deterministically the default 60 minutes regardless of the real time of
+    # day the test happens to run at (see coordinator.py's
+    # _next_update_interval(), which only polls faster while tomorrow's
+    # prices are missing).
+    today = local_midnight()
+    today_prices = build_market_prices(today, [0.2] * 4, [1.0] * 4)
+    tomorrow_prices = build_market_prices(today + timedelta(days=1), [0.3] * 4, [1.1] * 4)
+
+    async def user_prices_side_effect(site_reference, country, start_date):
+        return tomorrow_prices if start_date == (today + timedelta(days=1)).date() else today_prices
+
+    mock_frank_energie_class.user_prices.side_effect = user_prices_side_effect
 
     assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
     await hass.async_block_till_done()

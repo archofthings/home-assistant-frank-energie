@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from typing import TypedDict
 
 from homeassistant.config_entries import ConfigEntry
@@ -33,12 +33,33 @@ from .const import (
 
 LOGGER = logging.getLogger(__name__)
 
+# Default polling interval. Frank Energie publishes tomorrow's electricity
+# prices around 13:00 Europe/Amsterdam; see _next_update_interval() below for
+# the faster interval used while waiting for them.
+DEFAULT_UPDATE_INTERVAL = timedelta(minutes=60)
+FAST_UPDATE_INTERVAL = timedelta(minutes=15)
+
 
 class FrankEnergieData(TypedDict):
     DATA_ELECTRICITY: PriceData
     DATA_GAS: PriceData
     DATA_MONTH_SUMMARY: MonthSummary | None
     DATA_INVOICES: Invoices | None
+
+
+def _next_update_interval(now_amsterdam: datetime, has_tomorrow_electricity: bool) -> timedelta:
+    """Decide the update interval for the next refresh cycle.
+
+    Tomorrow's electricity prices are usually published around 13:00
+    Europe/Amsterdam. From 12:00 onwards, poll every 15 minutes until they
+    show up, so they arrive up to 45 minutes sooner than the default hourly
+    interval would allow. Before 12:00, or once tomorrow's electricity
+    prices are present, the default 60-minute interval applies. A missing
+    gas price alone does not trigger the faster polling.
+    """
+    if now_amsterdam.hour >= 12 and not has_tomorrow_electricity:
+        return FAST_UPDATE_INTERVAL
+    return DEFAULT_UPDATE_INTERVAL
 
 
 class FrankEnergieCoordinator(DataUpdateCoordinator):
@@ -61,7 +82,7 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             LOGGER,
             config_entry=entry,
             name="Frank Energie coordinator",
-            update_interval=timedelta(minutes=60),
+            update_interval=DEFAULT_UPDATE_INTERVAL,
         )
 
     async def _async_update_data(self) -> FrankEnergieData:
@@ -70,15 +91,16 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
 
         # Prices are published per Frank Energie's market day, which is fixed
         # to Europe/Amsterdam regardless of the HA instance's own timezone.
-        today = dt_util.now(dt_util.get_time_zone("Europe/Amsterdam")).date()
+        now_amsterdam = dt_util.now(dt_util.get_time_zone("Europe/Amsterdam"))
+        today = now_amsterdam.date()
 
         try:
             try:
-                return await self._fetch_all(today)
+                result = await self._fetch_all(today)
             except (AuthException, AuthRequiredException) as ex:
-                return await self._handle_auth_error(ex, today)
+                result = await self._handle_auth_error(ex, today)
             except (RequestException, FrankEnergieException, ValueError) as ex:
-                return self._handle_update_error(ex)
+                result = self._handle_update_error(ex)
         finally:
             # Tokens can be renewed transparently inside _query() during any of
             # the awaited calls above, including ones that ultimately raised.
@@ -87,6 +109,12 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             # _async_persist_tokens().
             if self.api.is_authenticated:
                 self._async_persist_tokens()
+
+        # On success or a served stale-data fallback (both reach here without
+        # raising), poll faster while tomorrow's electricity prices are still
+        # missing after noon; see _next_update_interval().
+        self.update_interval = _next_update_interval(now_amsterdam, bool(result[DATA_ELECTRICITY].tomorrow))
+        return result
 
     async def _fetch_all(self, today: date) -> FrankEnergieData:
         """Fetch today's and tomorrow's prices, month summary and invoices, and merge them."""

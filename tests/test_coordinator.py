@@ -1,5 +1,5 @@
 """Tests for FrankEnergieCoordinator."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
@@ -20,8 +20,14 @@ from python_frank_energie.exceptions import (
 from python_frank_energie.models import Invoices
 
 from custom_components.frank_energie import const
-from custom_components.frank_energie.coordinator import FrankEnergieCoordinator
-from tests.utils import build_market_prices, build_price_data, make_me, make_month_summary
+from custom_components.frank_energie.coordinator import FrankEnergieCoordinator, _next_update_interval
+from tests.utils import (
+    build_market_prices,
+    build_market_prices_from_local_midnight,
+    build_price_data,
+    make_me,
+    make_month_summary,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -902,3 +908,66 @@ async def test_renewed_tokens_end_up_in_entry_data_after_successful_retry(hass, 
     assert entry.data[CONF_ACCESS_TOKEN] == "retry-access-token"
     assert entry.data[CONF_TOKEN] == "retry-refresh-token"
     assert entry.data["site_reference"] == "site-1"
+
+
+# --------------------------------------------------------------------------
+# 11. Faster polling after noon while tomorrow's electricity prices are
+# missing, so they arrive sooner than the default hourly interval would
+# allow (published around 13:00 Europe/Amsterdam).
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "hour, minute, has_tomorrow_electricity, expected_minutes",
+    [
+        (11, 59, False, 60),
+        (12, 0, False, 15),
+        (12, 30, True, 60),
+        (23, 50, False, 15),
+    ],
+    ids=["before_noon_missing", "noon_missing", "afternoon_present", "late_missing"],
+)
+def test_next_update_interval(hour, minute, has_tomorrow_electricity, expected_minutes):
+    """The polling interval is 15 minutes from 12:00 Amsterdam while tomorrow's prices are missing, else 60."""
+    now_amsterdam = datetime(2026, 1, 15, hour, minute, tzinfo=dt_util.get_time_zone("Europe/Amsterdam"))
+
+    result = _next_update_interval(now_amsterdam, has_tomorrow_electricity)
+
+    assert result == timedelta(minutes=expected_minutes)
+
+
+async def test_update_interval_switches_to_fast_polling_after_noon_missing_tomorrow(coordinator, api, freezer):
+    """After a refresh at 12:30 Amsterdam with no tomorrow data, update_interval becomes 15 minutes; once
+    tomorrow's prices are returned, it reverts to the default 60 minutes."""
+    freezer.move_to("2026-01-15 11:30:00+00:00")  # 12:30 Europe/Amsterdam (UTC+1 in January)
+    # Anchored to the Amsterdam market day (not dt_util.now()) so PriceData.tomorrow correctly stays
+    # empty for today's slots, regardless of the HA instance's own configured timezone.
+    amsterdam_midnight = datetime(2026, 1, 15, tzinfo=dt_util.get_time_zone("Europe/Amsterdam"))
+    today_prices = build_market_prices_from_local_midnight(
+        amsterdam_midnight, [0.2] * 24, [1.0] * 24, resolution_minutes=60
+    )
+
+    async def prices_side_effect_no_tomorrow(start_date, resolution="PT15M"):
+        if start_date == dt_util.now().date():
+            return today_prices
+        raise NoMarketPricesAvailableException("No market prices for tomorrow yet")
+
+    api.prices.side_effect = prices_side_effect_no_tomorrow
+
+    await coordinator._async_update_data()
+
+    assert coordinator.update_interval == timedelta(minutes=15)
+
+    tomorrow_prices = build_market_prices_from_local_midnight(
+        amsterdam_midnight + timedelta(days=1), [0.3] * 24, [1.1] * 24, resolution_minutes=60
+    )
+
+    async def prices_side_effect_with_tomorrow(start_date, resolution="PT15M"):
+        if start_date == dt_util.now().date():
+            return today_prices
+        return tomorrow_prices
+
+    api.prices.side_effect = prices_side_effect_with_tomorrow
+
+    await coordinator._async_update_data()
+
+    assert coordinator.update_interval == timedelta(minutes=60)
