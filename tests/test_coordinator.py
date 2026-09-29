@@ -971,3 +971,42 @@ async def test_update_interval_switches_to_fast_polling_after_noon_missing_tomor
     await coordinator._async_update_data()
 
     assert coordinator.update_interval == timedelta(minutes=60)
+
+
+# --------------------------------------------------------------------------
+# Maintenance window (00:00-01:00 UTC): skip the API call while cached data
+# is still usable; fetch normally otherwise.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "hour, install_data",
+    [
+        (0, True),
+        (0, False),
+        (12, True),
+    ],
+    ids=["in_window_with_usable_data", "in_window_without_usable_data", "outside_window_with_usable_data"],
+)
+async def test_maintenance_window_skips_api_call_only_with_usable_cached_data(
+    coordinator, api, freezer, hour, install_data
+):
+    """During 00:00-01:00 UTC with usable cached data, no API call is made; otherwise it fetches normally."""
+    if install_data:
+        stale_electricity, stale_gas = _install_stale_data(coordinator)
+
+    freezer.move_to(f"2026-01-15 {hour:02d}:30:00+00:00")
+
+    today_prices = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    tomorrow_prices = build_market_prices(dt_util.now() + timedelta(days=1), [0.3] * 24, [1.1] * 24)
+    api.prices.side_effect = lambda start_date, resolution="PT15M": (
+        today_prices if start_date == dt_util.now().date() else tomorrow_prices
+    )
+
+    data = await coordinator._async_update_data()
+
+    in_window_with_usable_data = hour == 0 and install_data
+    assert api.prices.await_count == (0 if in_window_with_usable_data else 2)
+    if in_window_with_usable_data:
+        assert data[const.DATA_ELECTRICITY] is stale_electricity
+        assert data[const.DATA_GAS] is stale_gas
