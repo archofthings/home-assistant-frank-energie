@@ -9,7 +9,15 @@ from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from python_frank_energie.models import PriceData
 
-from .const import CONF_COORDINATOR, DATA_ELECTRICITY, DATA_GAS, DATA_INVOICES, DATA_MONTH_SUMMARY, DOMAIN
+from .const import (
+    CONF_COORDINATOR,
+    DATA_ELECTRICITY,
+    DATA_GAS,
+    DATA_INVOICES,
+    DATA_MONTH_SUMMARY,
+    DOMAIN,
+    enabled_groups,
+)
 from .coordinator import FrankEnergieCoordinator
 
 TO_REDACT = {CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME, "site_reference", "title", "unique_id"}
@@ -78,6 +86,7 @@ def _diagnostics_entry(entry: ConfigEntry) -> dict[str, Any]:
         **redacted,
         "version": entry.version,
         "state": entry.state.value,
+        "sensor_groups": sorted(enabled_groups(entry)),
     }
 
 

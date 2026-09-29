@@ -39,8 +39,10 @@ from .const import (
     DOMAIN,
     ICON,
     PRICE_LEVELS,
+    SENSOR_GROUP_BY_KEY,
     SERVICE_NAME_PRICES,
     SERVICE_NAME_COSTS,
+    enabled_groups,
 )
 from .coordinator import FrankEnergieCoordinator
 from .device import device_info
@@ -473,6 +475,16 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
 )
 
 
+def _group_enabled(key: str, groups: set[str]) -> bool:
+    """Return whether `key`'s sensor group (if any) is among the enabled `groups`.
+
+    Keys absent from SENSOR_GROUP_BY_KEY (the "current prices" sensors) are
+    always enabled.
+    """
+    group = SENSOR_GROUP_BY_KEY.get(key)
+    return group is None or group in groups
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -480,31 +492,40 @@ async def async_setup_entry(
 ) -> None:
     """Set up Frank Energie sensor entries."""
     frank_coordinator = hass.data[DOMAIN][config_entry.entry_id][CONF_COORDINATOR]
-    price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id][CONF_PRICE_ANALYSIS]
+    price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_PRICE_ANALYSIS)
+    groups = enabled_groups(config_entry)
 
-    # Add an entity for each sensor type, when authenticated is True,
-    # only add the entity if the user is authenticated
+    # Add an entity for each sensor type, when authenticated is True, only
+    # add the entity if the user is authenticated. Current-price sensors
+    # (absent from SENSOR_GROUP_BY_KEY) are always created; the others only
+    # when their sensor group is enabled.
     entities: list[SensorEntity] = [
         FrankEnergieSensor(frank_coordinator, description, config_entry)
         for description in SENSOR_TYPES
-        if not description.authenticated or frank_coordinator.api.is_authenticated
+        if (not description.authenticated or frank_coordinator.api.is_authenticated)
+        and _group_enabled(description.key, groups)
     ]
     async_add_entities(entities, True)
 
+    # price_analysis_coordinator is None when the price_analysis sensor group
+    # is disabled (see __init__.py): no PriceAnalysisCoordinator is created
+    # or refreshed in that case, so these entities are skipped entirely.
+    #
     # The price analysis entities read PriceAnalysisCoordinator.data, which is
     # already populated (async_setup_entry awaits the coordinator's first
     # refresh before setting up any platform): update_before_add=False avoids
     # an extra (and, for CoordinatorEntity.async_update(), coordinator-wide)
     # recomputation, including a redundant solar forecast fetch, per entity.
-    async_add_entities(
-        [
-            FrankEnergiePriceLevelSensor(price_analysis_coordinator, config_entry),
-            FrankEnergiePriceAnalysisDaySensor(price_analysis_coordinator, config_entry, "today"),
-            FrankEnergiePriceAnalysisDaySensor(price_analysis_coordinator, config_entry, "tomorrow"),
-            FrankEnergieNextCheapestPeriodSensor(price_analysis_coordinator, config_entry),
-        ],
-        False,
-    )
+    if price_analysis_coordinator is not None:
+        async_add_entities(
+            [
+                FrankEnergiePriceLevelSensor(price_analysis_coordinator, config_entry),
+                FrankEnergiePriceAnalysisDaySensor(price_analysis_coordinator, config_entry, "today"),
+                FrankEnergiePriceAnalysisDaySensor(price_analysis_coordinator, config_entry, "tomorrow"),
+                FrankEnergieNextCheapestPeriodSensor(price_analysis_coordinator, config_entry),
+            ],
+            False,
+        )
 
 
 class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
