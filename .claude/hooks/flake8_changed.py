@@ -34,7 +34,8 @@ result = subprocess.run(
     text=True,
 )
 if result.returncode != 0 and result.stdout.strip():
-    print(f"flake8 found issues in {os.path.relpath(real_file, real_project)} (CI will fail on these):", file=sys.stderr)
+    relative = os.path.relpath(real_file, real_project)
+    print(f"flake8 found issues in {relative} (CI will fail on these):", file=sys.stderr)
     print(result.stdout.strip(), file=sys.stderr)
     sys.exit(2)
 sys.exit(0)
