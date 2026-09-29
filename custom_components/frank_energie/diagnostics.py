@@ -10,17 +10,17 @@ from homeassistant.core import HomeAssistant
 from python_frank_energie.models import PriceData
 
 from .const import (
-    CONF_COORDINATOR,
-    CONF_USAGE_COORDINATOR,
     DATA_ELECTRICITY,
     DATA_GAS,
     DATA_INVOICES,
     DATA_MONTH_SUMMARY,
-    DOMAIN,
     enabled_groups,
 )
+from .contract import ContractCoordinator
 from .coordinator import FrankEnergieCoordinator
 from .usage import UsageCoordinator
+
+CONTRACT_TO_REDACT = {"connection_id"}
 
 TO_REDACT = {CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME, "site_reference", "title", "unique_id"}
 
@@ -135,29 +135,49 @@ def _diagnostics_usage(usage_coordinator: UsageCoordinator | None) -> dict[str, 
     }
 
 
+def _diagnostics_contract(contract_coordinator: ContractCoordinator | None) -> dict[str, Any]:
+    """Build the "contract" section of the diagnostics: the price resolution state, connection id redacted."""
+    if contract_coordinator is None:
+        return {"exists": False}
+
+    state = contract_coordinator.data
+    return async_redact_data(
+        {
+            "exists": True,
+            "last_update_success": contract_coordinator.last_update_success,
+            "connection_id": contract_coordinator.connection_id,
+            "active_option": state.active_option if state is not None else None,
+            "available_options": state.available_options if state is not None else None,
+            "is_change_request_possible": state.is_change_request_possible if state is not None else None,
+        },
+        CONTRACT_TO_REDACT,
+    )
+
+
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """Return diagnostics for a config entry.
 
-    `hass.data[DOMAIN][entry.entry_id]` is only populated after a successful
-    first refresh (see async_setup_entry), so entries stuck in
-    SETUP_RETRY/SETUP_ERROR have no coordinator yet. Report the redacted
-    "entry" section with "coordinator"/"data" set to None in that case,
-    instead of raising KeyError.
+    `entry.runtime_data` is only set after a successful first refresh (see
+    async_setup_entry), so entries stuck in SETUP_RETRY/SETUP_ERROR have no
+    coordinator yet. Report the redacted "entry" section with
+    "coordinator"/"data" set to None in that case, instead of raising
+    AttributeError.
     """
-    loaded = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    runtime_data = getattr(entry, "runtime_data", None)
 
-    if loaded is None:
+    if runtime_data is None:
         return {
             "entry": _diagnostics_entry(entry),
             "coordinator": None,
             "data": None,
         }
 
-    coordinator: FrankEnergieCoordinator = loaded[CONF_COORDINATOR]
+    coordinator: FrankEnergieCoordinator = runtime_data.coordinator
 
     return {
         "entry": _diagnostics_entry(entry),
         "coordinator": _diagnostics_coordinator(coordinator),
         "data": _diagnostics_data(coordinator),
-        "usage": _diagnostics_usage(loaded.get(CONF_USAGE_COORDINATOR)),
+        "usage": _diagnostics_usage(runtime_data.usage),
+        "contract": _diagnostics_contract(runtime_data.contract),
     }

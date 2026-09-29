@@ -113,12 +113,175 @@
     "entity": {
         "sensor": {
             "price_level": {
+                "name": "Elektriciteitsprijsniveau",
                 "state": {
                     "cheap_solar": "Goedkoop + zon",
                     "cheap": "Goedkoop",
                     "normal": "Normaal",
                     "expensive": "Duur"
                 }
+            },
+            "elec_markup": {
+                "name": "Huidige elektriciteitsprijs (all-in)"
+            },
+            "elec_market": {
+                "name": "Huidige elektriciteit marktprijs"
+            },
+            "elec_tax": {
+                "name": "Huidige elektriciteitsprijs inclusief belasting"
+            },
+            "elec_tax_vat": {
+                "name": "Huidige elektriciteit btw"
+            },
+            "elec_sourcing": {
+                "name": "Huidige elektriciteit inkoopopslag"
+            },
+            "elec_tax_only": {
+                "name": "Huidige elektriciteit alleen belasting"
+            },
+            "gas_markup": {
+                "name": "Huidige gasprijs (all-in)"
+            },
+            "gas_market": {
+                "name": "Huidige gas marktprijs"
+            },
+            "gas_tax": {
+                "name": "Huidige gasprijs inclusief belasting"
+            },
+            "gas_tax_vat": {
+                "name": "Huidige gas btw"
+            },
+            "gas_sourcing": {
+                "name": "Huidige gas inkoopopslag"
+            },
+            "gas_tax_only": {
+                "name": "Huidige gas alleen belasting"
+            },
+            "gas_min": {
+                "name": "Laagste gasprijs vandaag"
+            },
+            "gas_max": {
+                "name": "Hoogste gasprijs vandaag"
+            },
+            "elec_min": {
+                "name": "Laagste energieprijs vandaag"
+            },
+            "elec_max": {
+                "name": "Hoogste energieprijs vandaag"
+            },
+            "elec_avg": {
+                "name": "Gemiddelde elektriciteitsprijs vandaag"
+            },
+            "elec_next": {
+                "name": "Volgende elektriciteitsprijs (all-in)"
+            },
+            "elec_tomorrow_avg": {
+                "name": "Gemiddelde elektriciteitsprijs morgen"
+            },
+            "elec_tomorrow_min": {
+                "name": "Laagste elektriciteitsprijs morgen"
+            },
+            "elec_tomorrow_max": {
+                "name": "Hoogste elektriciteitsprijs morgen"
+            },
+            "elec_upcoming_min": {
+                "name": "Laagste aankomende elektriciteitsprijs"
+            },
+            "elec_upcoming_max": {
+                "name": "Hoogste aankomende elektriciteitsprijs"
+            },
+            "gas_tomorrow_avg": {
+                "name": "Gemiddelde gasprijs morgen"
+            },
+            "actual_costs_until_last_meter_reading_date": {
+                "name": "Werkelijke kosten deze maand"
+            },
+            "expected_costs_until_last_meter_reading_date": {
+                "name": "Verwachte kosten tot nu"
+            },
+            "expected_costs_this_month": {
+                "name": "Verwachte kosten deze maand"
+            },
+            "invoice_previous_period": {
+                "name": "Factuur vorige periode"
+            },
+            "invoice_current_period": {
+                "name": "Factuur huidige periode"
+            },
+            "invoice_upcoming_period": {
+                "name": "Factuur volgende periode"
+            },
+            "elec_usage_yesterday": {
+                "name": "Elektriciteitsverbruik gisteren"
+            },
+            "elec_costs_yesterday": {
+                "name": "Elektriciteitskosten gisteren"
+            },
+            "gas_usage_yesterday": {
+                "name": "Gasverbruik gisteren"
+            },
+            "gas_costs_yesterday": {
+                "name": "Gaskosten gisteren"
+            },
+            "feed_in_yesterday": {
+                "name": "Teruglevering gisteren"
+            },
+            "feed_in_revenue_yesterday": {
+                "name": "Terugleveropbrengst gisteren"
+            },
+            "elec_usage_month": {
+                "name": "Elektriciteitsverbruik deze maand"
+            },
+            "elec_costs_month": {
+                "name": "Elektriciteitskosten deze maand"
+            },
+            "gas_usage_month": {
+                "name": "Gasverbruik deze maand"
+            },
+            "gas_costs_month": {
+                "name": "Gaskosten deze maand"
+            },
+            "feed_in_month": {
+                "name": "Teruglevering deze maand"
+            },
+            "feed_in_revenue_month": {
+                "name": "Terugleveropbrengst deze maand"
+            },
+            "fixed_costs_month": {
+                "name": "Vaste kosten deze maand (verwacht)"
+            },
+            "price_analysis_today": {
+                "name": "Elektriciteitsprijsanalyse vandaag"
+            },
+            "price_analysis_tomorrow": {
+                "name": "Elektriciteitsprijsanalyse morgen"
+            },
+            "next_cheapest_period": {
+                "name": "Volgende goedkoopste elektriciteitsperiode"
+            },
+            "costs_this_year": {
+                "name": "Totaal dit jaar"
+            },
+            "costs_previous_year": {
+                "name": "Totaal vorig jaar"
+            },
+            "price_resolution": {
+                "name": "Prijsresolutie",
+                "state": {
+                    "pt15m": "Per kwartier",
+                    "pt60m": "Per uur"
+                }
+            }
+        },
+        "binary_sensor": {
+            "tomorrow_prices_available": {
+                "name": "Prijzen morgen beschikbaar"
+            },
+            "cheap_price_now": {
+                "name": "Goedkope elektriciteitsprijs nu"
+            },
+            "cheapest_period_now": {
+                "name": "Goedkoopste elektriciteitsperiode nu"
             }
         }
     },

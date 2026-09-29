@@ -2,7 +2,7 @@
 name: developer
 description: Implements code changes, including their unit and integration tests, in the Frank Energie integration from an approved spec. Use for all coding and refactoring after the architect has produced a plan.
 tools: Read, Edit, Write, Bash, Grep, Glob
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 color: blue
 ---
 

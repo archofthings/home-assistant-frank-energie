@@ -1,14 +1,27 @@
 """Frank Energie electricity price analysis binary sensors."""
 from __future__ import annotations
 
+from datetime import timedelta
+from typing import Any
+
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import event
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import ATTRIBUTION, CONF_PRICE_ANALYSIS, DOMAIN, ICON, PRICE_LEVEL_CHEAP, PRICE_LEVEL_CHEAP_SOLAR
+from .const import (
+    ATTRIBUTION,
+    DATA_ELECTRICITY,
+    ICON,
+    PRICE_LEVEL_CHEAP,
+    PRICE_LEVEL_CHEAP_SOLAR,
+    enabled_groups,
+    key_enabled,
+)
+from .coordinator import FrankEnergieCoordinator
 from .device import device_info
 from .price_analysis import AnalysisResult, PriceAnalysisCoordinator
 
@@ -19,7 +32,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Frank Energie binary sensor entries."""
-    price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_PRICE_ANALYSIS)
+    runtime_data = config_entry.runtime_data
+    price_analysis_coordinator = runtime_data.price_analysis
+    groups = enabled_groups(config_entry)
+
+    if key_enabled("tomorrow_prices_available", groups):
+        async_add_entities([TomorrowPricesAvailableBinarySensor(runtime_data.coordinator, config_entry)], False)
 
     # price_analysis_coordinator is None when the price_analysis sensor group
     # is disabled (see __init__.py): no PriceAnalysisCoordinator is created
@@ -38,17 +56,72 @@ async def async_setup_entry(
         )
 
 
+class TomorrowPricesAvailableBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """On when tomorrow's electricity prices have been published.
+
+    Backed by the main FrankEnergieCoordinator (not the price analysis
+    coordinator), so it is available for both authenticated and public
+    entries. "Tomorrow" matches the coordinator's own definition (see
+    FrankEnergieCoordinator._next_update_interval, which uses
+    `bool(data[DATA_ELECTRICITY].tomorrow)` the same way).
+    """
+
+    _attr_attribution = ATTRIBUTION
+    _attr_icon = "mdi:calendar-clock"
+    _attr_has_entity_name = True
+    _attr_translation_key = "tomorrow_prices_available"
+    coordinator: FrankEnergieCoordinator
+
+    def __init__(self, coordinator: FrankEnergieCoordinator, entry: ConfigEntry) -> None:
+        """Initialize the tomorrow prices available binary sensor."""
+        self._attr_unique_id = f"{entry.unique_id}.tomorrow_prices_available"
+        self._attr_device_info = device_info(entry)
+        super().__init__(coordinator)
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.data
+        if data is None:
+            return None
+        return bool(data[DATA_ELECTRICITY].tomorrow)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        if not self.is_on:
+            return {}
+        amsterdam_tomorrow = dt_util.now(dt_util.get_time_zone("Europe/Amsterdam")).date() + timedelta(days=1)
+        return {"date": amsterdam_tomorrow.isoformat()}
+
+    async def async_added_to_hass(self) -> None:
+        """Register the quarter-hourly refresh, so `is_on` flips off again right after midnight."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            event.async_track_utc_time_change(
+                self.hass,
+                self._handle_scheduled_update,
+                minute=[0, 15, 30, 45],
+                second=0,
+            )
+        )
+
+    @callback
+    def _handle_scheduled_update(self, _now) -> None:
+        """Handle a scheduled update."""
+        self.async_write_ha_state()
+
+
 class FrankEnergiePriceAnalysisBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Base class for the price analysis binary sensors backed by PriceAnalysisCoordinator."""
 
     _attr_attribution = ATTRIBUTION
     _attr_icon = ICON
+    _attr_has_entity_name = True
     coordinator: PriceAnalysisCoordinator
 
-    def __init__(self, coordinator: PriceAnalysisCoordinator, key: str, name: str, entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: PriceAnalysisCoordinator, key: str, entry: ConfigEntry) -> None:
         """Initialize the price analysis binary sensor."""
         self._attr_unique_id = f"{entry.unique_id}.{key}"
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_device_info = device_info(entry)
         super().__init__(coordinator)
 
@@ -68,7 +141,7 @@ class CheapPriceNowBinarySensor(FrankEnergiePriceAnalysisBinarySensor):
 
     def __init__(self, coordinator: PriceAnalysisCoordinator, entry: ConfigEntry) -> None:
         """Initialize the cheap price now binary sensor."""
-        super().__init__(coordinator, "cheap_price_now", "Cheap electricity price now", entry)
+        super().__init__(coordinator, "cheap_price_now", entry)
 
     @property
     def is_on(self) -> bool | None:
@@ -83,7 +156,7 @@ class CheapestPeriodNowBinarySensor(FrankEnergiePriceAnalysisBinarySensor):
 
     def __init__(self, coordinator: PriceAnalysisCoordinator, entry: ConfigEntry) -> None:
         """Initialize the cheapest period now binary sensor."""
-        super().__init__(coordinator, "cheapest_period_now", "Cheapest electricity period now", entry)
+        super().__init__(coordinator, "cheapest_period_now", entry)
 
     @property
     def is_on(self) -> bool | None:

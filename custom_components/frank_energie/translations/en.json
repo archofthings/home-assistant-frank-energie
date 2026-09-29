@@ -112,12 +112,175 @@
     "entity": {
         "sensor": {
             "price_level": {
+                "name": "Electricity price level",
                 "state": {
                     "cheap_solar": "Cheap + solar",
                     "cheap": "Cheap",
                     "normal": "Normal",
                     "expensive": "Expensive"
                 }
+            },
+            "elec_markup": {
+                "name": "Current electricity price (All-in)"
+            },
+            "elec_market": {
+                "name": "Current electricity market price"
+            },
+            "elec_tax": {
+                "name": "Current electricity price including tax"
+            },
+            "elec_tax_vat": {
+                "name": "Current electricity VAT price"
+            },
+            "elec_sourcing": {
+                "name": "Current electricity sourcing markup"
+            },
+            "elec_tax_only": {
+                "name": "Current electricity tax only"
+            },
+            "gas_markup": {
+                "name": "Current gas price (All-in)"
+            },
+            "gas_market": {
+                "name": "Current gas market price"
+            },
+            "gas_tax": {
+                "name": "Current gas price including tax"
+            },
+            "gas_tax_vat": {
+                "name": "Current gas VAT price"
+            },
+            "gas_sourcing": {
+                "name": "Current gas sourcing price"
+            },
+            "gas_tax_only": {
+                "name": "Current gas tax only"
+            },
+            "gas_min": {
+                "name": "Lowest gas price today"
+            },
+            "gas_max": {
+                "name": "Highest gas price today"
+            },
+            "elec_min": {
+                "name": "Lowest energy price today"
+            },
+            "elec_max": {
+                "name": "Highest energy price today"
+            },
+            "elec_avg": {
+                "name": "Average electricity price today"
+            },
+            "elec_next": {
+                "name": "Next electricity price (All-in)"
+            },
+            "elec_tomorrow_avg": {
+                "name": "Average electricity price tomorrow"
+            },
+            "elec_tomorrow_min": {
+                "name": "Lowest electricity price tomorrow"
+            },
+            "elec_tomorrow_max": {
+                "name": "Highest electricity price tomorrow"
+            },
+            "elec_upcoming_min": {
+                "name": "Lowest upcoming electricity price"
+            },
+            "elec_upcoming_max": {
+                "name": "Highest upcoming electricity price"
+            },
+            "gas_tomorrow_avg": {
+                "name": "Average gas price tomorrow"
+            },
+            "actual_costs_until_last_meter_reading_date": {
+                "name": "Actual monthly cost"
+            },
+            "expected_costs_until_last_meter_reading_date": {
+                "name": "Expected monthly cost until now"
+            },
+            "expected_costs_this_month": {
+                "name": "Expected cost this month"
+            },
+            "invoice_previous_period": {
+                "name": "Invoice previous period"
+            },
+            "invoice_current_period": {
+                "name": "Invoice current period"
+            },
+            "invoice_upcoming_period": {
+                "name": "Invoice upcoming period"
+            },
+            "elec_usage_yesterday": {
+                "name": "Electricity usage yesterday"
+            },
+            "elec_costs_yesterday": {
+                "name": "Electricity costs yesterday"
+            },
+            "gas_usage_yesterday": {
+                "name": "Gas usage yesterday"
+            },
+            "gas_costs_yesterday": {
+                "name": "Gas costs yesterday"
+            },
+            "feed_in_yesterday": {
+                "name": "Feed-in yesterday"
+            },
+            "feed_in_revenue_yesterday": {
+                "name": "Feed-in revenue yesterday"
+            },
+            "elec_usage_month": {
+                "name": "Electricity usage this month"
+            },
+            "elec_costs_month": {
+                "name": "Electricity costs this month"
+            },
+            "gas_usage_month": {
+                "name": "Gas usage this month"
+            },
+            "gas_costs_month": {
+                "name": "Gas costs this month"
+            },
+            "feed_in_month": {
+                "name": "Feed-in this month"
+            },
+            "feed_in_revenue_month": {
+                "name": "Feed-in revenue this month"
+            },
+            "fixed_costs_month": {
+                "name": "Fixed costs this month (expected)"
+            },
+            "price_analysis_today": {
+                "name": "Electricity price analysis today"
+            },
+            "price_analysis_tomorrow": {
+                "name": "Electricity price analysis tomorrow"
+            },
+            "next_cheapest_period": {
+                "name": "Next cheapest electricity period"
+            },
+            "costs_this_year": {
+                "name": "Total this year"
+            },
+            "costs_previous_year": {
+                "name": "Total last year"
+            },
+            "price_resolution": {
+                "name": "Price resolution",
+                "state": {
+                    "pt15m": "15 minutes",
+                    "pt60m": "Hourly"
+                }
+            }
+        },
+        "binary_sensor": {
+            "tomorrow_prices_available": {
+                "name": "Tomorrow's prices available"
+            },
+            "cheap_price_now": {
+                "name": "Cheap electricity price now"
+            },
+            "cheapest_period_now": {
+                "name": "Cheapest electricity period now"
             }
         }
     },

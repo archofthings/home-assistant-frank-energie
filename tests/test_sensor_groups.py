@@ -32,6 +32,8 @@ COST_KEYS = [
     "invoice_previous_period",
     "invoice_current_period",
     "invoice_upcoming_period",
+    "costs_this_year",
+    "costs_previous_year",
 ]
 
 
@@ -89,6 +91,7 @@ async def test_disabling_group_removes_entities_and_reenabling_recreates_them_wi
 
     original_entity_id = entity_id_for_key(hass, entry, "sensor", "elec_next")
     assert original_entity_id is not None
+    assert entity_id_for_key(hass, entry, "binary_sensor", "tomorrow_prices_available") is not None
 
     hass.config_entries.async_update_entry(
         entry, options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS]}
@@ -97,6 +100,7 @@ async def test_disabling_group_removes_entities_and_reenabling_recreates_them_wi
     await hass.async_block_till_done()
 
     assert entity_id_for_key(hass, entry, "sensor", "elec_next") is None
+    assert entity_id_for_key(hass, entry, "binary_sensor", "tomorrow_prices_available") is None
     # Current-price entities (not part of any group) are never touched.
     assert entity_id_for_key(hass, entry, "sensor", "elec_markup") is not None
 
@@ -128,7 +132,7 @@ async def test_price_analysis_disabled_creates_no_coordinator_and_no_analysis_en
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_PRICE_ANALYSIS] is None
+    assert entry.runtime_data.price_analysis is None
     assert entity_id_for_key(hass, entry, "sensor", "price_level") is None
     assert entity_id_for_key(hass, entry, "sensor", "price_analysis_today") is None
     assert entity_id_for_key(hass, entry, "binary_sensor", "cheap_price_now") is None
@@ -191,7 +195,7 @@ async def test_disabling_price_analysis_on_running_entry_removes_entities_and_ca
     # Both listeners, including the quarter-hour timer, were cancelled on
     # unload, and no new ones were registered.
     assert all(unsub.call_count == 1 for unsub in captured_unsubs)
-    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_PRICE_ANALYSIS] is None
+    assert entry.runtime_data.price_analysis is None
     for domain, keys in PRICE_ANALYSIS_ENTITIES.items():
         for key in keys:
             assert entity_id_for_key(hass, entry, domain, key) is None
@@ -224,12 +228,17 @@ async def test_disabling_costs_on_logged_in_entry_removes_cost_entities_but_keep
     mock_frank_energie_class.is_authenticated = True
     mock_frank_energie_class.user_country.return_value = make_me("NL")
     mock_frank_energie_class.user_prices.return_value = market_prices
+    mock_frank_energie_class.user.return_value = MagicMock(
+        connections=[MagicMock(segment="ELECTRICITY", connectionId="elec-conn")]
+    )
+    mock_frank_energie_class.contract_price_resolution_state.return_value = None
 
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
     for key in COST_KEYS:
         assert entity_id_for_key(hass, entry, "sensor", key) is not None
+    assert entity_id_for_key(hass, entry, "sensor", "price_resolution") is not None
 
     hass.config_entries.async_update_entry(
         entry, options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS]}
@@ -239,6 +248,7 @@ async def test_disabling_costs_on_logged_in_entry_removes_cost_entities_but_keep
 
     for key in COST_KEYS:
         assert entity_id_for_key(hass, entry, "sensor", key) is None
+    assert entity_id_for_key(hass, entry, "sensor", "price_resolution") is None
     # Current-price entities are unaffected.
     assert entity_id_for_key(hass, entry, "sensor", "elec_markup") is not None
 
@@ -272,7 +282,7 @@ async def test_neither_usage_group_enabled_creates_no_coordinator_and_makes_no_a
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_USAGE_COORDINATOR] is None
+    assert entry.runtime_data.usage is None
     assert entity_id_for_key(hass, entry, "sensor", "elec_usage_yesterday") is None
     assert entity_id_for_key(hass, entry, "sensor", "elec_usage_month") is None
     mock_frank_energie_class.period_usage_and_costs.assert_not_awaited()
@@ -310,7 +320,7 @@ async def test_enabling_daily_usage_creates_coordinator_and_entities_disabling_r
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_USAGE_COORDINATOR] is None
+    assert entry.runtime_data.usage is None
     assert entity_id_for_key(hass, entry, "sensor", "elec_usage_yesterday") is None
 
     hass.config_entries.async_update_entry(
@@ -319,7 +329,7 @@ async def test_enabling_daily_usage_creates_coordinator_and_entities_disabling_r
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_USAGE_COORDINATOR] is not None
+    assert entry.runtime_data.usage is not None
     assert entity_id_for_key(hass, entry, "sensor", "elec_usage_yesterday") is not None
 
     hass.config_entries.async_update_entry(
@@ -328,5 +338,5 @@ async def test_enabling_daily_usage_creates_coordinator_and_entities_disabling_r
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_USAGE_COORDINATOR] is None
+    assert entry.runtime_data.usage is None
     assert entity_id_for_key(hass, entry, "sensor", "elec_usage_yesterday") is None

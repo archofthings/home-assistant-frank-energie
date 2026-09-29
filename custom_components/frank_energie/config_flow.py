@@ -7,7 +7,13 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntry, OptionsFlow, OptionsFlowWithReload
+from homeassistant.config_entries import (
+    SOURCE_REAUTH,
+    ConfigEntry,
+    ConfigFlowResult,
+    OptionsFlow,
+    OptionsFlowWithReload,
+)
 from homeassistant.const import (
     CONF_ACCESS_TOKEN,
     CONF_AUTHENTICATION,
@@ -18,7 +24,7 @@ from homeassistant.const import (
     UnitOfEnergy,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult, section
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from python_frank_energie import FrankEnergie
@@ -28,7 +34,6 @@ from python_frank_energie.models import DeliverySite
 from .const import (
     CONF_CHEAP_PRICE_THRESHOLD,
     CONF_CHEAPEST_PERIOD_MINUTES,
-    CONF_COORDINATOR,
     CONF_EXPENSIVE_PRICE_THRESHOLD,
     CONF_PRICES_TIMEZONE,
     CONF_SENSOR_GROUPS,
@@ -275,17 +280,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._reauth_entry = None
         self._pending_login_data: dict | None = None
         self._pending_sites: list[DeliverySite] | None = None
         self._reconfigure_sites: list[DeliverySite] | None = None
         self._reconfigure_api: FrankEnergie | None = None
 
-    async def async_step_login(self, user_input=None, errors=None) -> FlowResult:
+    async def async_step_login(self, user_input=None, errors=None) -> ConfigFlowResult:
         """Handle login with credentials by user."""
         if not user_input:
             username = (
-                self._reauth_entry.data.get(CONF_USERNAME) if self._reauth_entry else None
+                self._get_reauth_entry().data.get(CONF_USERNAME) if self.source == SOURCE_REAUTH else None
             )
 
             data_schema = vol.Schema(
@@ -319,7 +323,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_TOKEN: auth.refreshToken,
             }
 
-            if self._reauth_entry:
+            if self.source == SOURCE_REAUTH:
                 return self._finish_reauth_login(data, user_input[CONF_USERNAME])
 
             # Check for a duplicate account before fetching sites, so a
@@ -331,21 +335,22 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             return await self._async_discover_login_sites(api, data)
 
-    def _finish_reauth_login(self, data: dict, new_username: str) -> FlowResult:
+    def _finish_reauth_login(self, data: dict, new_username: str) -> ConfigFlowResult:
         """Merge a successful reauth login's tokens into the reauthenticated entry."""
-        stored_username = self._reauth_entry.data.get(CONF_USERNAME)
+        reauth_entry = self._get_reauth_entry()
+        stored_username = reauth_entry.data.get(CONF_USERNAME)
 
         if stored_username is not None and not _same_account(stored_username, new_username):
             return self.async_abort(reason="wrong_account")
 
         return self.async_update_reload_and_abort(
-            self._reauth_entry,
+            reauth_entry,
             data=_merge_reauth_data(
-                self._reauth_entry.data, data, drop_site_reference=stored_username is None
+                reauth_entry.data, data, drop_site_reference=stored_username is None
             ),
         )
 
-    async def _async_discover_login_sites(self, api: FrankEnergie, data: dict) -> FlowResult:
+    async def _async_discover_login_sites(self, api: FrankEnergie, data: dict) -> ConfigFlowResult:
         """Discover the delivery sites for a fresh (non-reauth) login and proceed accordingly."""
         try:
             user_sites = await api.UserSites()
@@ -372,7 +377,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pending_sites = sites
         return await self.async_step_site()
 
-    async def async_step_site(self, user_input=None) -> FlowResult:
+    async def async_step_site(self, user_input=None) -> ConfigFlowResult:
         """Let the user pick which delivery site to use, when login found more than one."""
         if user_input is None:
             return self.async_show_form(
@@ -388,7 +393,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data, title=(build_site_title(site) if site else None) or data[CONF_USERNAME]
         )
 
-    async def async_step_user(self, user_input=None) -> FlowResult:
+    async def async_step_user(self, user_input=None) -> ConfigFlowResult:
         """Handle a flow initiated by the user."""
         if not user_input:
             data_schema = vol.Schema(
@@ -406,14 +411,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return await self._async_create_entry(data)
 
-    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         """Handle configuration by re-auth."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
-        )
         return await self.async_step_login()
 
-    async def async_step_reconfigure(self, user_input=None) -> FlowResult:
+    async def async_step_reconfigure(self, user_input=None) -> ConfigFlowResult:
         """Let the user change which delivery site an already-configured entry uses.
 
         UserSites() is fetched only once, when the form is first shown (and
@@ -459,9 +461,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         (see FrankEnergieCoordinator._async_persist_tokens()). A new client is
         only built when the entry isn't loaded (e.g. it is in SETUP_RETRY).
         """
-        loaded = self.hass.data.get(DOMAIN, {}).get(entry.entry_id)
-        if loaded is not None:
-            return loaded[CONF_COORDINATOR].api
+        runtime_data = getattr(entry, "runtime_data", None)
+        if runtime_data is not None:
+            return runtime_data.coordinator.api
 
         return FrankEnergie(
             clientsession=async_get_clientsession(self.hass),
@@ -485,7 +487,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def _finish_reconfigure(
         self, entry: ConfigEntry, api: FrankEnergie, sites: list[DeliverySite], chosen_reference: str
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Persist the chosen site (and any renewed tokens) and reload the entry."""
         site = next((s for s in sites if s.reference == chosen_reference), None)
         title = build_site_title(site) if site else entry.title
@@ -503,7 +505,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_update_reload_and_abort(entry, data=new_data, title=title)
 
-    async def _async_create_entry(self, data: dict, title: str | None = None) -> FlowResult:
+    async def _async_create_entry(self, data: dict, title: str | None = None) -> ConfigFlowResult:
         await self.async_set_unique_id(data.get(CONF_USERNAME, "frank_energie"))
         self._abort_if_unique_id_configured()
 
@@ -542,7 +544,7 @@ class OptionsFlowHandler(OptionsFlowWithReload):
         self._prices_timezone: str | None = None
         self._sensor_groups: list[str] | None = None
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the "init" step: prices_timezone and sensor_groups."""
         if user_input is not None:
             self._prices_timezone = user_input[CONF_PRICES_TIMEZONE]
@@ -588,7 +590,7 @@ class OptionsFlowHandler(OptionsFlowWithReload):
                 data[key] = self.config_entry.options[key]
         return data
 
-    async def async_step_analysis(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_analysis(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the "analysis" step: the price analysis fields (only reached when price_analysis is selected)."""
         solar_entry_options = await _solar_forecast_entry_options(self.hass)
 

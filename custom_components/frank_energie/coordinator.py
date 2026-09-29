@@ -87,6 +87,13 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> FrankEnergieData:
         """Get the latest data from Frank Energie."""
+        if dt_util.utcnow().hour == 0 and self._has_usable_data():
+            # The Frank Energie API has a daily maintenance window between
+            # 00:00 and 01:00 UTC; skip the API call while cached data is
+            # still usable, and serve it as is instead.
+            LOGGER.debug("Skipping update during the Frank Energie maintenance window (00:00-01:00 UTC)")
+            return self.data
+
         LOGGER.debug("Fetching Frank Energie data")
 
         # Prices are published per Frank Energie's market day, which is fixed
@@ -210,15 +217,19 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
                 },
             )
 
+    def _has_usable_data(self) -> bool:
+        """Return whether self.data is set and has usable (non-empty) upcoming electricity and gas prices."""
+        return (
+            self.data is not None
+            and bool(self.data[DATA_ELECTRICITY].upcoming_prices)
+            and bool(self.data[DATA_GAS].upcoming_prices)
+        )
+
     def _stale_data_or_raise(self, ex: Exception) -> FrankEnergieData:
         """Return the last known data if it is still usable, otherwise raise UpdateFailed."""
         err = UpdateFailed(ex)
 
-        if (
-            self.data is not None
-            and self.data[DATA_ELECTRICITY].upcoming_prices
-            and self.data[DATA_GAS].upcoming_prices
-        ):
+        if self._has_usable_data():
             LOGGER.warning(str(err))
             return self.data
 

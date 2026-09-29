@@ -263,7 +263,7 @@ async def test_get_prices_returns_empty_lists_when_coordinator_data_is_none(
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    coordinator = hass.data[const.DOMAIN][config_entry.entry_id][const.CONF_COORDINATOR]
+    coordinator = config_entry.runtime_data.coordinator
     coordinator.data = None
 
     response = await call_get_prices(hass, config_entry_id=config_entry.entry_id)

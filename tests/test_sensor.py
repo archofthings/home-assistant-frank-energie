@@ -5,12 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
-from python_frank_energie.models import Invoice, Invoices
+from python_frank_energie.models import ContractPriceResolutionState, Invoice, Invoices
 
 from custom_components.frank_energie import const, sensor
 from tests.utils import (
@@ -116,6 +116,11 @@ async def test_price_sensors_report_current_15min_slot(hass, mock_frank_energie_
     assert state_for_key(hass, config_entry, "elec_markup").state == "0.42"
     assert state_for_key(hass, config_entry, "gas_markup").state == "1.75"
 
+    # has_entity_name + translation_key: the friendly name combines the
+    # device name and the translated entity name.
+    friendly_name = state_for_key(hass, config_entry, "elec_markup").attributes["friendly_name"]
+    assert friendly_name == "Frank Energie - Prices Current electricity price (All-in)"
+
     # Advance to the next 15-minute boundary and fire the entity's scheduled update.
     freezer.move_to("2026-01-15 10:15:00+01:00")
     async_fire_time_changed(hass, dt_util.utcnow())
@@ -191,6 +196,7 @@ async def test_unauthenticated_entry_has_no_cost_or_invoice_sensors(
     assert entity_id_for_key(hass, config_entry, "invoice_previous_period") is None
     assert entity_id_for_key(hass, config_entry, "invoice_current_period") is None
     assert entity_id_for_key(hass, config_entry, "invoice_upcoming_period") is None
+    assert entity_id_for_key(hass, config_entry, "price_resolution") is None
 
 
 # --------------------------------------------------------------------------
@@ -251,6 +257,138 @@ async def test_invoice_sensor_missing_invoice_is_unavailable(
     state = state_for_key(hass, authenticated_config_entry, "invoice_previous_period")
     assert state is not None
     assert state.state == STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    "key, has_last_reset, has_state_class",
+    [("costs_this_year", True, True), ("costs_previous_year", False, False)],
+    ids=["this_year", "previous_year"],
+)
+async def test_yearly_cost_sensors_report_totals_and_invoices_attribute(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer, key, has_last_reset, has_state_class
+):
+    """costs_this_year/costs_previous_year report the matching Amsterdam year's total and invoices."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+
+    this_year_invoice = make_invoice(80.0, datetime(2026, 1, 1, tzinfo=timezone.utc), "January 2026")
+    previous_year_invoice = make_invoice(70.5, datetime(2025, 12, 1, tzinfo=timezone.utc), "December 2025")
+    other_year_invoice = make_invoice(60.0, datetime(2024, 6, 1, tzinfo=timezone.utc), "June 2024")
+    invoices = Invoices(all_periods_invoices=[this_year_invoice, previous_year_invoice, other_year_invoice])
+    setup_authenticated_api(mock_frank_energie_class, invoices, month_summary=make_month_summary())
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, authenticated_config_entry, key)
+    expected_invoice = this_year_invoice if key == "costs_this_year" else previous_year_invoice
+    assert float(state.state) == pytest.approx(expected_invoice.TotalAmount)
+    invoice_attrs = state.attributes["invoices"]
+    assert len(invoice_attrs) == 1
+    assert invoice_attrs[0] == {
+        "start_date": expected_invoice.StartDate.date().isoformat(),
+        "description": expected_invoice.PeriodDescription,
+        "total_amount": expected_invoice.TotalAmount,
+    }
+
+    assert (state.attributes.get("state_class") is not None) == has_state_class
+
+
+async def test_yearly_cost_sensors_use_amsterdam_year_not_utc_year(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """At 00:30 Amsterdam time on 1 Jan (still 31 Dec UTC), the yearly sensors already use the new year."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2025-12-31 23:30:00+00:00")  # 2026-01-01 00:30 Europe/Amsterdam
+
+    new_year_invoice = make_invoice(42.0, datetime(2026, 1, 1, tzinfo=timezone.utc), "January 2026")
+    old_year_invoice = make_invoice(99.0, datetime(2025, 6, 1, tzinfo=timezone.utc), "June 2025")
+    invoices = Invoices(all_periods_invoices=[new_year_invoice, old_year_invoice])
+    setup_authenticated_api(mock_frank_energie_class, invoices, month_summary=make_month_summary())
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    this_year_state = state_for_key(hass, authenticated_config_entry, "costs_this_year")
+    assert float(this_year_state.state) == pytest.approx(42.0)
+    previous_year_state = state_for_key(hass, authenticated_config_entry, "costs_previous_year")
+    assert float(previous_year_state.state) == pytest.approx(99.0)
+
+
+async def test_yearly_cost_sensors_unavailable_when_invoices_is_none(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """costs_this_year/costs_previous_year are unavailable when invoices data is None."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    mock_frank_energie_class.is_authenticated = True
+    mock_frank_energie_class.user_country.return_value = make_me("NL")
+    mock_frank_energie_class.user_prices.return_value = build_market_prices(
+        local_midnight(), [0.2] * 96, [1.0] * 96, resolution_minutes=15
+    )
+    mock_frank_energie_class.month_summary.return_value = None
+    mock_frank_energie_class.invoices.return_value = None
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert state_for_key(hass, authenticated_config_entry, "costs_this_year").state == STATE_UNAVAILABLE
+    assert state_for_key(hass, authenticated_config_entry, "costs_previous_year").state == STATE_UNAVAILABLE
+
+
+async def test_price_resolution_sensor_reports_state_and_attributes(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """price_resolution reports the active option and its attributes, from ContractCoordinator."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    setup_authenticated_api(mock_frank_energie_class, Invoices.empty(), month_summary=make_month_summary())
+    mock_frank_energie_class.user.return_value = MagicMock(
+        connections=[MagicMock(segment="ELECTRICITY", connectionId="elec-conn")]
+    )
+    mock_frank_energie_class.contract_price_resolution_state.return_value = ContractPriceResolutionState(
+        active_option="PT60M",
+        available_options=["PT15M", "PT60M"],
+        change_request_effective_date=None,
+        is_change_request_possible=True,
+        upcoming_change=None,
+        upcoming_change_effective_date=None,
+    )
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, authenticated_config_entry, "price_resolution")
+    assert state.state == "pt60m"
+    assert state.attributes["available_options"] == ["pt15m", "pt60m"]
+    assert state.attributes["is_change_request_possible"] is True
+    assert state.attributes["upcoming_change"] is None
+
+
+async def test_price_resolution_sensor_state_is_none_for_an_unknown_active_option(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """An active_option outside PT15M/PT60M (e.g. an API extension) reports state None, not a raw value."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    setup_authenticated_api(mock_frank_energie_class, Invoices.empty(), month_summary=make_month_summary())
+    mock_frank_energie_class.user.return_value = MagicMock(
+        connections=[MagicMock(segment="ELECTRICITY", connectionId="elec-conn")]
+    )
+    mock_frank_energie_class.contract_price_resolution_state.return_value = ContractPriceResolutionState(
+        active_option="PT30M",
+        available_options=["PT15M", "PT60M"],
+        change_request_effective_date=None,
+        is_change_request_possible=True,
+        upcoming_change=None,
+        upcoming_change_effective_date=None,
+    )
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, authenticated_config_entry, "price_resolution")
+    assert state.state == STATE_UNKNOWN
 
 
 # --------------------------------------------------------------------------
@@ -324,14 +462,15 @@ async def test_unload_entry_cancels_update_timers(
 
     # One timer per legacy (declarative SENSOR_TYPES) sensor that was actually added
     # (disabled-by-default sensors get none), plus the single shared quarter-hour
-    # timer PriceAnalysisCoordinator itself registers (see __init__.py). The
-    # newer price-analysis sensors/binary sensors don't register their own
-    # per-entity timer: they read PriceAnalysisCoordinator's cached, already
+    # timer PriceAnalysisCoordinator itself registers (see __init__.py), plus the
+    # tomorrow_prices_available binary sensor's own quarter-hour timer. The
+    # price-analysis sensors/binary sensors don't register their own per-entity
+    # timer: they read PriceAnalysisCoordinator's cached, already
     # quarter-hourly-refreshed result instead.
     legacy_keys = [description.key for description in sensor.SENSOR_TYPES if not description.authenticated]
     legacy_added = [key for key in legacy_keys if state_for_key(hass, config_entry, key) is not None]
     assert unsubscribers
-    assert len(unsubscribers) == len(legacy_added) + 1
+    assert len(unsubscribers) == len(legacy_added) + 2
     assert all(unsub.call_count == 0 for unsub in unsubscribers)
 
     assert await hass.config_entries.async_unload(config_entry.entry_id)
@@ -458,7 +597,7 @@ async def test_coordinator_refresh_updates_state_without_quarter_hour_tick(
 
     install_public_prices(mock_frank_energie_class, [0.77] * 96, [1.0] * 96)
 
-    coordinator = hass.data[const.DOMAIN][config_entry.entry_id][const.CONF_COORDINATOR]
+    coordinator = config_entry.runtime_data.coordinator
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
@@ -733,6 +872,62 @@ async def test_new_price_sensors_with_today_and_tomorrow_data(
     upcoming_max_state = state_for_key(hass, config_entry, "elec_upcoming_max")
     assert float(upcoming_max_state.state) == pytest.approx(9.99)
     assert upcoming_max_state.attributes["from_time"] == tomorrow_midnight + timedelta(minutes=15 * 5)
+
+
+@pytest.mark.parametrize(
+    "tomorrow_electricity, expected_is_on",
+    [([0.3] * 96, True), ([], False)],
+    ids=["tomorrow_present", "tomorrow_absent"],
+)
+async def test_tomorrow_prices_available_binary_sensor(
+    hass, mock_frank_energie_class, config_entry, freezer, tomorrow_electricity, expected_is_on
+):
+    """The tomorrow_prices_available binary sensor is on iff tomorrow's electricity prices are present."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+
+    install_public_prices(
+        mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=tomorrow_electricity
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", const.DOMAIN, f"{config_entry.unique_id}.tomorrow_prices_available"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state.state == ("on" if expected_is_on else "off")
+    assert ("date" in state.attributes) == expected_is_on
+
+
+async def test_tomorrow_prices_available_binary_sensor_turns_off_after_midnight_without_a_poll(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """After midnight, is_on flips off on the next quarter-hour timer tick, without a new API call."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 23:59:00+01:00")
+
+    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[0.3] * 96)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", const.DOMAIN, f"{config_entry.unique_id}.tomorrow_prices_available"
+    )
+    assert hass.states.get(entity_id).state == "on"
+    assert hass.states.get(entity_id).attributes["date"] == "2026-01-16"
+
+    prices_call_count = mock_frank_energie_class.prices.call_count
+    freezer.move_to("2026-01-16 00:00:00+01:00")
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state == "off"
+    assert "date" not in hass.states.get(entity_id).attributes
+    assert mock_frank_energie_class.prices.call_count == prices_call_count
 
 
 def test_next_price_returns_none_for_empty_price_data():

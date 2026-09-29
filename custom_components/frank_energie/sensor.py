@@ -30,14 +30,10 @@ from .analysis import ClassifiedSlot, Window
 from .const import (
     ATTR_TIME,
     ATTRIBUTION,
-    CONF_COORDINATOR,
-    CONF_PRICE_ANALYSIS,
-    CONF_USAGE_COORDINATOR,
     DATA_ELECTRICITY,
     DATA_GAS,
     DATA_INVOICES,
     DATA_MONTH_SUMMARY,
-    DOMAIN,
     ICON,
     PRICE_LEVELS,
     SERVICE_NAME_PRICES,
@@ -45,6 +41,7 @@ from .const import (
     enabled_groups,
     key_enabled,
 )
+from .contract import ContractCoordinator
 from .coordinator import FrankEnergieCoordinator
 from .device import device_info
 from .price_analysis import AnalysisResult, DayAnalysis, PriceAnalysisCoordinator
@@ -104,12 +101,39 @@ class FrankEnergieEntityDescription(SensorEntityDescription):
     service_name: str | None = SERVICE_NAME_PRICES
     value_fn: Callable[[dict], StateType] = None
     attr_fn: Callable[[dict, tzinfo], dict[str, StateType | list]] = lambda _data, _tz: {}
+    last_reset_fn: Callable[[dict], Any] | None = None
+
+
+def _amsterdam_year() -> int:
+    """Return the current calendar year in Europe/Amsterdam, for the yearly cost sensors."""
+    return dt_util.now(dt_util.get_time_zone("Europe/Amsterdam")).year
+
+
+def _yearly_invoices_attrs(data: dict, year: int) -> dict[str, Any]:
+    """Build the "invoices" attribute for a costs_this_year/costs_previous_year sensor."""
+    if data[DATA_INVOICES] is None:
+        return {}
+    return {
+        "invoices": [
+            {
+                "start_date": invoice.StartDate.date().isoformat(),
+                "description": invoice.PeriodDescription,
+                "total_amount": round(invoice.TotalAmount, 2),
+            }
+            for invoice in data[DATA_INVOICES].get_invoices_for_year(year)
+        ]
+    }
+
+
+def _yearly_costs_last_reset(_data: dict) -> Any:
+    """Return 1 Jan 00:00 Europe/Amsterdam of the current Amsterdam year, for costs_this_year's last_reset."""
+    tz = dt_util.get_time_zone("Europe/Amsterdam")
+    return datetime(_amsterdam_year(), 1, 1, tzinfo=tz)
 
 
 SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     FrankEnergieEntityDescription(
         key="elec_markup",
-        name="Current electricity price (All-in)",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -118,7 +142,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_market",
-        name="Current electricity market price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -127,7 +150,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tax",
-        name="Current electricity price including tax",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -138,7 +160,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tax_vat",
-        name="Current electricity VAT price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -147,7 +168,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_sourcing",
-        name="Current electricity sourcing markup",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -156,7 +176,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tax_only",
-        name="Current electricity tax only",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -165,7 +184,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_markup",
-        name="Current gas price (All-in)",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -174,7 +192,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_market",
-        name="Current gas market price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -183,7 +200,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_tax",
-        name="Current gas price including tax",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -192,7 +208,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_tax_vat",
-        name="Current gas VAT price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -201,7 +216,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_sourcing",
-        name="Current gas sourcing price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -210,7 +224,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_tax_only",
-        name="Current gas tax only",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -219,7 +232,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_min",
-        name="Lowest gas price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -232,7 +244,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_max",
-        name="Highest gas price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -245,7 +256,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_min",
-        name="Lowest energy price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -258,7 +268,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_max",
-        name="Highest energy price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -271,7 +280,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_avg",
-        name="Average electricity price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -279,7 +287,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_next",
-        name="Next electricity price (All-in)",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -292,7 +299,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tomorrow_avg",
-        name="Average electricity price tomorrow",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -300,7 +306,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tomorrow_min",
-        name="Lowest electricity price tomorrow",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -313,7 +318,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tomorrow_max",
-        name="Highest electricity price tomorrow",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -326,7 +330,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_upcoming_min",
-        name="Lowest upcoming electricity price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -339,7 +342,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_upcoming_max",
-        name="Highest upcoming electricity price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -352,7 +354,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_tomorrow_avg",
-        name="Average gas price tomorrow",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -360,7 +361,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="actual_costs_until_last_meter_reading_date",
-        name="Actual monthly cost",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -379,7 +379,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="expected_costs_until_last_meter_reading_date",
-        name="Expected monthly cost until now",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -398,7 +397,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="expected_costs_this_month",
-        name="Expected cost this month",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -410,7 +408,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="invoice_previous_period",
-        name="Invoice previous period",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -432,7 +429,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="invoice_current_period",
-        name="Invoice current period",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -454,7 +450,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="invoice_upcoming_period",
-        name="Invoice upcoming period",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -473,6 +468,34 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
             if data[DATA_INVOICES] and data[DATA_INVOICES].upcoming_period_invoice
             else {}
         ),
+    ),
+    FrankEnergieEntityDescription(
+        key="costs_this_year",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        authenticated=True,
+        service_name=SERVICE_NAME_COSTS,
+        value_fn=lambda data: (
+            round(data[DATA_INVOICES].calculate_total_costs(_amsterdam_year()), 2)
+            if data[DATA_INVOICES] is not None
+            else None
+        ),
+        attr_fn=lambda data, tz: _yearly_invoices_attrs(data, _amsterdam_year()),
+        last_reset_fn=_yearly_costs_last_reset,
+    ),
+    FrankEnergieEntityDescription(
+        key="costs_previous_year",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement=CURRENCY_EURO,
+        authenticated=True,
+        service_name=SERVICE_NAME_COSTS,
+        value_fn=lambda data: (
+            round(data[DATA_INVOICES].calculate_total_costs(_amsterdam_year() - 1), 2)
+            if data[DATA_INVOICES] is not None
+            else None
+        ),
+        attr_fn=lambda data, tz: _yearly_invoices_attrs(data, _amsterdam_year() - 1),
     ),
 )
 
@@ -547,7 +570,6 @@ def _daily_last_reset(data: UsageData | None) -> Any:
 DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     UsageEntityDescription(
         key="elec_usage_yesterday",
-        name="Electricity usage yesterday",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -558,7 +580,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="elec_costs_yesterday",
-        name="Electricity costs yesterday",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -569,7 +590,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="gas_usage_yesterday",
-        name="Gas usage yesterday",
         device_class=SensorDeviceClass.GAS,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
@@ -581,7 +601,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="gas_costs_yesterday",
-        name="Gas costs yesterday",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -593,7 +612,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="feed_in_yesterday",
-        name="Feed-in yesterday",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -605,7 +623,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="feed_in_revenue_yesterday",
-        name="Feed-in revenue yesterday",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -678,7 +695,6 @@ def _monthly_last_reset(data: UsageData | None) -> Any:
 MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     UsageEntityDescription(
         key="elec_usage_month",
-        name="Electricity usage this month",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -689,7 +705,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="elec_costs_month",
-        name="Electricity costs this month",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -700,7 +715,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="gas_usage_month",
-        name="Gas usage this month",
         device_class=SensorDeviceClass.GAS,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
@@ -712,7 +726,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="gas_costs_month",
-        name="Gas costs this month",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -724,7 +737,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="feed_in_month",
-        name="Feed-in this month",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -736,7 +748,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="feed_in_revenue_month",
-        name="Feed-in revenue this month",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -748,7 +759,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="fixed_costs_month",
-        name="Fixed costs this month (expected)",
         device_class=SensorDeviceClass.MONETARY,
         state_class=None,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -803,9 +813,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Frank Energie sensor entries."""
-    frank_coordinator = hass.data[DOMAIN][config_entry.entry_id][CONF_COORDINATOR]
-    price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_PRICE_ANALYSIS)
-    usage_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_USAGE_COORDINATOR)
+    runtime_data = config_entry.runtime_data
+    frank_coordinator = runtime_data.coordinator
+    price_analysis_coordinator = runtime_data.price_analysis
+    usage_coordinator = runtime_data.usage
+    contract_coordinator = runtime_data.contract
     groups = enabled_groups(config_entry)
 
     # Add an entity for each sensor type, when authenticated is True, only
@@ -856,12 +868,18 @@ async def async_setup_entry(
         ]
         async_add_entities(usage_entities, False)
 
+    # contract_coordinator is None when the entry isn't authenticated or the
+    # costs sensor group is disabled (see __init__.py).
+    if contract_coordinator is not None:
+        async_add_entities([PriceResolutionSensor(contract_coordinator, config_entry)], False)
+
 
 class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Frank Energie sensor."""
 
     _attr_attribution = ATTRIBUTION
     _attr_icon = ICON
+    _attr_has_entity_name = True
     # The "prices" attribute holds up to 192+ quarter-hour price slots (~17 KB
     # once serialized), over the recorder's 16 KB attribute size limit, so
     # exclude it from being recorded to avoid it being dropped/warned about.
@@ -876,6 +894,7 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         self.entity_description: FrankEnergieEntityDescription = description
         self._attr_unique_id = f"{entry.unique_id}.{description.key}"
+        self._attr_translation_key = description.key
         self._attr_device_info = device_info(entry, description.service_name)
 
         super().__init__(coordinator)
@@ -922,6 +941,16 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
             return self.entity_description.attr_fn(self.coordinator.data, self.coordinator.prices_tzinfo)
         except _NO_DATA_ERRORS:
             return {}
+
+    @property
+    def last_reset(self):
+        """Return the entity description's last_reset_fn result, or None when it has none."""
+        if self.entity_description.last_reset_fn is None:
+            return None
+        try:
+            return self.entity_description.last_reset_fn(self.coordinator.data)
+        except _NO_DATA_ERRORS:
+            return None
 
     @property
     def available(self) -> bool:
@@ -983,12 +1012,13 @@ class FrankEnergiePriceAnalysisEntity(CoordinatorEntity, SensorEntity):
 
     _attr_attribution = ATTRIBUTION
     _attr_icon = ICON
+    _attr_has_entity_name = True
     coordinator: PriceAnalysisCoordinator
 
-    def __init__(self, coordinator: PriceAnalysisCoordinator, key: str, name: str, entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: PriceAnalysisCoordinator, key: str, entry: ConfigEntry) -> None:
         """Initialize the price analysis entity."""
         self._attr_unique_id = f"{entry.unique_id}.{key}"
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_device_info = device_info(entry, SERVICE_NAME_PRICES)
         super().__init__(coordinator)
 
@@ -1008,11 +1038,10 @@ class FrankEnergiePriceLevelSensor(FrankEnergiePriceAnalysisEntity):
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = list(PRICE_LEVELS)
-    _attr_translation_key = "price_level"
 
     def __init__(self, coordinator: PriceAnalysisCoordinator, entry: ConfigEntry) -> None:
         """Initialize the price level sensor."""
-        super().__init__(coordinator, "price_level", "Electricity price level", entry)
+        super().__init__(coordinator, "price_level", entry)
 
     @property
     def native_value(self) -> StateType:
@@ -1042,8 +1071,7 @@ class FrankEnergiePriceAnalysisDaySensor(FrankEnergiePriceAnalysisEntity):
         """Initialize the price analysis sensor for `period` ("today" or "tomorrow")."""
         self._period = period
         key = f"price_analysis_{period}"
-        name = f"Electricity price analysis {period}"
-        super().__init__(coordinator, key, name, entry)
+        super().__init__(coordinator, key, entry)
 
     def _day(self) -> DayAnalysis | None:
         """Return this sensor's DayAnalysis (today's or tomorrow's), or None when unavailable."""
@@ -1086,7 +1114,7 @@ class FrankEnergieNextCheapestPeriodSensor(FrankEnergiePriceAnalysisEntity):
 
     def __init__(self, coordinator: PriceAnalysisCoordinator, entry: ConfigEntry) -> None:
         """Initialize the next cheapest period sensor."""
-        super().__init__(coordinator, "next_cheapest_period", "Next cheapest electricity period", entry)
+        super().__init__(coordinator, "next_cheapest_period", entry)
 
     def _window(self) -> Window | None:
         result = self._result
@@ -1114,6 +1142,7 @@ class FrankEnergieUsageSensor(CoordinatorEntity, SensorEntity):
     """Representation of a daily/monthly usage or costs sensor, backed by UsageCoordinator."""
 
     _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
     # The "hours" attribute holds up to 24 hourly usage/cost entries; keep it
     # out of the recorder like the "prices"/price-analysis attributes above.
     _unrecorded_attributes = frozenset({"hours"})
@@ -1125,6 +1154,7 @@ class FrankEnergieUsageSensor(CoordinatorEntity, SensorEntity):
         """Initialize the usage sensor."""
         self.entity_description: UsageEntityDescription = description
         self._attr_unique_id = f"{entry.unique_id}.{description.key}"
+        self._attr_translation_key = description.key
         self._attr_device_info = device_info(entry, SERVICE_NAME_COSTS)
         # Only force the currency icon for monetary sensors; the
         # ENERGY/GAS device-class usage sensors use HA's own device-class
@@ -1158,3 +1188,56 @@ class FrankEnergieUsageSensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         return super().available and self.native_value is not None
+
+
+_PRICE_RESOLUTION_OPTIONS = ("pt15m", "pt60m")
+
+
+def _iso_date(value: Any) -> str | None:
+    """Return `value` as an ISO date string, whether it is already a str, a date, or None."""
+    if value is None or isinstance(value, str):
+        return value
+    return value.isoformat()
+
+
+class PriceResolutionSensor(CoordinatorEntity, SensorEntity):
+    """The contract's price resolution (PT15M/PT60M), backed by ContractCoordinator."""
+
+    _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
+    _attr_translation_key = "price_resolution"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(_PRICE_RESOLUTION_OPTIONS)
+    coordinator: ContractCoordinator
+
+    def __init__(self, coordinator: ContractCoordinator, entry: ConfigEntry) -> None:
+        """Initialize the price resolution sensor."""
+        self._attr_unique_id = f"{entry.unique_id}.price_resolution"
+        self._attr_device_info = device_info(entry, SERVICE_NAME_COSTS)
+        super().__init__(coordinator)
+
+    @property
+    def native_value(self) -> StateType:
+        state = self.coordinator.data
+        if state is None or state.active_option is None:
+            return None
+        lowered = state.active_option.lower()
+        return lowered if lowered in _PRICE_RESOLUTION_OPTIONS else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        state = self.coordinator.data
+        if state is None:
+            return {}
+        return {
+            "available_options": [option.lower() for option in state.available_options],
+            "is_change_request_possible": state.is_change_request_possible,
+            "upcoming_change": _iso_date(state.upcoming_change),
+            "upcoming_change_effective_date": _iso_date(state.upcoming_change_effective_date),
+            "change_request_effective_date": _iso_date(state.change_request_effective_date),
+        }
+
+    @property
+    def available(self) -> bool:
+        """Unavailable when no electricity connection was found (ContractCoordinator.data is None)."""
+        return super().available and self.coordinator.data is not None
