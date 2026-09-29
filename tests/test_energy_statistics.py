@@ -104,6 +104,20 @@ async def test_first_run_imports_30_days_then_later_run_reimports_last_two_days(
     assert rows[-1]["sum"] == pytest.approx(28 * 24 + 24 + 48 + 24)
 
 
+def test_hourly_values_sums_15_minute_items_into_one_hour():
+    """Four quarter-hour items in the same UTC hour become a single hourly row."""
+    start = datetime(2026, 1, 14, 0, 0, tzinfo=timezone.utc)
+    items = [
+        make_usage_item(start + timedelta(minutes=15 * i), start + timedelta(minutes=15 * (i + 1)), 0.25, 0.1)
+        for i in range(4)
+    ]
+    day = make_period_usage_and_costs(electricity=make_energy_category(1.0, 0.4, "kWh", items))
+
+    hourly = FrankEnergieStatisticsImporter._hourly_values([day], "electricity", "usage")
+
+    assert hourly == {start: pytest.approx(1.0)}
+
+
 async def test_error_stops_run_keeping_earlier_days_and_missing_gas_creates_no_gas_statistics(
     recorder_mock, hass, importer, mock_api
 ):
