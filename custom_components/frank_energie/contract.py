@@ -57,14 +57,15 @@ class ContractCoordinator(DataUpdateCoordinator[ContractPriceResolutionState | N
                     LOGGER.debug("No electricity connection found for account; will retry next refresh")
                     return None
                 self._connection_id = connection_id
+
+            state = await api.contract_price_resolution_state(self._connection_id)
         finally:
-            # api.user() can renew tokens transparently inside _query(), even
-            # when it ultimately raised. Persist them via the price
+            # api.user() and api.contract_price_resolution_state() can renew
+            # tokens transparently inside _query(), even when either
+            # ultimately raised/failed. Persist them via the price
             # coordinator's own helper so a renewed token is never lost.
             if api.is_authenticated:
                 self.price_coordinator._async_persist_tokens()
-
-        state = await api.contract_price_resolution_state(self._connection_id)
 
         if state is None:
             # contract_price_resolution_state() swallows its own errors and
