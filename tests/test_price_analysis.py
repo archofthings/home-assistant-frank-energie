@@ -279,6 +279,36 @@ async def test_next_cheapest_period_stays_stable_while_running(
     assert state.attributes["minutes"] == 30
 
 
+async def test_analysis_survives_price_refresh_with_new_price_objects(
+    hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch
+):
+    """Regression: an hourly price refresh returns new (equal) Price objects.
+
+    The cached next-cheapest-period check compared the old and new slot lists
+    with `==`, which calls the library's dataclass `Price.__eq__`. That reads the
+    unset `price_data` field and raised AttributeError, so every analysis entity
+    went unavailable after the first hourly refresh (seen on a live instance).
+    """
+    entry = await setup_price_analysis_entry(
+        hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch
+    )
+    expected_start = local_midnight() + timedelta(minutes=15 * CHEAP_SLOT_1)
+
+    # Same prices, but freshly built objects, like a real hourly API refresh.
+    electricity_today = [0.20] * 96
+    electricity_today[CHEAP_SLOT_1] = 0.10
+    electricity_today[CHEAP_SLOT_2] = 0.10
+    electricity_today[EXPENSIVE_SLOT] = 0.50
+    install_prices(mock_frank_energie_class, electricity_today, [1.0] * 96, resolution_minutes=15)
+
+    await hass.data[const.DOMAIN][entry.entry_id][const.CONF_COORDINATOR].async_refresh()
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, entry, "sensor", "next_cheapest_period")
+    assert state.state == timestamp_state(expected_start)
+    assert state_for_key(hass, entry, "sensor", "price_level").state != "unavailable"
+
+
 async def test_options_flow_submit_keeps_next_cheapest_period_available(
     hass, enable_custom_integrations, mock_frank_energie_class, freezer, monkeypatch
 ):
