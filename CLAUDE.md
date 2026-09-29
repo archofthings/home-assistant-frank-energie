@@ -31,7 +31,7 @@ and `tests/conftest.py`. Library sources: `.venv/lib/python3.14/site-packages/py
 | `diagnostics.py` | Redacted diagnostics download | `test_diagnostics.py` | `async_redact_data` |
 | `sites.py` | Delivery-site filtering and titles | `test_init.py`, `test_config_flow.py` | `DeliverySite` |
 | `device.py` | Shared `DeviceInfo` (identifiers must not change) | — | — |
-| `const.py` | Constants, option keys and defaults; sensor groups: `SENSOR_GROUP_BY_KEY` (entity key → group) and `enabled_groups(entry)` | `test_sensor_groups.py` | — |
+| `const.py` | Constants, option keys and defaults; sensor groups: `SENSOR_GROUP_BY_KEY` (entity key → group), `enabled_groups(entry)` and `key_enabled(key, groups)` (the one place that decides group membership) | `test_sensor_groups.py` | — |
 | `strings.json`, `translations/en.json`, `translations/nl.json` | UI texts (keep the three in sync) | `test_translations.py` | — |
 
 ## Roles
