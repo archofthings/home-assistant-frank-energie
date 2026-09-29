@@ -243,6 +243,42 @@ async def test_disabling_costs_on_logged_in_entry_removes_cost_entities_but_keep
     assert entity_id_for_key(hass, entry, "sensor", "elec_markup") is not None
 
 
+@pytest.mark.parametrize(
+    "options",
+    [{}, {const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS]}],
+    ids=["legacy_entry_no_options", "explicit_groups_without_usage"],
+)
+async def test_neither_usage_group_enabled_creates_no_coordinator_and_makes_no_api_calls(
+    hass, enable_custom_integrations, mock_frank_energie_class, options
+):
+    """With neither usage group enabled (a legacy entry with no options, or an entry whose stored groups don't
+    include either), no UsageCoordinator is created, no usage entities exist, and neither
+    period_usage_and_costs nor month_insights is called."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={
+            "site_reference": "site-1",
+            CONF_ACCESS_TOKEN: FAKE_ACCESS_TOKEN,
+            CONF_TOKEN: FAKE_REFRESH_TOKEN,
+        },
+        options=options,
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.is_authenticated = True
+    mock_frank_energie_class.user_country.return_value = make_me("NL")
+    mock_frank_energie_class.user_prices.return_value = build_market_prices(local_midnight(), [0.2] * 4, [1.0] * 4)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_USAGE_COORDINATOR] is None
+    assert entity_id_for_key(hass, entry, "sensor", "elec_usage_yesterday") is None
+    assert entity_id_for_key(hass, entry, "sensor", "elec_usage_month") is None
+    mock_frank_energie_class.period_usage_and_costs.assert_not_awaited()
+    mock_frank_energie_class.month_insights.assert_not_awaited()
+
+
 # --------------------------------------------------------------------------
 # Enabling daily_usage on a logged-in entry creates its UsageCoordinator and
 # entities; disabling it again removes both (see usage.py and __init__.py).

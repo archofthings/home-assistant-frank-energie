@@ -61,6 +61,18 @@ async def test_fetches_yesterday_and_current_month_for_both_groups(coordinator, 
     assert data.daily_date == date(2026, 1, 14)
 
 
+async def test_yesterday_follows_amsterdam_date_not_utc_date_at_midnight_boundary(coordinator, mock_api, freezer):
+    """At 00:30 Europe/Amsterdam (23:30 UTC the day before, winter time), yesterday is the Amsterdam date - 1."""
+    freezer.move_to("2026-01-14 23:30:00+00:00")
+    mock_api.period_usage_and_costs.return_value = make_period_usage_and_costs()
+    mock_api.month_insights.return_value = make_month_insights()
+
+    data = await coordinator._async_update_data()
+
+    mock_api.period_usage_and_costs.assert_awaited_once_with("site-1", "2026-01-14")
+    assert data.daily_date == date(2026, 1, 14)
+
+
 @pytest.mark.parametrize(
     "groups, expect_daily, expect_monthly",
     [

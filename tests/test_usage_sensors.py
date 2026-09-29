@@ -69,12 +69,25 @@ def _freeze_midday(freezer):
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "prices_timezone_option, expected_tz",
+    [
+        (None, timezone.utc),
+        (const.PRICES_TIMEZONE_HOME_ASSISTANT, dt_util.get_time_zone("Europe/Amsterdam")),
+    ],
+    ids=["default_utc", "home_assistant_option"],
+)
 async def test_daily_sensors_state_unit_last_reset_date_and_hours(
-    hass, enable_custom_integrations, mock_frank_energie_class
+    hass, enable_custom_integrations, mock_frank_energie_class, prices_timezone_option, expected_tz
 ):
-    """The daily sensors report yesterday's totals, with date/hours attributes and a local-midnight last_reset."""
+    """The daily sensors report yesterday's totals, with date/hours attributes and a local-midnight last_reset;
+    the "hours" from/till times follow the prices_timezone option."""
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     entry = setup_authenticated_entry(hass, mock_frank_energie_class, [const.SENSOR_GROUP_DAILY_USAGE])
+    if prices_timezone_option is not None:
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, const.CONF_PRICES_TIMEZONE: prices_timezone_option}
+        )
 
     item_start = datetime(2026, 1, 14, 10, 0, tzinfo=timezone.utc)
     item_end = item_start + timedelta(hours=1)
@@ -93,7 +106,14 @@ async def test_daily_sensors_state_unit_last_reset_date_and_hours(
     assert float(usage_state.state) == 10.0
     assert usage_state.attributes["unit_of_measurement"] == "kWh"
     assert usage_state.attributes["date"] == "2026-01-14"
-    assert usage_state.attributes["hours"] == [{"from": item_start, "till": item_end, "usage": 2.5, "costs": 0.6}]
+    assert usage_state.attributes["hours"] == [
+        {
+            "from": item_start.astimezone(expected_tz),
+            "till": item_end.astimezone(expected_tz),
+            "usage": 2.5,
+            "costs": 0.6,
+        }
+    ]
     assert usage_state.attributes["last_reset"] == dt_util.start_of_local_day(date(2026, 1, 14)).isoformat()
 
     assert float(costs_state.state) == 2.5
