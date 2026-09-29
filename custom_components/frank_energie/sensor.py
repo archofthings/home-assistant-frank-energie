@@ -101,6 +101,12 @@ class FrankEnergieEntityDescription(SensorEntityDescription):
     service_name: str | None = SERVICE_NAME_PRICES
     value_fn: Callable[[dict], StateType] = None
     attr_fn: Callable[[dict, tzinfo], dict[str, StateType | list]] = lambda _data, _tz: {}
+    last_reset_fn: Callable[[dict], Any] | None = None
+
+
+def _amsterdam_year() -> int:
+    """Return the current calendar year in Europe/Amsterdam, for the yearly cost sensors."""
+    return dt_util.now(dt_util.get_time_zone("Europe/Amsterdam")).year
 
 
 def _yearly_invoices_attrs(data: dict, year: int) -> dict[str, Any]:
@@ -117,6 +123,12 @@ def _yearly_invoices_attrs(data: dict, year: int) -> dict[str, Any]:
             for invoice in data[DATA_INVOICES].get_invoices_for_year(year)
         ]
     }
+
+
+def _yearly_costs_last_reset(_data: dict) -> Any:
+    """Return 1 Jan 00:00 Europe/Amsterdam of the current Amsterdam year, for costs_this_year's last_reset."""
+    tz = dt_util.get_time_zone("Europe/Amsterdam")
+    return datetime(_amsterdam_year(), 1, 1, tzinfo=tz)
 
 
 SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
@@ -465,21 +477,25 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
         value_fn=lambda data: (
-            round(data[DATA_INVOICES].total_costs_this_year, 2) if data[DATA_INVOICES] is not None else None
+            round(data[DATA_INVOICES].calculate_total_costs(_amsterdam_year()), 2)
+            if data[DATA_INVOICES] is not None
+            else None
         ),
-        attr_fn=lambda data, tz: _yearly_invoices_attrs(data, dt_util.utcnow().year),
+        attr_fn=lambda data, tz: _yearly_invoices_attrs(data, _amsterdam_year()),
+        last_reset_fn=_yearly_costs_last_reset,
     ),
     FrankEnergieEntityDescription(
         key="costs_previous_year",
         device_class=SensorDeviceClass.MONETARY,
-        state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
         authenticated=True,
         service_name=SERVICE_NAME_COSTS,
         value_fn=lambda data: (
-            round(data[DATA_INVOICES].total_costs_previous_year, 2) if data[DATA_INVOICES] is not None else None
+            round(data[DATA_INVOICES].calculate_total_costs(_amsterdam_year() - 1), 2)
+            if data[DATA_INVOICES] is not None
+            else None
         ),
-        attr_fn=lambda data, tz: _yearly_invoices_attrs(data, dt_util.utcnow().year - 1),
+        attr_fn=lambda data, tz: _yearly_invoices_attrs(data, _amsterdam_year() - 1),
     ),
 )
 
@@ -925,6 +941,16 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
             return self.entity_description.attr_fn(self.coordinator.data, self.coordinator.prices_tzinfo)
         except _NO_DATA_ERRORS:
             return {}
+
+    @property
+    def last_reset(self):
+        """Return the entity description's last_reset_fn result, or None when it has none."""
+        if self.entity_description.last_reset_fn is None:
+            return None
+        try:
+            return self.entity_description.last_reset_fn(self.coordinator.data)
+        except _NO_DATA_ERRORS:
+            return None
 
     @property
     def available(self) -> bool:

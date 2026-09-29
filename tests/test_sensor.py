@@ -260,40 +260,59 @@ async def test_invoice_sensor_missing_invoice_is_unavailable(
 
 
 @pytest.mark.parametrize(
-    "key, total_field",
-    [("costs_this_year", "total_costs_this_year"), ("costs_previous_year", "total_costs_previous_year")],
+    "key, has_last_reset, has_state_class",
+    [("costs_this_year", True, True), ("costs_previous_year", False, False)],
     ids=["this_year", "previous_year"],
 )
 async def test_yearly_cost_sensors_report_totals_and_invoices_attribute(
-    hass, mock_frank_energie_class, authenticated_config_entry, freezer, key, total_field
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer, key, has_last_reset, has_state_class
 ):
-    """costs_this_year/costs_previous_year report the yearly total and the matching year's invoices."""
+    """costs_this_year/costs_previous_year report the matching Amsterdam year's total and invoices."""
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     freezer.move_to("2026-01-15 10:00:00+01:00")
 
     this_year_invoice = make_invoice(80.0, datetime(2026, 1, 1, tzinfo=timezone.utc), "January 2026")
     previous_year_invoice = make_invoice(70.5, datetime(2025, 12, 1, tzinfo=timezone.utc), "December 2025")
     other_year_invoice = make_invoice(60.0, datetime(2024, 6, 1, tzinfo=timezone.utc), "June 2024")
-    invoices = Invoices(
-        all_periods_invoices=[this_year_invoice, previous_year_invoice, other_year_invoice],
-        total_costs_this_year=80.0,
-        total_costs_previous_year=70.5,
-    )
+    invoices = Invoices(all_periods_invoices=[this_year_invoice, previous_year_invoice, other_year_invoice])
     setup_authenticated_api(mock_frank_energie_class, invoices, month_summary=make_month_summary())
 
     assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
     await hass.async_block_till_done()
 
     state = state_for_key(hass, authenticated_config_entry, key)
-    assert float(state.state) == getattr(invoices, total_field)
+    expected_invoice = this_year_invoice if key == "costs_this_year" else previous_year_invoice
+    assert float(state.state) == pytest.approx(expected_invoice.TotalAmount)
     invoice_attrs = state.attributes["invoices"]
     assert len(invoice_attrs) == 1
-    expected_invoice = this_year_invoice if key == "costs_this_year" else previous_year_invoice
     assert invoice_attrs[0] == {
         "start_date": expected_invoice.StartDate.date().isoformat(),
         "description": expected_invoice.PeriodDescription,
         "total_amount": expected_invoice.TotalAmount,
     }
+
+    assert (state.attributes.get("state_class") is not None) == has_state_class
+
+
+async def test_yearly_cost_sensors_use_amsterdam_year_not_utc_year(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """At 00:30 Amsterdam time on 1 Jan (still 31 Dec UTC), the yearly sensors already use the new year."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2025-12-31 23:30:00+00:00")  # 2026-01-01 00:30 Europe/Amsterdam
+
+    new_year_invoice = make_invoice(42.0, datetime(2026, 1, 1, tzinfo=timezone.utc), "January 2026")
+    old_year_invoice = make_invoice(99.0, datetime(2025, 6, 1, tzinfo=timezone.utc), "June 2025")
+    invoices = Invoices(all_periods_invoices=[new_year_invoice, old_year_invoice])
+    setup_authenticated_api(mock_frank_energie_class, invoices, month_summary=make_month_summary())
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    this_year_state = state_for_key(hass, authenticated_config_entry, "costs_this_year")
+    assert float(this_year_state.state) == pytest.approx(42.0)
+    previous_year_state = state_for_key(hass, authenticated_config_entry, "costs_previous_year")
+    assert float(previous_year_state.state) == pytest.approx(99.0)
 
 
 async def test_yearly_cost_sensors_unavailable_when_invoices_is_none(
