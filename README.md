@@ -181,19 +181,19 @@ prices:
 
 Times follow the [time zone option](#options) (UTC in this example) and prices are rounded to 3 decimals. With tomorrow's prices included the list holds up to 200 entries, so it's **not stored in the recorder history**, to stay within Home Assistant's attribute size limit. It is always available on the live state, in templates and in dashboards.
 
-The examples below use `sensor.current_electricity_price_all_in`. Your entity ID may differ; check it under **Settings → Devices & services → Frank Energie**.
+The examples below use `sensor.frank_energie_prices_current_electricity_price_all_in`, the entity ID of a new installation. Installations upgraded from the original integration keep their older IDs without the `frank_energie_prices_` prefix (for example `sensor.current_electricity_price_all_in`); check yours under **Settings → Devices & services → Frank Energie**.
 
 Highest price still to come:
 
 ```jinja
-{{ state_attr('sensor.current_electricity_price_all_in', 'prices')
+{{ state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices')
    | selectattr('from', 'gt', now()) | max(attribute='price') }}
 ```
 
 Lowest price today:
 
 ```jinja
-{{ state_attr('sensor.current_electricity_price_all_in', 'prices')
+{{ state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices')
    | selectattr('from', 'ge', today_at('00:00'))
    | selectattr('till', 'le', today_at('00:00') + timedelta(days=1))
    | min(attribute='price') }}
@@ -202,7 +202,7 @@ Lowest price today:
 Lowest price in the next six hours:
 
 ```jinja
-{{ state_attr('sensor.current_electricity_price_all_in', 'prices')
+{{ state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices')
    | selectattr('from', 'gt', now())
    | selectattr('till', 'lt', now() + timedelta(hours=6))
    | min(attribute='price') }}
@@ -301,35 +301,35 @@ apex_config:
   legend:
     show: true
 series:
-  - entity: sensor.electricity_price_analysis_today
+  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
     name: Cheap + solar
     type: column
     color: '#009688'
     data_generator: |
       return entity.attributes.slots.map((s) =>
         [new Date(s.from).getTime(), s.level === 'cheap_solar' ? s.price : null]);
-  - entity: sensor.electricity_price_analysis_today
+  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
     name: Cheap
     type: column
     color: '#4caf50'
     data_generator: |
       return entity.attributes.slots.map((s) =>
         [new Date(s.from).getTime(), s.level === 'cheap' ? s.price : null]);
-  - entity: sensor.electricity_price_analysis_today
+  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
     name: Normal
     type: column
     color: '#ffc107'
     data_generator: |
       return entity.attributes.slots.map((s) =>
         [new Date(s.from).getTime(), s.level === 'normal' ? s.price : null]);
-  - entity: sensor.electricity_price_analysis_today
+  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
     name: Expensive
     type: column
     color: '#f44336'
     data_generator: |
       return entity.attributes.slots.map((s) =>
         [new Date(s.from).getTime(), s.level === 'expensive' ? s.price : null]);
-  - entity: sensor.electricity_price_analysis_today
+  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
     name: Cheapest period
     type: line
     color: '#673ab7'
@@ -349,7 +349,7 @@ Start the dishwasher at the beginning of today's cheapest period:
 ```yaml
 triggers:
   - trigger: state
-    entity_id: binary_sensor.cheapest_electricity_period_now
+    entity_id: binary_sensor.frank_energie_prices_cheapest_electricity_period_now
     to: "on"
 actions:
   - action: switch.turn_on
@@ -362,7 +362,7 @@ Charge the home battery whenever the price is cheap:
 ```yaml
 triggers:
   - trigger: state
-    entity_id: binary_sensor.cheap_electricity_price_now
+    entity_id: binary_sensor.frank_energie_prices_cheap_electricity_price_now
     to: ["on", "off"]
 actions:
   - action: "switch.turn_{{ trigger.to_state.state }}"
@@ -396,7 +396,7 @@ header:
   show: true
   title: Electricity price per 15 minutes (€/kWh)
 series:
-  - entity: sensor.current_electricity_price_all_in
+  - entity: sensor.frank_energie_prices_current_electricity_price_all_in
     show:
       legend_value: false
     stroke_width: 2
@@ -430,7 +430,7 @@ yaxis:
     min: 0
     max: '|+0.10|'
 series:
-  - entity: sensor.current_electricity_price_all_in
+  - entity: sensor.frank_energie_prices_current_electricity_price_all_in
     show:
       in_header: raw
       legend_value: false
