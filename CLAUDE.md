@@ -30,6 +30,11 @@
 5. Delegate review to `reviewer` with the spec. Send Critical/Warning items back to `developer`.
 6. Summarise to me: what changed, test results, review verdict, anything I need to decide.
 
+## Scope discipline
+Agents (and the orchestrator) change only what the task requires: no unrequested improvements, features or
+abstractions; unrelated issues are reported, not fixed. Adapted from the Karpathy guidelines
+(github.com/multica-ai/andrej-karpathy-skills); the full rules are in `.claude/agents/developer.md`.
+
 ## Test budget
 Keep tests lean; they are read and run by every agent, so size costs tokens.
 - Per change: one test for the main behaviour, plus tests only for edge/error cases the spec explicitly names.
