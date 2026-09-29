@@ -61,6 +61,7 @@ Small, single-file changes (typo, constant, one-line fix): do it directly, then 
   Read-only commands (`gh pr view/list/diff/checks`, `gh run`, `gh release view/list`) are allowed; anything that
   publishes (PRs, comments, releases, `gh api`, workflow runs) needs my approval and is only done when I ask.
   Subagents never run `gh` commands that publish.
+- PRs and releases: use the `/release` skill (`/release pr`, `/release publish [vX.Y.Z]`); only when I ask.
 - Never call the real Frank Energie API in tests; never log tokens or credentials.
 - Home Assistant MCP (`home-assistant`, user-scoped, connected to my real Home Assistant): use it only to
   verify the integration (states, attributes, history, logs, integration info). Never switch devices, change
