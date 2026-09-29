@@ -8,6 +8,8 @@
 - Local environment: `.venv` (Python 3.14, gitignored). Create/update it with the `setup-dev` skill
   (`.claude/skills/setup-dev/scripts/setup_dev.sh`); run tools as `.venv/bin/pytest` and `.venv/bin/flake8`.
   Library sources: `.venv/lib/python3.14/site-packages/{python_frank_energie,homeassistant}/`.
+- Hooks (`.claude/hooks/`, wired in `.claude/settings.json`): flake8 runs on every edited `.py` file and reports
+  errors immediately (fix them before continuing); whole-disk searches (`find /`, `find ~`, `locate`, …) are blocked.
 
 ## Roles
 - **You (main session, Opus 5.5)**: architect, problem solver and orchestrator.
