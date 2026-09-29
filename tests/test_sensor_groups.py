@@ -63,15 +63,21 @@ def test_enabled_groups(options, expected):
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("unique_id", ["frank_energie", "a.b@c.nl"], ids=["fixed_unique_id", "username_unique_id"])
 async def test_disabling_group_removes_entities_and_reenabling_recreates_them_with_same_entity_id(
-    hass, enable_custom_integrations, mock_frank_energie_class
+    hass, enable_custom_integrations, mock_frank_energie_class, unique_id
 ):
-    """Deselecting "upcoming" removes its entities from the registry; re-selecting recreates the same entity_id."""
+    """Deselecting "upcoming" removes its entities from the registry; re-selecting recreates the same entity_id.
+
+    Parametrized with a username-style unique_id containing dots, so the
+    prefix-stripping in _async_remove_disabled_group_entities is exercised
+    with a unique_id that isn't itself free of dots.
+    """
     entry = MockConfigEntry(
         domain=const.DOMAIN,
         data={"site_reference": "site-1"},
         options={const.CONF_SENSOR_GROUPS: list(const.SENSOR_GROUPS)},
-        unique_id="frank_energie",
+        unique_id=unique_id,
     )
     entry.add_to_hass(hass)
     install_prices(mock_frank_energie_class, [0.2] * 4, [1.0] * 4, tomorrow_electricity=[], tomorrow_gas=[])

@@ -89,6 +89,16 @@ SENSOR_GROUP_BY_KEY: dict[str, str] = {
 }
 
 
+def key_enabled(key: str, groups: set[str]) -> bool:
+    """Return whether `key`'s sensor group (if any) is among the enabled `groups`.
+
+    Keys absent from SENSOR_GROUP_BY_KEY (the "current prices" sensors) are
+    always enabled.
+    """
+    group = SENSOR_GROUP_BY_KEY.get(key)
+    return group is None or group in groups
+
+
 def enabled_groups(entry: "ConfigEntry") -> set[str]:
     """Return the sensor groups enabled for `entry`.
 

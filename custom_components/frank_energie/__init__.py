@@ -16,9 +16,9 @@ from .const import (
     CONF_COORDINATOR,
     CONF_PRICE_ANALYSIS,
     DOMAIN,
-    SENSOR_GROUP_BY_KEY,
     SENSOR_GROUP_PRICE_ANALYSIS,
     enabled_groups,
+    key_enabled,
 )
 from .coordinator import FrankEnergieCoordinator
 from .price_analysis import PriceAnalysisCoordinator
@@ -67,8 +67,7 @@ def _async_remove_disabled_group_entities(hass: HomeAssistant, entry: ConfigEntr
         if not entity.unique_id.startswith(prefix):
             continue
         key = entity.unique_id[len(prefix):]
-        group = SENSOR_GROUP_BY_KEY.get(key)
-        if group is not None and group not in groups:
+        if not key_enabled(key, groups):
             registry.async_remove(entity.entity_id)
 
 

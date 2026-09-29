@@ -39,10 +39,10 @@ from .const import (
     DOMAIN,
     ICON,
     PRICE_LEVELS,
-    SENSOR_GROUP_BY_KEY,
     SERVICE_NAME_PRICES,
     SERVICE_NAME_COSTS,
     enabled_groups,
+    key_enabled,
 )
 from .coordinator import FrankEnergieCoordinator
 from .device import device_info
@@ -475,16 +475,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
 )
 
 
-def _group_enabled(key: str, groups: set[str]) -> bool:
-    """Return whether `key`'s sensor group (if any) is among the enabled `groups`.
-
-    Keys absent from SENSOR_GROUP_BY_KEY (the "current prices" sensors) are
-    always enabled.
-    """
-    group = SENSOR_GROUP_BY_KEY.get(key)
-    return group is None or group in groups
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -503,7 +493,7 @@ async def async_setup_entry(
         FrankEnergieSensor(frank_coordinator, description, config_entry)
         for description in SENSOR_TYPES
         if (not description.authenticated or frank_coordinator.api.is_authenticated)
-        and _group_enabled(description.key, groups)
+        and key_enabled(description.key, groups)
     ]
     async_add_entities(entities, True)
 
