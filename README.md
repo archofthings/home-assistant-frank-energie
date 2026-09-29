@@ -340,7 +340,7 @@ Tips that avoid common problems with this card:
 
 #### Today
 
-![Today's prices coloured by level, with the Sell line and the solar forecast](images/prices_today.png)
+![Today's prices coloured by level, with the Sell line and the solar forecast](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/prices_today.png)
 
 The optional **Sell** line shows the price minus a fixed amount (here 0.11085) for feed-in; adjust or remove it.
 
@@ -440,7 +440,7 @@ grid_options:
 
 #### Tomorrow
 
-<!-- Screenshot: images/prices_tomorrow.png -->
+<!-- Screenshot: https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/prices_tomorrow.png -->
 
 The chart stays empty until tomorrow's prices are published.
 
@@ -559,7 +559,7 @@ The price list can be plotted with [ApexCharts Card](https://github.com/RomRider
 
 ### Today and tomorrow
 
-![ApexCharts example: all prices](images/example_1.png "Today and tomorrow")
+![ApexCharts example: all prices](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/example_1.png "Today and tomorrow")
 
 ```yaml
 type: custom:apexcharts-card
@@ -587,7 +587,7 @@ series:
 
 ### Next hours
 
-![ApexCharts example: next hours](images/example_2.png "Next hours")
+![ApexCharts example: next hours](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/example_2.png "Next hours")
 
 ```yaml
 type: custom:apexcharts-card
