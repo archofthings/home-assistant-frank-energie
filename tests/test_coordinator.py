@@ -24,6 +24,18 @@ from custom_components.frank_energie.coordinator import FrankEnergieCoordinator
 from tests.utils import build_market_prices, build_price_data, make_me, make_month_summary
 
 
+@pytest.fixture(autouse=True)
+def _freeze_midday(freezer):
+    """Freeze time at midday UTC, so the UTC date matches the Amsterdam market day.
+
+    The coordinator fetches prices for the Europe/Amsterdam market day, while these tests
+    build their data from dt_util.now(). Between 00:00 and 02:00 Amsterdam time the two
+    dates differ, which made the tests fail at night. Tests that need another moment
+    still call freezer.move_to() themselves.
+    """
+    freezer.move_to("2026-01-15 12:00:00+00:00")
+
+
 @pytest.fixture
 async def entry(hass):
     config_entry = MockConfigEntry(

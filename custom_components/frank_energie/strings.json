@@ -45,12 +45,28 @@
   "options": {
     "step": {
       "init": {
-        "title": "Time zone for price times",
-        "description": "Choose the notation used for the 'from'/'till' times in the price sensors' attributes and the get_prices action. This only changes how those times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting.",
+        "title": "Frank Energie options",
+        "description": "Choose the notation used for the 'from'/'till' times in the price sensors' attributes and the get_prices action, and configure the electricity price analysis (cheap/expensive thresholds, the cheapest period length and, optionally, a solar production forecast).",
         "data": {
-          "prices_timezone": "Time zone for price times"
+          "prices_timezone": "Time zone for price times",
+          "cheap_price_threshold": "Cheap price below (€/kWh)",
+          "expensive_price_threshold": "Expensive price above (€/kWh)",
+          "cheapest_period_minutes": "Cheapest period length",
+          "solar_forecast_entry": "Solar forecast",
+          "solar_threshold_kwh": "Solar threshold"
+        },
+        "data_description": {
+          "prices_timezone": "Only changes how the 'from'/'till' times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting.",
+          "cheap_price_threshold": "All-in electricity prices at or below this are considered cheap.",
+          "expensive_price_threshold": "All-in electricity prices above this are considered expensive.",
+          "cheapest_period_minutes": "The length of the contiguous period with the lowest average price that the price analysis looks for.",
+          "solar_forecast_entry": "An optional integration that forecasts solar production, used to mark cheap slots with enough forecast solar production as 'cheap + solar'.",
+          "solar_threshold_kwh": "The forecast solar production (kWh per hour) from which a cheap slot is marked as 'cheap + solar'."
         }
       }
+    },
+    "error": {
+      "thresholds_invalid": "The cheap price threshold must be lower than the expensive price threshold."
     }
   },
   "selector": {
@@ -58,6 +74,18 @@
       "options": {
         "home_assistant": "Home Assistant's time zone",
         "utc": "UTC"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "price_level": {
+        "state": {
+          "cheap_solar": "Cheap + solar",
+          "cheap": "Cheap",
+          "normal": "Normal",
+          "expensive": "Expensive"
+        }
       }
     }
   },

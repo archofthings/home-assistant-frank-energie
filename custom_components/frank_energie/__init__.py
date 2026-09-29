@@ -11,12 +11,13 @@ from python_frank_energie import FrankEnergie
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, FrankEnergieException
 from python_frank_energie.models import DeliverySite
 
-from .const import CONF_COORDINATOR, DOMAIN
+from .const import CONF_COORDINATOR, CONF_PRICE_ANALYSIS, DOMAIN
 from .coordinator import FrankEnergieCoordinator
+from .price_analysis import PriceAnalysisCoordinator
 from .services import async_setup_services
 from .sites import build_site_title, discover_in_delivery_sites
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -77,10 +78,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Fetch initial data, so we have data when entities subscribe and set up the platform
     await frank_coordinator.async_config_entry_first_refresh()
+
+    # The price analysis coordinator derives its data from frank_coordinator's,
+    # so it is never used to gate setup readiness: a failure here should not
+    # prevent the rest of the integration (and its other entities) from
+    # loading. It refreshes itself, so the initial async_refresh() result
+    # doesn't need to be checked either.
+    price_analysis_coordinator = PriceAnalysisCoordinator(hass, entry, frank_coordinator)
+    await price_analysis_coordinator.async_refresh()
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         CONF_COORDINATOR: frank_coordinator,
+        CONF_PRICE_ANALYSIS: price_analysis_coordinator,
     }
+
+    for unsub in price_analysis_coordinator.async_setup_listeners():
+        entry.async_on_unload(unsub)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

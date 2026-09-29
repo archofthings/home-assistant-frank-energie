@@ -322,10 +322,16 @@ async def test_unload_entry_cancels_update_timers(
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    # One timer per sensor that was actually added (disabled-by-default sensors get none).
-    added = hass.states.async_all("sensor")
+    # One timer per legacy (declarative SENSOR_TYPES) sensor that was actually added
+    # (disabled-by-default sensors get none), plus the single shared quarter-hour
+    # timer PriceAnalysisCoordinator itself registers (see __init__.py). The
+    # newer price-analysis sensors/binary sensors don't register their own
+    # per-entity timer: they read PriceAnalysisCoordinator's cached, already
+    # quarter-hourly-refreshed result instead.
+    legacy_keys = [description.key for description in sensor.SENSOR_TYPES if not description.authenticated]
+    legacy_added = [key for key in legacy_keys if state_for_key(hass, config_entry, key) is not None]
     assert unsubscribers
-    assert len(unsubscribers) == len(added)
+    assert len(unsubscribers) == len(legacy_added) + 1
     assert all(unsub.call_count == 0 for unsub in unsubscribers)
 
     assert await hass.config_entries.async_unload(config_entry.entry_id)
