@@ -625,9 +625,20 @@ def _monthly_difference(data: UsageData | None, name: str) -> Any:
     return getattr(data.monthly, name)
 
 
+# month_insights reports feed-in usage and revenue as negative numbers, while
+# period_usage_and_costs (the daily sensors) reports them as positive. Flip the
+# monthly ones so feed-in is always positive kWh and revenue positive euros.
+_NEGATED_FEED_IN_FIELDS = {"actualUsage", "actualCosts", "expectedUsage", "expectedCosts"}
+
+
 def _monthly_value(data: UsageData | None, name: str, field: str) -> StateType:
     difference = _monthly_difference(data, name)
-    return getattr(difference, field) if difference is not None else None
+    if difference is None:
+        return None
+    value = getattr(difference, field)
+    if name == "feedInDifference" and field in _NEGATED_FEED_IN_FIELDS and value is not None:
+        return -value
+    return value
 
 
 def _monthly_attrs(data: UsageData | None, extra: dict[str, Any]) -> dict[str, Any]:

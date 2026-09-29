@@ -199,6 +199,34 @@ async def test_monthly_sensors_state_and_attributes(hass, enable_custom_integrat
     assert entity_id_for_key(hass, entry, "gas_costs_month") is None
 
 
+async def test_monthly_feed_in_is_reported_positive(hass, enable_custom_integrations, mock_frank_energie_class):
+    """Regression: month_insights reports feed-in as negative numbers; the sensors show them positive.
+
+    Values taken from a live account: the daily sensors (period_usage_and_costs)
+    already report feed-in and its revenue as positive, so without the sign flip
+    the monthly feed-in showed "-39.443 kWh" and "-6.19 €".
+    """
+    entry = setup_authenticated_entry(hass, mock_frank_energie_class, [const.SENSOR_GROUP_MONTHLY_USAGE])
+    mock_frank_energie_class.month_insights.return_value = make_month_insights(
+        feedInDifference=make_difference(
+            actualUsage=-39.443, expectedUsage=-238.9333, actualCosts=-6.19, expectedCosts=-24.11,
+            actualAverageUnitPrice=0.157,
+        ),
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    usage_state = state_for_key(hass, entry, "feed_in_month")
+    revenue_state = state_for_key(hass, entry, "feed_in_revenue_month")
+
+    assert float(usage_state.state) == 39.443
+    assert usage_state.attributes["expected_usage"] == 238.9333
+    assert float(revenue_state.state) == 6.19
+    assert revenue_state.attributes["expected_costs"] == 24.11
+    assert revenue_state.attributes["average_price"] == 0.157
+
+
 async def test_monthly_last_reset_is_month_start_and_fixed_costs_has_no_state_class(
     hass, enable_custom_integrations, mock_frank_energie_class
 ):
