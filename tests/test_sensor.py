@@ -315,6 +315,32 @@ async def test_yearly_cost_sensors_use_amsterdam_year_not_utc_year(
     assert float(previous_year_state.state) == pytest.approx(99.0)
 
 
+async def test_yearly_invoices_attribute_sums_correction_invoice_per_period(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """A correction invoice for the same period is summed into one entry, not listed twice."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-09-15 10:00:00+02:00")
+
+    july = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    invoices = Invoices(all_periods_invoices=[
+        make_invoice(136.17, july, "July 2026"),
+        make_invoice(-0.65, july, "July 2026"),
+        make_invoice(80.0, datetime(2026, 8, 1, tzinfo=timezone.utc), "August 2026"),
+    ])
+    setup_authenticated_api(mock_frank_energie_class, invoices, month_summary=make_month_summary())
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, authenticated_config_entry, "costs_this_year")
+    assert float(state.state) == pytest.approx(215.52)
+    assert state.attributes["invoices"] == [
+        {"start_date": "2026-07-01", "description": "July 2026", "total_amount": 135.52},
+        {"start_date": "2026-08-01", "description": "August 2026", "total_amount": 80.0},
+    ]
+
+
 async def test_yearly_cost_sensors_unavailable_when_invoices_is_none(
     hass, mock_frank_energie_class, authenticated_config_entry, freezer
 ):
