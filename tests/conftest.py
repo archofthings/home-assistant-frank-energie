@@ -32,6 +32,8 @@ def mock_api():
     api._auth = None
     api.month_summary = AsyncMock(return_value=None)
     api.invoices = AsyncMock(return_value=None)
+    api.period_usage_and_costs = AsyncMock(return_value=None)
+    api.month_insights = AsyncMock(return_value=None)
     return api
 
 

@@ -11,6 +11,7 @@ from python_frank_energie.models import PriceData
 
 from .const import (
     CONF_COORDINATOR,
+    CONF_USAGE_COORDINATOR,
     DATA_ELECTRICITY,
     DATA_GAS,
     DATA_INVOICES,
@@ -19,6 +20,7 @@ from .const import (
     enabled_groups,
 )
 from .coordinator import FrankEnergieCoordinator
+from .usage import UsageCoordinator
 
 TO_REDACT = {CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME, "site_reference", "title", "unique_id"}
 
@@ -119,6 +121,20 @@ def _diagnostics_data(coordinator: FrankEnergieCoordinator) -> dict[str, Any]:
     }
 
 
+def _diagnostics_usage(usage_coordinator: UsageCoordinator | None) -> dict[str, Any]:
+    """Build the "usage" section of the diagnostics: whether it exists, its status and the date covered."""
+    if usage_coordinator is None:
+        return {"exists": False, "last_update_success": None, "daily_date": None, "monthly_available": False}
+
+    data = usage_coordinator.data
+    return {
+        "exists": True,
+        "last_update_success": usage_coordinator.last_update_success,
+        "daily_date": data.daily_date.isoformat() if data is not None and data.daily_date is not None else None,
+        "monthly_available": data is not None and data.monthly is not None,
+    }
+
+
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """Return diagnostics for a config entry.
 
@@ -143,4 +159,5 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         "entry": _diagnostics_entry(entry),
         "coordinator": _diagnostics_coordinator(coordinator),
         "data": _diagnostics_data(coordinator),
+        "usage": _diagnostics_usage(loaded.get(CONF_USAGE_COORDINATOR)),
     }

@@ -13,6 +13,7 @@ ICON = "mdi:currency-eur"
 COMPONENT_TITLE = "Frank Energie"
 
 CONF_COORDINATOR = "coordinator"
+CONF_USAGE_COORDINATOR = "usage_coordinator"
 ATTR_TIME = "from_time"
 
 CONF_PRICES_TIMEZONE = "prices_timezone"
@@ -54,8 +55,32 @@ SENSOR_GROUP_DAILY_STATISTICS = "daily_statistics"
 SENSOR_GROUP_UPCOMING = "upcoming"
 SENSOR_GROUP_PRICE_ANALYSIS = "price_analysis"
 SENSOR_GROUP_COSTS = "costs"
-SENSOR_GROUPS = (SENSOR_GROUP_DAILY_STATISTICS, SENSOR_GROUP_UPCOMING, SENSOR_GROUP_PRICE_ANALYSIS, SENSOR_GROUP_COSTS)
+SENSOR_GROUP_DAILY_USAGE = "daily_usage"
+SENSOR_GROUP_MONTHLY_USAGE = "monthly_usage"
+SENSOR_GROUPS = (
+    SENSOR_GROUP_DAILY_STATISTICS,
+    SENSOR_GROUP_UPCOMING,
+    SENSOR_GROUP_PRICE_ANALYSIS,
+    SENSOR_GROUP_COSTS,
+    SENSOR_GROUP_DAILY_USAGE,
+    SENSOR_GROUP_MONTHLY_USAGE,
+)
 DEFAULT_SENSOR_GROUPS = [SENSOR_GROUP_DAILY_STATISTICS, SENSOR_GROUP_COSTS]
+
+# The groups that existed before daily_usage/monthly_usage were added: the
+# fallback enabled_groups() uses for a legacy entry with no CONF_SENSOR_GROUPS
+# option stored, so such an entry keeps exactly its previous behaviour
+# instead of gaining the two new, off-by-default groups.
+LEGACY_SENSOR_GROUPS = (
+    SENSOR_GROUP_DAILY_STATISTICS,
+    SENSOR_GROUP_UPCOMING,
+    SENSOR_GROUP_PRICE_ANALYSIS,
+    SENSOR_GROUP_COSTS,
+)
+
+# Sensor groups only offered as a choice (and only ever selectable) for a
+# logged-in entry; see config_flow._init_schema/OptionsFlowHandler.async_step_init.
+SENSOR_GROUPS_REQUIRE_LOGIN = (SENSOR_GROUP_COSTS, SENSOR_GROUP_DAILY_USAGE, SENSOR_GROUP_MONTHLY_USAGE)
 
 # Maps each grouped sensor/binary_sensor entity description key to its
 # sensor group. Keys absent from this dict (the "current prices" sensors)
