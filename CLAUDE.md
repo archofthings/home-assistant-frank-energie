@@ -1,7 +1,7 @@
 # Frank Energie – Home Assistant custom integration
 
 ## Project
-- Integration code: `custom_components/frank_energie/` (config_flow, coordinator, sensor, const)
+- Integration code: `custom_components/frank_energie/` (see Module map below)
 - Library: `python-frank-energie` (version pinned in `manifest.json`)
 - Tests: `tests/` with `pytest-homeassistant-custom-component`
 - CI: flake8 (max line 120, complexity 10) + pytest, Python 3.14 (`.github/workflows/ci.yaml`)
@@ -10,6 +10,29 @@
   Library sources: `.venv/lib/python3.14/site-packages/{python_frank_energie,homeassistant}/`.
 - Hooks (`.claude/hooks/`, wired in `.claude/settings.json`): flake8 runs on every edited `.py` file and reports
   errors immediately (fix them before continuing); whole-disk searches (`find /`, `find ~`, `locate`, …) are blocked.
+
+## Module map
+Go straight to the right file and its test; read library code only for the functions named here.
+Paths are relative to `custom_components/frank_energie/`; tests are in `tests/`, shared helpers in `tests/utils.py`
+and `tests/conftest.py`. Library sources: `.venv/lib/python3.14/site-packages/python_frank_energie/`
+(`frank_energie.py` = API client, `models.py` = `PriceData`/`Price`/`MarketPrices`).
+
+| File | What it does | Tests | Depends on (library / HA) |
+|---|---|---|---|
+| `__init__.py` | Entry setup/unload, site discovery for legacy entries, removes entities of disabled sensor groups, creates coordinators (analysis only when enabled), registers the action | `test_init.py`, `test_sensor_groups.py` | `FrankEnergie.UserSites` |
+| `config_flow.py` | Login, site choice, reauth (`wrong_account`), reconfigure, options flow (page 1: time zone + sensor groups; page 2 `analysis` with two sections, flattened before saving) | `test_config_flow.py` | `FrankEnergie.login/UserSites`, `OptionsFlowWithReload` |
+| `coordinator.py` | Fetches prices/costs/invoices hourly, public fallback, token renewal + persistence, stale data, Amsterdam market day, `prices_tzinfo` | `test_coordinator.py` | `prices`, `user_prices`, `country_prices`, `user_country`, `month_summary`, `invoices`, `PriceData.__add__` |
+| `sensor.py` | All sensor descriptions (current/daily/upcoming/costs) and the analysis sensors; quarter-hour refresh | `test_sensor.py` | `PriceData.current_hour/today_*/tomorrow_*/upcoming_*/asdict` |
+| `binary_sensor.py` | Analysis binary sensors (cheap price now, cheapest period now) | `test_price_analysis.py` | — |
+| `analysis.py` | Pure calculations: levels, cheapest period, windows, solar per slot | `test_analysis.py` | — (no HA, no library) |
+| `price_analysis.py` | Analysis coordinator: reads prices + solar, computes and caches results, debounced refresh | `test_price_analysis.py` | `DataUpdateCoordinator` |
+| `solar_forecast.py` | Best-effort solar forecast from HA energy platforms (timeout, never raises) | `test_solar_forecast.py` | `energy.websocket_api.async_get_energy_platforms` |
+| `services.py` + `services.yaml` | `frank_energie.get_prices` action | `test_services.py` | — |
+| `diagnostics.py` | Redacted diagnostics download | `test_diagnostics.py` | `async_redact_data` |
+| `sites.py` | Delivery-site filtering and titles | `test_init.py`, `test_config_flow.py` | `DeliverySite` |
+| `device.py` | Shared `DeviceInfo` (identifiers must not change) | — | — |
+| `const.py` | Constants, option keys and defaults; sensor groups: `SENSOR_GROUP_BY_KEY` (entity key → group) and `enabled_groups(entry)` | `test_sensor_groups.py` | — |
+| `strings.json`, `translations/en.json`, `translations/nl.json` | UI texts (keep the three in sync) | `test_translations.py` | — |
 
 ## Roles
 - **You (main session, Opus 5.5)**: architect, problem solver and orchestrator.
