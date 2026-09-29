@@ -116,12 +116,31 @@ def _forecast_periods(forecast: list[tuple[datetime, float]]) -> list[tuple[date
     return periods
 
 
-def _solar_kwh_for_slot(at: datetime, periods: list[tuple[datetime, float, float]]) -> float:
-    """Return the solar forecast (kWh/h) for the period in `periods` that contains `at`, or 0.0."""
+def _solar_kwh_for_slot(
+    slot_from: datetime, slot_till: datetime, periods: list[tuple[datetime, float, float]]
+) -> float:
+    """Return the time-weighted average solar forecast (kWh/h) over `[slot_from, slot_till)`.
+
+    For every forecast period overlapping the slot, its overlap in minutes is
+    multiplied by the period's own kWh/h rate; the sum is divided by the
+    slot's length. Minutes of the slot not covered by any forecast period
+    contribute 0.
+    """
+    slot_minutes = (slot_till - slot_from).total_seconds() / 60
+    if slot_minutes <= 0:
+        return 0.0
+
+    weighted_kwh_per_hour = 0.0
     for start, value, length_minutes in periods:
-        if start <= at < start + timedelta(minutes=length_minutes):
-            return (value / 1000) * 60 / length_minutes
-    return 0.0
+        overlap_start = max(start, slot_from)
+        overlap_end = min(start + timedelta(minutes=length_minutes), slot_till)
+        overlap_minutes = (overlap_end - overlap_start).total_seconds() / 60
+        if overlap_minutes <= 0:
+            continue
+        period_kwh_per_hour = (value / 1000) * 60 / length_minutes
+        weighted_kwh_per_hour += overlap_minutes * period_kwh_per_hour
+
+    return weighted_kwh_per_hour / slot_minutes
 
 
 def solar_per_slot(slots: Iterable[PriceSlot], wh_hours: dict[str, float]) -> dict[datetime, float]:
@@ -142,9 +161,12 @@ def solar_per_slot(slots: Iterable[PriceSlot], wh_hours: dict[str, float]) -> di
     float) is skipped individually, so a partially malformed forecast only
     loses solar data for the affected period(s) instead of the whole result.
 
-    Each slot is mapped to the forecast period that contains its `date_from`.
-    A slot with no matching forecast period (e.g. the forecast doesn't cover
-    that far ahead) gets 0.0.
+    Each slot's value is the time-weighted average (kWh/h) of every forecast
+    period overlapping `[slot.date_from, slot.date_till)`: each period's
+    overlap in minutes is multiplied by that period's own kWh/h rate, the
+    results are summed and divided by the slot's length. Minutes of the slot
+    not covered by any forecast period (e.g. the forecast doesn't cover that
+    far ahead) count as 0.
 
     Period-start evidence (Forecast.Solar): the `forecast_solar` library's
     `Estimate.energy_current_hour` sums every `wh_period` entry whose
@@ -165,7 +187,7 @@ def solar_per_slot(slots: Iterable[PriceSlot], wh_hours: dict[str, float]) -> di
         return {slot.date_from: 0.0 for slot in slots}
 
     periods = _forecast_periods(forecast)
-    return {slot.date_from: _solar_kwh_for_slot(slot.date_from, periods) for slot in slots}
+    return {slot.date_from: _solar_kwh_for_slot(slot.date_from, slot.date_till, periods) for slot in slots}
 
 
 def _split_contiguous_runs(slots: list[PriceSlot]) -> list[list[PriceSlot]]:

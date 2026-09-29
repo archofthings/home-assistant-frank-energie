@@ -272,3 +272,42 @@ def test_solar_per_slot_skips_malformed_entries():
 
     for slot in slots:
         assert result[slot.date_from] == pytest.approx(0.24)  # only the well-formed 240 Wh/60 min entry applies
+
+
+@pytest.mark.parametrize(
+    "slot_start_offset, slot_minutes, wh_hours_offsets, expected_kwh_per_hour",
+    [
+        (0, 60, {0: 500.0, 30: 1000.0, 60: 0.0}, 1.5),
+        (0, 15, {0: 240.0, 60: 0.0}, 0.24),
+        (30, 60, {0: 500.0}, 0.25),
+    ],
+    ids=[
+        "60min_slot_averages_two_30min_periods",
+        "15min_slot_inside_60min_period_is_unchanged",
+        "60min_slot_half_covered_averages_with_zero",
+    ],
+)
+def test_solar_per_slot_time_weighted_average_over_slot(
+    slot_start_offset, slot_minutes, wh_hours_offsets, expected_kwh_per_hour
+):
+    """solar_per_slot averages overlapping forecast periods over the whole slot, weighted by overlap minutes.
+
+    - A 60-minute slot spanning two 30-minute forecast periods (500 Wh then
+      1000 Wh) gets their time-weighted average, not just the first period's
+      value (regression: previously only the period containing the slot's
+      `date_from` was used).
+    - A 15-minute slot fully inside a single 60-minute forecast period is
+      unaffected by the change.
+    - A 60-minute slot only half covered by forecast data is averaged with
+      0.0 for the uncovered half.
+    """
+    reference = datetime(2024, 1, 1, tzinfo=UTC)
+    slot_start = reference + timedelta(minutes=slot_start_offset)
+    slots = [_Slot(slot_start, slot_start + timedelta(minutes=slot_minutes), 0.2)]
+    wh_hours = {
+        (reference + timedelta(minutes=offset)).isoformat(): wh for offset, wh in wh_hours_offsets.items()
+    }
+
+    result = solar_per_slot(slots, wh_hours)
+
+    assert result[slot_start] == pytest.approx(expected_kwh_per_hour)
