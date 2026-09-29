@@ -43,7 +43,7 @@ STATISTICS = (
 
 
 class FrankEnergieStatisticsImporter:
-    """Imports hourly usage and costs of the last days as long-term statistics (never raises)."""
+    """Imports hourly usage and costs of the last days as long-term statistics (API errors are logged, not raised)."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, price_coordinator: FrankEnergieCoordinator) -> None:
         """Initialize the importer."""
@@ -57,10 +57,14 @@ class FrankEnergieStatisticsImporter:
         return f"{DOMAIN}:{kind}_{slugify(self.price_coordinator.site_reference)}"
 
     async def async_import(self, _now: datetime | None = None) -> None:
-        """Fetch the missing days and import them; errors are logged, not raised."""
+        """Fetch the missing days and import them; API errors are logged, not raised."""
         if self._lock.locked():
             return
         async with self._lock:
+            if dt_util.utcnow().hour == 0:
+                # The Frank Energie API has a daily maintenance window between 00:00 and 01:00 UTC.
+                LOGGER.debug("Skipping the statistics import during the Frank Energie maintenance window")
+                return
             if "recorder" not in self.hass.config.components:
                 if not self._warned_no_recorder:
                     LOGGER.warning("The recorder is not loaded, not importing Energy dashboard statistics")
@@ -70,7 +74,7 @@ class FrankEnergieStatisticsImporter:
             try:
                 days = await self._fetch_days(await self._days_to_import())
             finally:
-                # Tokens may be renewed during any call above; see UsageCoordinator.
+                # Tokens may be renewed during any call above; see FrankEnergieCoordinator._async_persist_tokens().
                 if api.is_authenticated:
                     self.price_coordinator._async_persist_tokens()
             if days:
@@ -94,7 +98,10 @@ class FrankEnergieStatisticsImporter:
         return [start + timedelta(days=i) for i in range((yesterday - start).days + 1)]
 
     async def _fetch_days(self, days: list[date]) -> list[PeriodUsageAndCosts]:
-        """Fetch the days in order; stop at the first failure or day without data."""
+        """Fetch the days in order; stop at an API error or at an empty day within the last 2 days.
+
+        Older empty days (e.g. before the customer started) are skipped; the last day is yesterday.
+        """
         fetched = []
         for day in days:
             try:
@@ -105,6 +112,10 @@ class FrankEnergieStatisticsImporter:
                 LOGGER.warning("Could not fetch usage and costs for %s, stopping the import: %s", day, ex)
                 break
             if data is None or data.electricity is None or not data.electricity.items:
+                if day < days[-1] - timedelta(days=1):
+                    LOGGER.debug("No usage data for %s, skipping", day)
+                    continue
+                LOGGER.debug("No usage data for %s yet, stopping", day)
                 break
             fetched.append(data)
         return fetched

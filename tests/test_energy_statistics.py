@@ -8,6 +8,7 @@ import pytest
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.components.recorder.common import async_wait_recording_done
 from python_frank_energie.exceptions import FrankEnergieException
@@ -160,3 +161,28 @@ async def test_setup_starts_import_only_when_group_enabled(
 
     assert importer_cls.called is enabled
     mock_frank_energie_class.period_usage_and_costs.assert_not_awaited()
+
+
+async def test_leading_empty_days_are_skipped_and_empty_yesterday_stops_without_error(
+    recorder_mock, hass, importer, mock_api
+):
+    """Old empty days are skipped (statistics start at day 6); an empty yesterday stops the run quietly."""
+    def fetch(site, day):
+        if day < "2025-12-21" or day == "2026-01-14":
+            return None
+        return day_data(day)
+
+    mock_api.period_usage_and_costs.side_effect = fetch
+    await importer.async_import()
+
+    assert mock_api.period_usage_and_costs.await_count == 30
+    rows = await read_stats(hass, ELEC_ID)
+    assert len(rows) == 24 * 24
+    assert dt_util.utc_from_timestamp(rows[0]["start"]) == datetime(2025, 12, 20, 23, tzinfo=timezone.utc)
+
+
+async def test_no_import_during_maintenance_window(recorder_mock, hass, importer, mock_api, freezer):
+    """Between 00:00 and 01:00 UTC the API is not called."""
+    freezer.move_to("2026-01-15 00:30:00+00:00")
+    await importer.async_import()
+    mock_api.period_usage_and_costs.assert_not_awaited()

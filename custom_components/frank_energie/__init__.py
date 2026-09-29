@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, Platform, CONF_TOKEN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
@@ -164,11 +164,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await contract_coordinator.async_refresh()
 
     # Imports hourly usage and costs as Energy dashboard statistics. The first
-    # import runs in the background so setup isn't delayed; it never raises.
+    # import runs in the background so setup isn't delayed; API errors are logged, not raised.
     if frank_coordinator.api.is_authenticated and SENSOR_GROUP_ENERGY_STATISTICS in groups:
         importer = FrankEnergieStatisticsImporter(hass, entry, frank_coordinator)
-        entry.async_create_background_task(hass, importer.async_import(), "frank_energie_statistics_import")
-        entry.async_on_unload(async_track_time_interval(hass, importer.async_import, timedelta(hours=3)))
+
+        @callback
+        def _start_import(_now=None) -> None:
+            entry.async_create_background_task(hass, importer.async_import(), "frank_energie_statistics_import")
+
+        _start_import()
+        entry.async_on_unload(async_track_time_interval(hass, _start_import, timedelta(hours=3)))
 
     entry.runtime_data = FrankEnergieRuntimeData(
         coordinator=frank_coordinator,
