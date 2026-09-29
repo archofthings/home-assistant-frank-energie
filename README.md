@@ -4,7 +4,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
 [![CI](https://img.shields.io/github/actions/workflow/status/archofthings/home-assistant-frank-energie/ci.yaml?branch=main&label=CI)](https://github.com/archofthings/home-assistant-frank-energie/actions/workflows/ci.yaml)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5.svg?logo=homeassistant)](https://www.home-assistant.io/)
-[![Installations](https://img.shields.io/badge/dynamic/json?label=installations&query=%24.frank_energie.total&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json)](https://analytics.home-assistant.io/)
+[![Downloads](https://img.shields.io/github/downloads/archofthings/home-assistant-frank-energie/total?label=downloads)](https://github.com/archofthings/home-assistant-frank-energie/releases)
 
 A Home Assistant custom integration for [Frank Energie](https://www.frankenergie.nl/): electricity and gas prices per 15 minutes, a price analysis for automations and charts, and optionally your own usage, costs and invoices.
 
