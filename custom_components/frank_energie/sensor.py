@@ -30,14 +30,10 @@ from .analysis import ClassifiedSlot, Window
 from .const import (
     ATTR_TIME,
     ATTRIBUTION,
-    CONF_COORDINATOR,
-    CONF_PRICE_ANALYSIS,
-    CONF_USAGE_COORDINATOR,
     DATA_ELECTRICITY,
     DATA_GAS,
     DATA_INVOICES,
     DATA_MONTH_SUMMARY,
-    DOMAIN,
     ICON,
     PRICE_LEVELS,
     SERVICE_NAME_PRICES,
@@ -803,9 +799,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Frank Energie sensor entries."""
-    frank_coordinator = hass.data[DOMAIN][config_entry.entry_id][CONF_COORDINATOR]
-    price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_PRICE_ANALYSIS)
-    usage_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_USAGE_COORDINATOR)
+    runtime_data = config_entry.runtime_data
+    frank_coordinator = runtime_data.coordinator
+    price_analysis_coordinator = runtime_data.price_analysis
+    usage_coordinator = runtime_data.usage
     groups = enabled_groups(config_entry)
 
     # Add an entity for each sensor type, when authenticated is True, only

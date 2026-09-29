@@ -301,7 +301,7 @@ async def test_analysis_survives_price_refresh_with_new_price_objects(
     electricity_today[EXPENSIVE_SLOT] = 0.50
     install_prices(mock_frank_energie_class, electricity_today, [1.0] * 96, resolution_minutes=15)
 
-    await hass.data[const.DOMAIN][entry.entry_id][const.CONF_COORDINATOR].async_refresh()
+    await entry.runtime_data.coordinator.async_refresh()
     await hass.async_block_till_done()
 
     state = state_for_key(hass, entry, "sensor", "next_cheapest_period")

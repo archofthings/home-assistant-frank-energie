@@ -1,6 +1,8 @@
 """The Frank Energie component."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, Platform, CONF_TOKEN
 from homeassistant.core import HomeAssistant
@@ -13,9 +15,6 @@ from python_frank_energie.exceptions import AuthException, AuthRequiredException
 from python_frank_energie.models import DeliverySite
 
 from .const import (
-    CONF_COORDINATOR,
-    CONF_PRICE_ANALYSIS,
-    CONF_USAGE_COORDINATOR,
     DOMAIN,
     SENSOR_GROUP_DAILY_USAGE,
     SENSOR_GROUP_MONTHLY_USAGE,
@@ -32,6 +31,18 @@ from .usage import UsageCoordinator
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+@dataclass
+class FrankEnergieRuntimeData:
+    """Runtime data stored on a Frank Energie config entry (see entry.runtime_data)."""
+
+    coordinator: FrankEnergieCoordinator
+    price_analysis: PriceAnalysisCoordinator | None
+    usage: UsageCoordinator | None
+
+
+type FrankEnergieConfigEntry = ConfigEntry[FrankEnergieRuntimeData]
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -136,12 +147,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         usage_coordinator = UsageCoordinator(hass, entry, frank_coordinator, groups)
         await usage_coordinator.async_refresh()
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        CONF_COORDINATOR: frank_coordinator,
-        CONF_PRICE_ANALYSIS: price_analysis_coordinator,
-        CONF_USAGE_COORDINATOR: usage_coordinator,
-    }
+    entry.runtime_data = FrankEnergieRuntimeData(
+        coordinator=frank_coordinator,
+        price_analysis=price_analysis_coordinator,
+        usage=usage_coordinator,
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -150,8 +160,4 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

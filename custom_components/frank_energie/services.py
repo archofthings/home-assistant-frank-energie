@@ -12,7 +12,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.util import dt as dt_util
 from python_frank_energie.models import Price, PriceData
 
-from .const import CONF_COORDINATOR, DATA_ELECTRICITY, DATA_GAS, DOMAIN
+from .const import DATA_ELECTRICITY, DATA_GAS, DOMAIN
 
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_START = "start"
@@ -87,7 +87,7 @@ async def _async_get_prices(call: ServiceCall) -> ServiceResponse:
             translation_key="invalid_period",
         )
 
-    coordinator = hass.data[DOMAIN][entry.entry_id][CONF_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
     data = coordinator.data
     tz = coordinator.prices_tzinfo
 

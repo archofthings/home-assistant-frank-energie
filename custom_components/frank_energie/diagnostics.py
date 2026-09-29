@@ -10,13 +10,10 @@ from homeassistant.core import HomeAssistant
 from python_frank_energie.models import PriceData
 
 from .const import (
-    CONF_COORDINATOR,
-    CONF_USAGE_COORDINATOR,
     DATA_ELECTRICITY,
     DATA_GAS,
     DATA_INVOICES,
     DATA_MONTH_SUMMARY,
-    DOMAIN,
     enabled_groups,
 )
 from .coordinator import FrankEnergieCoordinator
@@ -138,26 +135,26 @@ def _diagnostics_usage(usage_coordinator: UsageCoordinator | None) -> dict[str, 
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """Return diagnostics for a config entry.
 
-    `hass.data[DOMAIN][entry.entry_id]` is only populated after a successful
-    first refresh (see async_setup_entry), so entries stuck in
-    SETUP_RETRY/SETUP_ERROR have no coordinator yet. Report the redacted
-    "entry" section with "coordinator"/"data" set to None in that case,
-    instead of raising KeyError.
+    `entry.runtime_data` is only set after a successful first refresh (see
+    async_setup_entry), so entries stuck in SETUP_RETRY/SETUP_ERROR have no
+    coordinator yet. Report the redacted "entry" section with
+    "coordinator"/"data" set to None in that case, instead of raising
+    AttributeError.
     """
-    loaded = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    runtime_data = getattr(entry, "runtime_data", None)
 
-    if loaded is None:
+    if runtime_data is None:
         return {
             "entry": _diagnostics_entry(entry),
             "coordinator": None,
             "data": None,
         }
 
-    coordinator: FrankEnergieCoordinator = loaded[CONF_COORDINATOR]
+    coordinator: FrankEnergieCoordinator = runtime_data.coordinator
 
     return {
         "entry": _diagnostics_entry(entry),
         "coordinator": _diagnostics_coordinator(coordinator),
         "data": _diagnostics_data(coordinator),
-        "usage": _diagnostics_usage(loaded.get(CONF_USAGE_COORDINATOR)),
+        "usage": _diagnostics_usage(runtime_data.usage),
     }

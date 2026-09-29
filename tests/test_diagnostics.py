@@ -345,7 +345,7 @@ async def test_diagnostics_redacts_entry_values_from_last_exception_end_to_end(
     assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    coordinator = hass.data[const.DOMAIN][authenticated_config_entry.entry_id][const.CONF_COORDINATOR]
+    coordinator = authenticated_config_entry.runtime_data.coordinator
     try:
         raise RuntimeError(f"user-error: request failed for site {authenticated_config_entry.data['site_reference']}")
     except RuntimeError as ex:

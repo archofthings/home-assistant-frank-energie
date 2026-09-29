@@ -458,7 +458,7 @@ async def test_coordinator_refresh_updates_state_without_quarter_hour_tick(
 
     install_public_prices(mock_frank_energie_class, [0.77] * 96, [1.0] * 96)
 
-    coordinator = hass.data[const.DOMAIN][config_entry.entry_id][const.CONF_COORDINATOR]
+    coordinator = config_entry.runtime_data.coordinator
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 

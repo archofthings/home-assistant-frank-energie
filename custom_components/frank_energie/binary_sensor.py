@@ -8,7 +8,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import ATTRIBUTION, CONF_PRICE_ANALYSIS, DOMAIN, ICON, PRICE_LEVEL_CHEAP, PRICE_LEVEL_CHEAP_SOLAR
+from .const import ATTRIBUTION, ICON, PRICE_LEVEL_CHEAP, PRICE_LEVEL_CHEAP_SOLAR
 from .device import device_info
 from .price_analysis import AnalysisResult, PriceAnalysisCoordinator
 
@@ -19,7 +19,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Frank Energie binary sensor entries."""
-    price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_PRICE_ANALYSIS)
+    price_analysis_coordinator = config_entry.runtime_data.price_analysis
 
     # price_analysis_coordinator is None when the price_analysis sensor group
     # is disabled (see __init__.py): no PriceAnalysisCoordinator is created

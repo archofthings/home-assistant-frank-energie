@@ -28,7 +28,6 @@ from python_frank_energie.models import DeliverySite
 from .const import (
     CONF_CHEAP_PRICE_THRESHOLD,
     CONF_CHEAPEST_PERIOD_MINUTES,
-    CONF_COORDINATOR,
     CONF_EXPENSIVE_PRICE_THRESHOLD,
     CONF_PRICES_TIMEZONE,
     CONF_SENSOR_GROUPS,
@@ -459,9 +458,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         (see FrankEnergieCoordinator._async_persist_tokens()). A new client is
         only built when the entry isn't loaded (e.g. it is in SETUP_RETRY).
         """
-        loaded = self.hass.data.get(DOMAIN, {}).get(entry.entry_id)
-        if loaded is not None:
-            return loaded[CONF_COORDINATOR].api
+        runtime_data = getattr(entry, "runtime_data", None)
+        if runtime_data is not None:
+            return runtime_data.coordinator.api
 
         return FrankEnergie(
             clientsession=async_get_clientsession(self.hass),

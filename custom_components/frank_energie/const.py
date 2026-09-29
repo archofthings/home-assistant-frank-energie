@@ -12,8 +12,6 @@ DATA_URL = "https://frank-graphql-prod.graphcdn.app/"
 ICON = "mdi:currency-eur"
 COMPONENT_TITLE = "Frank Energie"
 
-CONF_COORDINATOR = "coordinator"
-CONF_USAGE_COORDINATOR = "usage_coordinator"
 ATTR_TIME = "from_time"
 
 CONF_PRICES_TIMEZONE = "prices_timezone"
@@ -29,7 +27,6 @@ SERVICE_NAME_PRICES = "Prices"
 SERVICE_NAME_COSTS = "Costs"
 
 # Price analysis options (see analysis.py and price_analysis.py).
-CONF_PRICE_ANALYSIS = "price_analysis"
 CONF_CHEAP_PRICE_THRESHOLD = "cheap_price_threshold"
 CONF_EXPENSIVE_PRICE_THRESHOLD = "expensive_price_threshold"
 CONF_CHEAPEST_PERIOD_MINUTES = "cheapest_period_minutes"
