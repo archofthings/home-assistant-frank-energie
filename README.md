@@ -40,7 +40,8 @@ Use the price sensors to run appliances, charge a car or battery, or heat water 
 - **Optional login** for your personal contract prices, plus your monthly cost and invoice sensors.
 - **Choose your delivery address** when your account has more than one, and change it later with **Reconfigure**.
 - **Local or UTC times** for the price list, configurable per installation.
-- **Choose your sensors**: turn groups of sensors (daily statistics, upcoming prices, price analysis, costs) on or off, so you only get what you use.
+- **Choose your sensors**: turn groups of sensors (daily statistics, upcoming prices, price analysis, costs, usage) on or off, so you only get what you use.
+- **Your usage and costs**: yesterday's and this month's electricity, gas and feed-in usage and costs from your Frank Energie account.
 - **Price analysis**: every quarter hour labelled cheap, normal or expensive (optionally "cheap + solar"), the cheapest period of the length you choose, and chart-ready data. See [Price analysis](#price-analysis).
 - **Diagnostics download** for bug reports, with tokens and personal details removed.
 - **Keeps working through API hiccups**: if an update fails, the last prices stay available as long as they still cover the future. Tokens are renewed automatically, and you're only asked to log in again when that fails.
@@ -108,6 +109,8 @@ Choose **Configure** on the integration. The settings have up to two pages.
 | **Upcoming and tomorrow prices** | Next price; average, lowest and highest price tomorrow; lowest and highest upcoming price; average gas price tomorrow |
 | **Price analysis** | Price level, cheap price now, cheapest period now, next cheapest period, price analysis today and tomorrow (see [Price analysis](#price-analysis)) |
 | **Costs and invoices** | Monthly cost and invoice sensors (only offered when you're logged in) |
+| **Daily usage and costs (yesterday)** | Yesterday's electricity, gas and feed-in usage and costs, with hourly detail (only offered when you're logged in; off by default) |
+| **Monthly usage and costs** | This month's electricity, gas and feed-in usage and costs, with expected values (only offered when you're logged in; off by default) |
 
 When you untick a group, its entities are removed from Home Assistant after saving. Their history stays in the database; when you tick the group again, the entities come back with the same entity IDs and their history continues. The `get_prices` action is always available.
 
@@ -136,7 +139,7 @@ Installations set up before the time zone option existed keep UTC times, so exis
 
 ## Sensors
 
-Prices are fetched every hour. Sensor states switch at every quarter hour (:00, :15, :30, :45) to the price of the current 15-minute slot.
+Prices are fetched every hour. From 12:00 (Europe/Amsterdam) until tomorrow's prices are published, usually around 13:00, the integration checks every 15 minutes, so tomorrow's prices show up soon after publication. Sensor states switch at every quarter hour (:00, :15, :30, :45) to the price of the current 15-minute slot.
 
 Which of these sensors exist depends on the [sensor groups](#options) you've selected.
 
@@ -186,6 +189,30 @@ The lowest, highest and next price sensors have a `from_time` attribute with the
 | Invoice previous period | Previous invoice (`Start date` and `Description` attributes) |
 | Invoice current period | Current invoice period |
 | Invoice upcoming period | Upcoming invoice |
+
+### Usage and costs (€, login required)
+
+Turn on the **Daily usage and costs (yesterday)** and **Monthly usage and costs** groups under [Configure](#options). The data is fetched every 3 hours.
+
+| Sensor | Unit | Group | Attributes |
+|---|---|---|---|
+| Electricity usage yesterday | kWh | Daily | `date`, `hours` |
+| Electricity costs yesterday | € | Daily | `date`, `hours` |
+| Gas usage yesterday | m³ | Daily | `date`, `hours` |
+| Gas costs yesterday | € | Daily | `date`, `hours` |
+| Feed-in yesterday | kWh | Daily | `date`, `hours` |
+| Feed-in revenue yesterday | € | Daily | `date`, `hours` |
+| Electricity usage this month | kWh | Monthly | `expected_usage`, `last_meter_reading` |
+| Electricity costs this month | € | Monthly | `expected_costs`, `average_price`, `last_meter_reading` |
+| Gas usage this month | m³ | Monthly | `expected_usage`, `last_meter_reading` |
+| Gas costs this month | € | Monthly | `expected_costs`, `average_price`, `last_meter_reading` |
+| Feed-in this month | kWh | Monthly | `expected_usage`, `last_meter_reading` |
+| Feed-in revenue this month | € | Monthly | `expected_costs`, `average_price`, `last_meter_reading` |
+| Fixed costs this month (expected) | € | Monthly | — |
+
+- The **daily** sensors show **yesterday**, because Frank Energie receives your smart meter data a day later. The `date` attribute says which day; `hours` lists the usage and costs per hour (not stored in history).
+- Gas and feed-in sensors are only created when your account has gas or feed-in data.
+- **Statistics:** the daily sensors record a new total each day. Because yesterday's data arrives today, Home Assistant's long-term statistics book each day's value **one day late**. The monthly sensors restart at the beginning of each month. For the Energy dashboard, keep using your own meter (for example a P1 meter); these sensors are meant for dashboards, notifications and comparing with your Frank Energie app.
 
 A sensor shows as **unavailable** when there's no data for it, for example when gas prices are missing, or there's no month summary yet for a new account.
 
@@ -302,70 +329,195 @@ The two analysis sensors have these attributes. They're not stored in the record
 | `solar_windows` | Consecutive `cheap_solar` slots, also with `average_solar_kwh` |
 | `thresholds` | The `cheap`, `expensive` and `solar_kwh` values used |
 
-### Chart: prices coloured by level
+### Charts: prices coloured by level
 
-This [ApexCharts Card](https://github.com/RomRider/apexcharts-card) chart shows today's prices as columns coloured by level, with a line marking the cheapest period. Replace the entity ID with the one of your **Electricity price analysis today** sensor.
+These [ApexCharts Card](https://github.com/RomRider/apexcharts-card) charts show the prices as columns coloured by level (yellowgreen = cheap + solar, green = cheap, yellow = normal, red = expensive), with the solar forecast as a blue line on the right axis. The entity IDs are those of a new installation; replace them if yours differ.
 
-<!-- Screenshot: images/price_analysis.png -->
+Tips that avoid common problems with this card:
+- Use **one** column series with a `colorMap` and `fillColor`. Separate column series per level make the bars very narrow.
+- Don't use `null` values or an `area` series in `data_generator`; the card then stays on "Loading".
+- The `+ 30 * 60 * 1000` centres the columns for **hourly** prices. With 15-minute prices, use `+ 7.5 * 60 * 1000` (and the same value in the tooltip).
+
+#### Today
+
+<!-- Screenshot: images/prices_today.png -->
+
+The optional **Sell** line shows the price minus a fixed amount (here 0.11085) for feed-in; adjust or remove it.
 
 ```yaml
 type: custom:apexcharts-card
+header:
+  show: true
+  title: Today's Energy Prices
 graph_span: 24h
 span:
   start: day
 now:
   show: true
+  color: black
   label: Now
-header:
-  show: true
-  title: Electricity price today (€/kWh)
-  show_states: false
-apex_config:
-  chart:
-    stacked: true
-  legend:
-    show: true
+yaxis:
+  - id: price
+    decimals: 2
+    min: 0
+    max: 0.8
+    apex_config:
+      tickAmount: 8
+  - id: solar
+    opposite: true
+    decimals: 1
+    min: 0
+    max: 5
 series:
   - entity: sensor.frank_energie_prices_electricity_price_analysis_today
-    name: Cheap + solar
+    name: Price
     type: column
-    color: '#009688'
-    data_generator: |
-      return entity.attributes.slots.map((s) =>
-        [new Date(s.from).getTime(), s.level === 'cheap_solar' ? s.price : null]);
+    yaxis_id: price
+    float_precision: 3
+    data_generator: >
+      if (!entity.attributes.slots || entity.attributes.slots.length === 0) {
+        return [{ x: Date.now(), y: 0 }];
+      }
+
+      const colorMap = { cheap_solar: 'yellowgreen', cheap: 'green', normal:
+      '#FFC107', expensive: '#F44336' };
+
+      return entity.attributes.slots.map((p) => {
+        const centeredX = new Date(p.from).getTime() + 30 * 60 * 1000;
+        return { x: centeredX, y: p.price, fillColor: colorMap[p.level] };
+      });
   - entity: sensor.frank_energie_prices_electricity_price_analysis_today
-    name: Cheap
-    type: column
-    color: '#4caf50'
-    data_generator: |
-      return entity.attributes.slots.map((s) =>
-        [new Date(s.from).getTime(), s.level === 'cheap' ? s.price : null]);
-  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
-    name: Normal
-    type: column
-    color: '#ffc107'
-    data_generator: |
-      return entity.attributes.slots.map((s) =>
-        [new Date(s.from).getTime(), s.level === 'normal' ? s.price : null]);
-  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
-    name: Expensive
-    type: column
-    color: '#f44336'
-    data_generator: |
-      return entity.attributes.slots.map((s) =>
-        [new Date(s.from).getTime(), s.level === 'expensive' ? s.price : null]);
-  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
-    name: Cheapest period
+    name: Sell
     type: line
-    color: '#673ab7'
+    color: green
+    yaxis_id: price
+    float_precision: 3
     stroke_width: 3
-    curve: stepline
-    data_generator: |
-      return entity.attributes.slots.map((s) =>
-        [new Date(s.from).getTime(), s.in_cheapest_period ? s.price : null]);
+    data_generator: >
+      if (!entity.attributes.slots || entity.attributes.slots.length === 0) {
+        return [{ x: Date.now(), y: 0 }];
+      }
+
+      return entity.attributes.slots.map((p) => {
+        const centeredX = new Date(p.from).getTime() + 30 * 60 * 1000;
+        return { x: centeredX, y: p.price - 0.11085 };
+      });
+  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
+    name: Solar forecast
+    type: line
+    yaxis_id: solar
+    color: '#2196F3'
+    stroke_width: 3
+    data_generator: >
+      if (!entity.attributes.slots || entity.attributes.slots.length === 0) {
+        return [{ x: Date.now(), y: 0 }];
+      }
+
+      return entity.attributes.slots.map((p) => {
+        const centeredX = new Date(p.from).getTime() + 30 * 60 * 1000;
+        return { x: centeredX, y: p.solar_kwh };
+      });
+apex_config:
+  chart:
+    height: 220
+  xaxis:
+    labels:
+      datetimeUTC: false
+  plotOptions:
+    bar:
+      columnWidth: 80%
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function(val) {
+          const realStart = new Date(val - 30 * 60 * 1000);
+          return realStart.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        }
+grid_options:
+  columns: 24
+  rows: auto
 ```
 
-For tomorrow, use the **Electricity price analysis tomorrow** sensor and set `span: start: day` with `offset: '+1d'`.
+#### Tomorrow
+
+<!-- Screenshot: images/prices_tomorrow.png -->
+
+The chart stays empty until tomorrow's prices are published.
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Tomorrow's Energy Prices
+graph_span: 24h
+span:
+  start: day
+  offset: +1d
+yaxis:
+  - id: price
+    decimals: 2
+    min: 0
+    max: 0.8
+    apex_config:
+      tickAmount: 8
+  - id: solar
+    opposite: true
+    decimals: 1
+    min: 0
+    max: 5
+series:
+  - entity: sensor.frank_energie_prices_electricity_price_analysis_tomorrow
+    name: Price
+    type: column
+    yaxis_id: price
+    float_precision: 3
+    data_generator: >
+      if (!entity.attributes.slots || entity.attributes.slots.length === 0) {
+        return [{ x: Date.now(), y: 0 }];
+      }
+
+      const colorMap = { cheap_solar: 'yellowgreen', cheap: 'green', normal:
+      '#FFC107', expensive: '#F44336' };
+
+      return entity.attributes.slots.map((p) => {
+        const centeredX = new Date(p.from).getTime() + 30 * 60 * 1000;
+        return { x: centeredX, y: p.price, fillColor: colorMap[p.level] };
+      });
+  - entity: sensor.frank_energie_prices_electricity_price_analysis_tomorrow
+    name: Solar forecast
+    type: line
+    yaxis_id: solar
+    color: '#2196F3'
+    stroke_width: 3
+    data_generator: >
+      if (!entity.attributes.slots || entity.attributes.slots.length === 0) {
+        return [{ x: Date.now(), y: 0 }];
+      }
+
+      return entity.attributes.slots.map((p) => {
+        const centeredX = new Date(p.from).getTime() + 30 * 60 * 1000;
+        return { x: centeredX, y: p.solar_kwh };
+      });
+apex_config:
+  chart:
+    height: 220
+  xaxis:
+    labels:
+      datetimeUTC: false
+  plotOptions:
+    bar:
+      columnWidth: 80%
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function(val) {
+          const realStart = new Date(val - 30 * 60 * 1000);
+          return realStart.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        }
+grid_options:
+  columns: 24
+  rows: auto
+```
 
 ### Automation examples
 
