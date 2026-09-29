@@ -47,4 +47,8 @@ Small, single-file changes (typo, constant, one-line fix): do it directly, then 
 - Never commit on `main` directly: work on a feature branch (the orchestrator creates it).
 - Only the orchestrator pushes, and only when I explicitly ask; `git push` always requires my approval
   (`ask` rule in `.claude/settings.json`). Subagents never push.
+- GitHub: use the `gh` CLI (logged in as archofthings; repo `archofthings/home-assistant-frank-energie`).
+  Read-only commands (`gh pr view/list/diff/checks`, `gh run`, `gh release view/list`) are allowed; anything that
+  publishes (PRs, comments, releases, `gh api`, workflow runs) needs my approval and is only done when I ask.
+  Subagents never run `gh` commands that publish.
 - Never call the real Frank Energie API in tests; never log tokens or credentials.
