@@ -55,3 +55,7 @@ Small, single-file changes (typo, constant, one-line fix): do it directly, then 
   publishes (PRs, comments, releases, `gh api`, workflow runs) needs my approval and is only done when I ask.
   Subagents never run `gh` commands that publish.
 - Never call the real Frank Energie API in tests; never log tokens or credentials.
+- Home Assistant MCP (`home-assistant`, user-scoped, connected to my real Home Assistant): use it only to
+  verify the integration (states, attributes, history, logs, integration info). Never switch devices, change
+  configuration, automations, dashboards or HACS, reload or restart unless I ask; those tools require my approval,
+  and deleting tools are blocked. Never paste the HA URL or token anywhere. Subagents don't use it.
