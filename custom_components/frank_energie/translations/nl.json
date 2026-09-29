@@ -104,7 +104,9 @@
                 "daily_statistics": "Dagstatistieken (laagste, hoogste, gemiddelde van vandaag)",
                 "upcoming": "Aankomende en morgen prijzen",
                 "price_analysis": "Prijsanalyse (prijsniveaus, goedkoopste periode, grafiekgegevens)",
-                "costs": "Kosten en facturen"
+                "costs": "Kosten en facturen",
+                "daily_usage": "Dagelijks verbruik en kosten (gisteren)",
+                "monthly_usage": "Maandelijks verbruik en kosten"
             }
         }
     },

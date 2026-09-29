@@ -141,8 +141,10 @@ def enabled_groups(entry: "ConfigEntry") -> set[str]:
     """Return the sensor groups enabled for `entry`.
 
     Entries without CONF_SENSOR_GROUPS in their options (i.e. created before
-    this feature existed) default to all groups enabled, computed here
-    rather than migrated, so nothing disappears after an update.
+    this feature existed) default to LEGACY_SENSOR_GROUPS, computed here
+    rather than migrated, so nothing disappears after an update. daily_usage
+    and monthly_usage are new, off-by-default groups: a legacy entry does not
+    gain them just because it predates CONF_SENSOR_GROUPS.
     """
     groups = entry.options.get(CONF_SENSOR_GROUPS)
-    return set(groups) if groups is not None else set(SENSOR_GROUPS)
+    return set(groups) if groups is not None else set(LEGACY_SENSOR_GROUPS)

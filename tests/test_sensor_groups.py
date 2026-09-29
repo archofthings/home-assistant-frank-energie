@@ -15,7 +15,9 @@ from tests.utils import (
     build_market_prices,
     install_prices,
     local_midnight,
+    make_energy_category,
     make_me,
+    make_period_usage_and_costs,
 )
 
 PRICE_ANALYSIS_ENTITIES = {
@@ -46,13 +48,13 @@ def entity_id_for_key(hass, entry, domain: str, key: str) -> str | None:
 @pytest.mark.parametrize(
     "options, expected",
     [
-        ({}, set(const.SENSOR_GROUPS)),
+        ({}, set(const.LEGACY_SENSOR_GROUPS)),
         ({const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING]}, {const.SENSOR_GROUP_UPCOMING}),
     ],
     ids=["legacy_entry_without_option", "entry_with_stored_groups"],
 )
 def test_enabled_groups(options, expected):
-    """A legacy entry without sensor_groups defaults to all groups; otherwise the stored set is used as is."""
+    """A legacy entry without sensor_groups defaults to LEGACY_SENSOR_GROUPS; otherwise the stored set is used as is."""
     entry = MockConfigEntry(domain=const.DOMAIN, data={}, options=options)
     assert const.enabled_groups(entry) == expected
 
@@ -239,3 +241,56 @@ async def test_disabling_costs_on_logged_in_entry_removes_cost_entities_but_keep
         assert entity_id_for_key(hass, entry, "sensor", key) is None
     # Current-price entities are unaffected.
     assert entity_id_for_key(hass, entry, "sensor", "elec_markup") is not None
+
+
+# --------------------------------------------------------------------------
+# Enabling daily_usage on a logged-in entry creates its UsageCoordinator and
+# entities; disabling it again removes both (see usage.py and __init__.py).
+# --------------------------------------------------------------------------
+
+
+async def test_enabling_daily_usage_creates_coordinator_and_entities_disabling_removes_them(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """Enabling "daily_usage" creates the UsageCoordinator and its entities; disabling it removes both."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={
+            "site_reference": "site-1",
+            CONF_ACCESS_TOKEN: FAKE_ACCESS_TOKEN,
+            CONF_TOKEN: FAKE_REFRESH_TOKEN,
+        },
+        options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS]},
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.is_authenticated = True
+    mock_frank_energie_class.user_country.return_value = make_me("NL")
+    mock_frank_energie_class.user_prices.return_value = build_market_prices(local_midnight(), [0.2] * 4, [1.0] * 4)
+    mock_frank_energie_class.period_usage_and_costs.return_value = make_period_usage_and_costs(
+        electricity=make_energy_category(10.0, 2.5)
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_USAGE_COORDINATOR] is None
+    assert entity_id_for_key(hass, entry, "sensor", "elec_usage_yesterday") is None
+
+    hass.config_entries.async_update_entry(
+        entry, options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_USAGE]}
+    )
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_USAGE_COORDINATOR] is not None
+    assert entity_id_for_key(hass, entry, "sensor", "elec_usage_yesterday") is not None
+
+    hass.config_entries.async_update_entry(
+        entry, options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS]}
+    )
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.data[const.DOMAIN][entry.entry_id][const.CONF_USAGE_COORDINATOR] is None
+    assert entity_id_for_key(hass, entry, "sensor", "elec_usage_yesterday") is None

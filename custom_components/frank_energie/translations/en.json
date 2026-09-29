@@ -103,7 +103,9 @@
                 "daily_statistics": "Daily statistics (lowest, highest, average today)",
                 "upcoming": "Upcoming and tomorrow prices",
                 "price_analysis": "Price analysis (price levels, cheapest period, chart data)",
-                "costs": "Costs and invoices"
+                "costs": "Costs and invoices",
+                "daily_usage": "Daily usage and costs (yesterday)",
+                "monthly_usage": "Monthly usage and costs"
             }
         }
     },

@@ -106,13 +106,13 @@ async def test_diagnostics_redacts_sensitive_fields_and_hides_address(
 @pytest.mark.parametrize(
     "options, expected_groups",
     [
-        ({}, sorted(const.SENSOR_GROUPS)),
+        ({}, sorted(const.LEGACY_SENSOR_GROUPS)),
         ({const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_COSTS]}, [const.SENSOR_GROUP_COSTS]),
     ],
     ids=["legacy_entry_without_option", "entry_with_stored_groups"],
 )
 def test_diagnostics_entry_reports_effective_sensor_groups(options, expected_groups):
-    """The entry section's sensor_groups reflects enabled_groups(): all groups for a legacy entry, else as stored."""
+    """The entry section's sensor_groups reflects enabled_groups(): legacy groups for a legacy entry, else as stored."""
     entry = MockConfigEntry(domain=const.DOMAIN, data={}, options=options)
 
     result = diagnostics._diagnostics_entry(entry)

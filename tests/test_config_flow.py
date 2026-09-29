@@ -964,7 +964,7 @@ async def test_options_flow_without_price_analysis_creates_entry_directly_and_ke
         data={"site_reference": "site-1"},
         options={
             const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC,
-            const.CONF_SENSOR_GROUPS: list(const.SENSOR_GROUPS),
+            const.CONF_SENSOR_GROUPS: list(const.LEGACY_SENSOR_GROUPS),
             const.CONF_CHEAP_PRICE_THRESHOLD: 0.30,
             const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.45,
             const.CONF_CHEAPEST_PERIOD_MINUTES: 90,
@@ -1121,6 +1121,27 @@ async def test_options_flow_init_does_not_offer_costs_group_for_a_public_entry(
     groups_key = next(k for k in schema if getattr(k, "schema", None) == const.CONF_SENSOR_GROUPS)
     offered_options = schema[groups_key].config["options"]
     assert const.SENSOR_GROUP_COSTS not in offered_options
+
+
+@pytest.mark.parametrize(
+    "group", [const.SENSOR_GROUP_DAILY_USAGE, const.SENSOR_GROUP_MONTHLY_USAGE], ids=["daily_usage", "monthly_usage"]
+)
+async def test_options_flow_init_does_not_offer_usage_groups_for_a_public_entry(
+    hass, enable_custom_integrations, mock_frank_energie_class, group
+):
+    """The sensor_groups selector for a public entry does not offer daily_usage/monthly_usage as a choice."""
+    entry = MockConfigEntry(domain=const.DOMAIN, data={"site_reference": "site-1"}, unique_id="frank_energie")
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    schema = result["data_schema"].schema
+    groups_key = next(k for k in schema if getattr(k, "schema", None) == const.CONF_SENSOR_GROUPS)
+    offered_options = schema[groups_key].config["options"]
+    assert group not in offered_options
 
 
 @pytest.mark.parametrize(
