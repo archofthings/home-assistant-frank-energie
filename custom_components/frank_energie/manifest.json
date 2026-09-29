@@ -3,7 +3,8 @@
   "name": "Frank Energie",
   "config_flow": true,
   "after_dependencies": [
-    "energy"
+    "energy",
+    "recorder"
   ],
   "codeowners": [
     "@archofthings"

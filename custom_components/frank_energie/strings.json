@@ -108,7 +108,8 @@
         "price_analysis": "Price analysis (price levels, cheapest period, chart data)",
         "costs": "Costs and invoices",
         "daily_usage": "Daily usage and costs (yesterday)",
-        "monthly_usage": "Monthly usage and costs"
+        "monthly_usage": "Monthly usage and costs",
+        "energy_statistics": "Energy dashboard statistics (hourly usage and costs)"
       }
     }
   },

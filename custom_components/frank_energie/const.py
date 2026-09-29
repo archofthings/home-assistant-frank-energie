@@ -56,6 +56,7 @@ SENSOR_GROUP_PRICE_ANALYSIS = "price_analysis"
 SENSOR_GROUP_COSTS = "costs"
 SENSOR_GROUP_DAILY_USAGE = "daily_usage"
 SENSOR_GROUP_MONTHLY_USAGE = "monthly_usage"
+SENSOR_GROUP_ENERGY_STATISTICS = "energy_statistics"
 SENSOR_GROUPS = (
     SENSOR_GROUP_DAILY_STATISTICS,
     SENSOR_GROUP_UPCOMING,
@@ -63,6 +64,7 @@ SENSOR_GROUPS = (
     SENSOR_GROUP_COSTS,
     SENSOR_GROUP_DAILY_USAGE,
     SENSOR_GROUP_MONTHLY_USAGE,
+    SENSOR_GROUP_ENERGY_STATISTICS,
 )
 DEFAULT_SENSOR_GROUPS = [SENSOR_GROUP_DAILY_STATISTICS, SENSOR_GROUP_COSTS]
 
@@ -79,7 +81,12 @@ LEGACY_SENSOR_GROUPS = (
 
 # Sensor groups only offered as a choice (and only ever selectable) for a
 # logged-in entry; see config_flow._init_schema/OptionsFlowHandler.async_step_init.
-SENSOR_GROUPS_REQUIRE_LOGIN = (SENSOR_GROUP_COSTS, SENSOR_GROUP_DAILY_USAGE, SENSOR_GROUP_MONTHLY_USAGE)
+SENSOR_GROUPS_REQUIRE_LOGIN = (
+    SENSOR_GROUP_COSTS,
+    SENSOR_GROUP_DAILY_USAGE,
+    SENSOR_GROUP_MONTHLY_USAGE,
+    SENSOR_GROUP_ENERGY_STATISTICS,
+)
 
 # Maps each grouped sensor/binary_sensor entity description key to its
 # sensor group. Keys absent from this dict (the "current prices" sensors)
@@ -145,9 +152,9 @@ def enabled_groups(entry: "ConfigEntry") -> set[str]:
 
     Entries without CONF_SENSOR_GROUPS in their options (i.e. created before
     this feature existed) default to LEGACY_SENSOR_GROUPS, computed here
-    rather than migrated, so nothing disappears after an update. daily_usage
-    and monthly_usage are new, off-by-default groups: a legacy entry does not
-    gain them just because it predates CONF_SENSOR_GROUPS.
+    rather than migrated, so nothing disappears after an update. daily_usage,
+    monthly_usage and energy_statistics are new, off-by-default groups: a
+    legacy entry does not gain them just because it predates CONF_SENSOR_GROUPS.
     """
     groups = entry.options.get(CONF_SENSOR_GROUPS)
     return set(groups) if groups is not None else set(LEGACY_SENSOR_GROUPS)

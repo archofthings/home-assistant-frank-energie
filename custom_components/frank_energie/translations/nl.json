@@ -108,7 +108,8 @@
                 "price_analysis": "Prijsanalyse (prijsniveaus, goedkoopste periode, grafiekgegevens)",
                 "costs": "Kosten en facturen",
                 "daily_usage": "Dagelijks verbruik en kosten (gisteren)",
-                "monthly_usage": "Maandelijks verbruik en kosten"
+                "monthly_usage": "Maandelijks verbruik en kosten",
+                "energy_statistics": "Statistieken voor het energiedashboard (verbruik en kosten per uur)"
             }
         }
     },
