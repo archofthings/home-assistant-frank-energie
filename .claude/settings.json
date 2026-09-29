@@ -17,7 +17,10 @@
       "Bash(gh release list*)",
       "Bash(gh release view*)",
       "Bash(gh repo view*)",
-      "Bash(gh auth status*)"
+      "Bash(gh auth status*)",
+      "Bash(.venv/bin/pytest*)",
+      "Bash(.venv/bin/flake8*)",
+      "Bash(.claude/skills/setup-dev/scripts/setup_dev.sh*)"
     ],
     "ask": [
       "Bash(git push*)",

@@ -30,6 +30,8 @@ Rules:
   `CLAUDE.md`, the orchestrator commits those), one logical change per commit, imperative subject line. Never commit on `main`,
   never amend or rewrite history, never push.
 
-- Never search the whole filesystem (no `find /`, `locate`, or recursive scans outside the repo). Locate installed packages via the project venv instead, e.g. `<venv>/bin/python -c "import python_frank_energie, os; print(os.path.dirname(python_frank_energie.__file__))"` or `<venv>/bin/pip show -f <package>`. Don't leave background commands running when you finish.
+- Environment: use `.venv/bin/pytest`, `.venv/bin/flake8` and `.venv/bin/python` from the repo root. If `.venv` is
+  missing or requirements.txt changed, run `.claude/skills/setup-dev/scripts/setup_dev.sh` first.
+- Never search the whole filesystem (no `find /`, `locate`, or recursive scans outside the repo). Library sources are in `.venv/lib/python3.14/site-packages/`; locate packages via the venv instead, e.g. `.venv/bin/python -c "import python_frank_energie, os; print(os.path.dirname(python_frank_energie.__file__))"` or `.venv/bin/pip show -f <package>`. Don't leave background commands running when you finish.
 
 Finish with: files changed, what was done, tests added, deviations from spec, open issues, commit hash(es).

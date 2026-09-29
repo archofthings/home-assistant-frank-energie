@@ -5,6 +5,9 @@
 - Library: `python-frank-energie` (version pinned in `manifest.json`)
 - Tests: `tests/` with `pytest-homeassistant-custom-component`
 - CI: flake8 (max line 120, complexity 10) + pytest, Python 3.14 (`.github/workflows/ci.yaml`)
+- Local environment: `.venv` (Python 3.14, gitignored). Create/update it with the `setup-dev` skill
+  (`.claude/skills/setup-dev/scripts/setup_dev.sh`); run tools as `.venv/bin/pytest` and `.venv/bin/flake8`.
+  Library sources: `.venv/lib/python3.14/site-packages/{python_frank_energie,homeassistant}/`.
 
 ## Roles
 - **You (main session, Opus 5.5)**: architect, problem solver and orchestrator.

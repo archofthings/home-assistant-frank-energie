@@ -18,3 +18,7 @@ __pycache__/
 blueprints/
 *.log*
 *.db
+
+# Local test environment (see .claude/skills/setup-dev)
+.venv/
+.coverage
