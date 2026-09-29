@@ -45,6 +45,7 @@ from .const import (
     SENSOR_GROUP_COSTS,
     SENSOR_GROUP_PRICE_ANALYSIS,
     SENSOR_GROUPS,
+    enabled_groups,
 )
 from .sites import build_site_title, discover_in_delivery_sites
 from .solar_forecast import warn_energy_platforms_import_failed_once
@@ -128,10 +129,16 @@ def _init_schema(options: Mapping[str, Any], logged_in: bool) -> vol.Schema:
 
     The "costs" group is only offered as a choice when the entry is logged in
     (has an access token); a public entry keeps whatever is currently stored
-    (the default), it just can't newly select it.
+    for it, it just can't newly select it, so it is also left out of the
+    default shown here (async_step_init adds it back to the submission).
     """
     current_groups = list(options.get(CONF_SENSOR_GROUPS, SENSOR_GROUPS))
     group_options = [group for group in SENSOR_GROUPS if group != SENSOR_GROUP_COSTS or logged_in]
+    # The default must only contain values actually offered as choices:
+    # SelectSelector validates each submitted item with vol.In(options), and
+    # the frontend can't untick a value it can't see. This also guards
+    # against stale/renamed values in current_groups.
+    default_groups = [group for group in current_groups if group in group_options]
 
     return vol.Schema(
         {
@@ -144,7 +151,7 @@ def _init_schema(options: Mapping[str, Any], logged_in: bool) -> vol.Schema:
                     translation_key=CONF_PRICES_TIMEZONE,
                 )
             ),
-            vol.Required(CONF_SENSOR_GROUPS, default=current_groups): selector.SelectSelector(
+            vol.Required(CONF_SENSOR_GROUPS, default=default_groups): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=group_options,
                     mode=selector.SelectSelectorMode.LIST,
@@ -538,6 +545,14 @@ class OptionsFlowHandler(OptionsFlowWithReload):
         if user_input is not None:
             self._prices_timezone = user_input[CONF_PRICES_TIMEZONE]
             self._sensor_groups = list(user_input[CONF_SENSOR_GROUPS])
+
+            # "costs" isn't offered as a choice for a public entry (see
+            # _init_schema), so it's never part of the submitted list; keep
+            # it stored as is instead of dropping it. Its sensors are
+            # skipped anyway while the entry isn't authenticated.
+            logged_in = self.config_entry.data.get(CONF_ACCESS_TOKEN) is not None
+            if not logged_in and SENSOR_GROUP_COSTS in enabled_groups(self.config_entry):
+                self._sensor_groups.append(SENSOR_GROUP_COSTS)
 
             if SENSOR_GROUP_PRICE_ANALYSIS in self._sensor_groups:
                 return await self.async_step_analysis()

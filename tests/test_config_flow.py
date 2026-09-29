@@ -943,7 +943,10 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
     assert result3["type"] == "create_entry"
     assert entry.options == {
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
-        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS],
+        # "costs" is kept: this entry is public (no access token) and had it
+        # enabled by default (legacy entry, no options), so it's added back
+        # even though it wasn't offered as a choice (see config_flow.py).
+        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS, const.SENSOR_GROUP_COSTS],
         const.CONF_CHEAP_PRICE_THRESHOLD: const.DEFAULT_CHEAP_PRICE_THRESHOLD,
         const.CONF_EXPENSIVE_PRICE_THRESHOLD: const.DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
         const.CONF_CHEAPEST_PERIOD_MINUTES: const.DEFAULT_CHEAPEST_PERIOD_MINUTES,
@@ -987,7 +990,10 @@ async def test_options_flow_without_price_analysis_creates_entry_directly_and_ke
     assert result2["type"] == "create_entry"
     assert entry.options == {
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
-        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING],
+        # "costs" is kept: this entry is public (no access token) and had it
+        # stored/enabled, so it's added back even though it wasn't offered
+        # as a choice (see config_flow.py).
+        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING, const.SENSOR_GROUP_COSTS],
         const.CONF_CHEAP_PRICE_THRESHOLD: 0.30,
         const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.45,
         const.CONF_CHEAPEST_PERIOD_MINUTES: 90,
@@ -1115,6 +1121,64 @@ async def test_options_flow_init_does_not_offer_costs_group_for_a_public_entry(
     groups_key = next(k for k in schema if getattr(k, "schema", None) == const.CONF_SENSOR_GROUPS)
     offered_options = schema[groups_key].config["options"]
     assert const.SENSOR_GROUP_COSTS not in offered_options
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {},
+        {const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS, const.SENSOR_GROUP_COSTS]},
+    ],
+    ids=["legacy_entry_without_options", "entry_with_stored_costs"],
+)
+async def test_options_flow_submit_keeps_costs_for_a_public_entry(
+    hass, enable_custom_integrations, mock_frank_energie_class, options
+):
+    """Submitting the options form's own defaults succeeds for a public entry and keeps "costs" stored.
+
+    "costs" is left out of the sensor_groups choices offered to a public
+    (not logged in) entry (see the previous test), but was still the default
+    selection whenever it was part of the entry's currently stored/effective
+    groups (a legacy entry with no options defaults to all groups, including
+    "costs"). SelectSelector validates every submitted item against the
+    offered options, so submitting the form's own default used to fail.
+    """
+    entry = MockConfigEntry(
+        domain=const.DOMAIN, data={"site_reference": "site-1"}, options=options, unique_id="frank_energie"
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    schema = result["data_schema"].schema
+    tz_key = next(k for k in schema if getattr(k, "schema", None) == const.CONF_PRICES_TIMEZONE)
+    groups_key = next(k for k in schema if getattr(k, "schema", None) == const.CONF_SENSOR_GROUPS)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {const.CONF_PRICES_TIMEZONE: tz_key.default(), const.CONF_SENSOR_GROUPS: groups_key.default()},
+    )
+
+    if result2["type"] == "form":
+        assert result2["step_id"] == "analysis"
+        result2 = await hass.config_entries.options.async_configure(
+            result2["flow_id"],
+            {
+                SECTION_PRICE_LEVELS: {
+                    const.CONF_CHEAP_PRICE_THRESHOLD: const.DEFAULT_CHEAP_PRICE_THRESHOLD,
+                    const.CONF_EXPENSIVE_PRICE_THRESHOLD: const.DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
+                    const.CONF_SOLAR_THRESHOLD_KWH: const.DEFAULT_SOLAR_THRESHOLD_KWH,
+                },
+                SECTION_CHEAPEST_PERIOD: {
+                    const.CONF_CHEAPEST_PERIOD_MINUTES: const.DEFAULT_CHEAPEST_PERIOD_MINUTES,
+                },
+            },
+        )
+
+    assert result2["type"] == "create_entry"
+    assert const.SENSOR_GROUP_COSTS in entry.options[const.CONF_SENSOR_GROUPS]
 
 
 async def test_options_flow_solar_forecast_entry_lists_entries_with_a_solar_forecast_platform(
