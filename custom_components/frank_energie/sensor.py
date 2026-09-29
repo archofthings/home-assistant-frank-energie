@@ -102,6 +102,22 @@ class FrankEnergieEntityDescription(SensorEntityDescription):
     attr_fn: Callable[[dict, tzinfo], dict[str, StateType | list]] = lambda _data, _tz: {}
 
 
+def _yearly_invoices_attrs(data: dict, year: int) -> dict[str, Any]:
+    """Build the "invoices" attribute for a costs_this_year/costs_previous_year sensor."""
+    if data[DATA_INVOICES] is None:
+        return {}
+    return {
+        "invoices": [
+            {
+                "start_date": invoice.StartDate.date().isoformat(),
+                "description": invoice.PeriodDescription,
+                "total_amount": round(invoice.TotalAmount, 2),
+            }
+            for invoice in data[DATA_INVOICES].get_invoices_for_year(year)
+        ]
+    }
+
+
 SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     FrankEnergieEntityDescription(
         key="elec_markup",
@@ -439,6 +455,30 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
             if data[DATA_INVOICES] and data[DATA_INVOICES].upcoming_period_invoice
             else {}
         ),
+    ),
+    FrankEnergieEntityDescription(
+        key="costs_this_year",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        authenticated=True,
+        service_name=SERVICE_NAME_COSTS,
+        value_fn=lambda data: (
+            round(data[DATA_INVOICES].total_costs_this_year, 2) if data[DATA_INVOICES] is not None else None
+        ),
+        attr_fn=lambda data, tz: _yearly_invoices_attrs(data, dt_util.utcnow().year),
+    ),
+    FrankEnergieEntityDescription(
+        key="costs_previous_year",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        authenticated=True,
+        service_name=SERVICE_NAME_COSTS,
+        value_fn=lambda data: (
+            round(data[DATA_INVOICES].total_costs_previous_year, 2) if data[DATA_INVOICES] is not None else None
+        ),
+        attr_fn=lambda data, tz: _yearly_invoices_attrs(data, dt_util.utcnow().year - 1),
     ),
 )
 

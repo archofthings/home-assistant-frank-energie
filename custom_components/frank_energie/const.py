@@ -109,6 +109,8 @@ SENSOR_GROUP_BY_KEY: dict[str, str] = {
     "invoice_previous_period": SENSOR_GROUP_COSTS,
     "invoice_current_period": SENSOR_GROUP_COSTS,
     "invoice_upcoming_period": SENSOR_GROUP_COSTS,
+    "costs_this_year": SENSOR_GROUP_COSTS,
+    "costs_previous_year": SENSOR_GROUP_COSTS,
     "elec_usage_yesterday": SENSOR_GROUP_DAILY_USAGE,
     "elec_costs_yesterday": SENSOR_GROUP_DAILY_USAGE,
     "gas_usage_yesterday": SENSOR_GROUP_DAILY_USAGE,

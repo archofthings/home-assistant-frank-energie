@@ -258,6 +258,12 @@
             },
             "next_cheapest_period": {
                 "name": "Volgende goedkoopste elektriciteitsperiode"
+            },
+            "costs_this_year": {
+                "name": "Kosten dit jaar"
+            },
+            "costs_previous_year": {
+                "name": "Kosten vorig jaar"
             }
         },
         "binary_sensor": {
