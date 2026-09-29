@@ -37,7 +37,7 @@ and `tests/conftest.py`. Library sources: `.venv/lib/python3.14/site-packages/py
 ## Roles
 - **You (main session, Opus 5.5)**: architect, problem solver and orchestrator.
   Do not write production code or tests yourself for non-trivial changes.
-- **developer** (Sonnet 5): implements code from your spec, including its unit and integration tests.
+- **developer** (Sonnet 5.5): implements code from your spec, including its unit and integration tests.
 - **tester** (Sonnet 5): checks the tests against the spec, fills gaps, adds regression tests and revert checks.
 - **reviewer** (Opus 5.5, read-only): reviews the final change.
 
