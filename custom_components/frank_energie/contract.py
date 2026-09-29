@@ -64,7 +64,16 @@ class ContractCoordinator(DataUpdateCoordinator[ContractPriceResolutionState | N
             if api.is_authenticated:
                 self.price_coordinator._async_persist_tokens()
 
-        return await api.contract_price_resolution_state(self._connection_id)
+        state = await api.contract_price_resolution_state(self._connection_id)
+
+        if state is None:
+            # contract_price_resolution_state() swallows its own errors and
+            # returns None on any failure; treat that as a failed update
+            # (with the electricity connection already known) instead of
+            # silently reporting success with no data.
+            raise UpdateFailed("Could not fetch the contract price resolution state")
+
+        return state
 
     @staticmethod
     async def _resolve_electricity_connection_id(api, site_reference: str | None) -> str | None:

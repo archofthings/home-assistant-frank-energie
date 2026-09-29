@@ -103,3 +103,16 @@ async def test_user_error_raises_update_failed(coordinator, mock_api):
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
+
+
+async def test_state_call_returning_none_raises_update_failed(coordinator, mock_api):
+    """contract_price_resolution_state() swallows its own errors and returns None on failure.
+
+    That must surface as UpdateFailed, not a silently successful update with
+    None data (the electricity connection is already known in this case).
+    """
+    mock_api.user.return_value = make_user([make_connection("ELECTRICITY", "elec-conn")])
+    mock_api.contract_price_resolution_state.return_value = None
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
