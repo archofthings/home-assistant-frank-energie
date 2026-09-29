@@ -64,23 +64,38 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
         site_reference = self.price_coordinator.site_reference
 
         try:
-            daily = (
-                await api.period_usage_and_costs(site_reference, yesterday.isoformat())
-                if self._daily_enabled
-                else None
-            )
-            monthly = (
-                await api.month_insights(site_reference, today.strftime("%Y-%m")) if self._monthly_enabled else None
-            )
-        except (AuthException, AuthRequiredException) as ex:
-            # Reauth is handled by the main coordinator's own update cycle;
-            # this coordinator only reports the failure so the next update
-            # cycle (after the main coordinator has renewed the token) retries.
-            raise UpdateFailed(ex) from ex
-        except (FrankEnergieException, ValueError) as ex:
-            if self.data is not None:
-                LOGGER.warning("Could not update usage and costs, using previous data: %s", ex)
-                return self.data
-            raise UpdateFailed(ex) from ex
+            try:
+                daily = (
+                    await api.period_usage_and_costs(site_reference, yesterday.isoformat())
+                    if self._daily_enabled
+                    else None
+                )
+                monthly = (
+                    await api.month_insights(site_reference, today.strftime("%Y-%m"))
+                    if self._monthly_enabled
+                    else None
+                )
+            except (AuthException, AuthRequiredException) as ex:
+                # The library wraps exceptions raised while querying (e.g. an
+                # expired access token) into FrankEnergieException, so in
+                # practice only the pre-query AuthRequiredException (raised
+                # when api.is_authenticated is False) can reach this branch;
+                # expired credentials take the stale-data path below instead.
+                # Reauth itself is handled by the main coordinator's own
+                # update cycle, not here.
+                raise UpdateFailed(ex) from ex
+            except (FrankEnergieException, ValueError) as ex:
+                if self.data is not None:
+                    LOGGER.warning("Could not update usage and costs, using previous data: %s", ex)
+                    return self.data
+                raise UpdateFailed(ex) from ex
+        finally:
+            # Tokens can be renewed transparently inside _query() during any
+            # of the awaited calls above, including ones that ultimately
+            # raised. Persist them via the price coordinator's own helper so
+            # a renewed token is never lost. Idempotent: see
+            # FrankEnergieCoordinator._async_persist_tokens().
+            if api.is_authenticated:
+                self.price_coordinator._async_persist_tokens()
 
         return UsageData(daily=daily, daily_date=yesterday, monthly=monthly)

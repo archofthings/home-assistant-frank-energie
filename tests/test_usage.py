@@ -5,12 +5,14 @@ from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
+from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, NetworkError
 
 from custom_components.frank_energie import const
+from custom_components.frank_energie.coordinator import FrankEnergieCoordinator
 from custom_components.frank_energie.usage import UsageCoordinator, UsageData
 from tests.utils import make_month_insights, make_period_usage_and_costs
 
@@ -141,3 +143,30 @@ async def test_auth_error_raises_update_failed_not_config_entry_auth_failed(coor
         await coordinator._async_update_data()
 
     assert not isinstance(excinfo.value, ConfigEntryAuthFailed)
+
+
+# --------------------------------------------------------------------------
+# Tokens renewed transparently inside a usage call are persisted right away,
+# via the price coordinator's own persistence helper.
+# --------------------------------------------------------------------------
+
+
+async def test_tokens_renewed_during_refresh_are_persisted(hass, entry, mock_api):
+    """api._auth set to new tokens during a usage refresh ends up in entry.data afterwards."""
+    price_coordinator = FrankEnergieCoordinator(hass, entry, mock_api)
+    usage_coordinator = UsageCoordinator(
+        hass, entry, price_coordinator, {const.SENSOR_GROUP_DAILY_USAGE, const.SENSOR_GROUP_MONTHLY_USAGE}
+    )
+    mock_api.is_authenticated = True
+    mock_api.period_usage_and_costs.return_value = make_period_usage_and_costs()
+    mock_api.month_insights.return_value = make_month_insights()
+
+    renewed = MagicMock()
+    renewed.authToken = "new-access-token"
+    renewed.refreshToken = "new-refresh-token"
+    mock_api._auth = renewed
+
+    await usage_coordinator._async_update_data()
+
+    assert entry.data[CONF_ACCESS_TOKEN] == "new-access-token"
+    assert entry.data[CONF_TOKEN] == "new-refresh-token"

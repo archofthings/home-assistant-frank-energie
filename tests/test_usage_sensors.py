@@ -142,6 +142,23 @@ async def test_daily_gas_sensors_created_when_gas_data_present(
     assert float(gas_usage_state.state) == 5.0
 
 
+async def test_daily_gas_sensors_created_when_gas_not_yet_published(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """When yesterday's electricity AND gas are both None (data not published yet), gas sensors are still created,
+    unlike the "no gas at all" case where electricity is present and gas is None."""
+    entry = setup_authenticated_entry(hass, mock_frank_energie_class, [const.SENSOR_GROUP_DAILY_USAGE])
+    mock_frank_energie_class.period_usage_and_costs.return_value = make_period_usage_and_costs(
+        electricity=None, gas=None, feed_in=None
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entity_id_for_key(hass, entry, "gas_usage_yesterday") is not None
+    assert entity_id_for_key(hass, entry, "gas_costs_yesterday") is not None
+
+
 # --------------------------------------------------------------------------
 # Monthly sensors: state and attributes.
 # --------------------------------------------------------------------------
@@ -180,3 +197,23 @@ async def test_monthly_sensors_state_and_attributes(hass, enable_custom_integrat
     # gasExcluded=True: gas monthly sensors are not created.
     assert entity_id_for_key(hass, entry, "gas_usage_month") is None
     assert entity_id_for_key(hass, entry, "gas_costs_month") is None
+
+
+async def test_monthly_last_reset_is_month_start_and_fixed_costs_has_no_state_class(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """Monthly usage/costs sensors report a last_reset at the start of the current month (Europe/Amsterdam), so
+    statistics don't go negative on the 1st; fixed_costs_month is an expected/forecast value and has no
+    state_class."""
+    entry = setup_authenticated_entry(hass, mock_frank_energie_class, [const.SENSOR_GROUP_MONTHLY_USAGE])
+    mock_frank_energie_class.month_insights.return_value = make_month_insights()
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    usage_state = state_for_key(hass, entry, "elec_usage_month")
+    fixed_state = state_for_key(hass, entry, "fixed_costs_month")
+
+    expected_last_reset = datetime(2026, 1, 1, tzinfo=dt_util.get_time_zone("Europe/Amsterdam"))
+    assert usage_state.attributes["last_reset"] == expected_last_reset.isoformat()
+    assert "state_class" not in fixed_state.attributes
