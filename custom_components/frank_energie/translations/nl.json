@@ -46,22 +46,45 @@
         "step": {
             "init": {
                 "title": "Frank Energie-opties",
-                "description": "Kies de notatie voor de 'van'/'tot'-tijden in de attributen van de prijssensoren en de actie get_prices, en stel de prijsanalyse voor elektriciteit in (grenzen voor goedkoop/duur, de lengte van de goedkoopste periode en, optioneel, een zonprognose).",
+                "description": "Kies welke sensorgroepen worden getoond. Actuele prijzen zijn altijd beschikbaar.",
                 "data": {
                     "prices_timezone": "Tijdzone voor prijstijden",
-                    "cheap_price_threshold": "Goedkoop onder (€/kWh)",
-                    "expensive_price_threshold": "Duur boven (€/kWh)",
-                    "cheapest_period_minutes": "Lengte goedkoopste periode",
-                    "solar_forecast_entry": "Zonprognose",
-                    "solar_threshold_kwh": "Zon-drempel"
+                    "sensor_groups": "Sensorgroepen"
                 },
                 "data_description": {
-                    "prices_timezone": "Dit verandert alleen hoe de 'van'/'tot'-tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt.",
-                    "cheap_price_threshold": "All-in elektriciteitsprijzen op of onder deze grens worden als goedkoop beschouwd.",
-                    "expensive_price_threshold": "All-in elektriciteitsprijzen boven deze grens worden als duur beschouwd.",
-                    "cheapest_period_minutes": "De lengte van de aaneengesloten periode met de laagste gemiddelde prijs waar de prijsanalyse naar zoekt.",
-                    "solar_forecast_entry": "Een optionele integratie die zonopwekking voorspelt, gebruikt om goedkope blokken met voldoende verwachte zonopwekking te markeren als 'goedkoop + zon'.",
-                    "solar_threshold_kwh": "De verwachte zonopwekking (kWh per uur) vanaf waar een goedkoop blok wordt gemarkeerd als 'goedkoop + zon'."
+                    "prices_timezone": "Dit verandert alleen hoe de 'van'/'tot'-tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt."
+                }
+            },
+            "analysis": {
+                "title": "Prijsanalyse-instellingen",
+                "description": "De twee berekeningen staan los van elkaar: prijsniveaus gebruiken vaste prijzen, de goedkoopste periode vindt altijd het beste blok van de dag.",
+                "sections": {
+                    "price_levels": {
+                        "name": "Prijsniveaus (vaste prijzen)",
+                        "description": "Geeft elk uur het label goedkoop, normaal of duur op basis van deze prijzen. Gebruikt door 'Elektriciteitsprijsniveau' en 'Goedkope elektriciteitsprijs nu'.",
+                        "data": {
+                            "cheap_price_threshold": "Goedkoop onder (€/kWh)",
+                            "expensive_price_threshold": "Duur boven (€/kWh)",
+                            "solar_forecast_entry": "Zonprognose",
+                            "solar_threshold_kwh": "Zon-drempel"
+                        },
+                        "data_description": {
+                            "cheap_price_threshold": "All-in elektriciteitsprijzen op of onder deze grens worden als goedkoop beschouwd.",
+                            "expensive_price_threshold": "All-in elektriciteitsprijzen boven deze grens worden als duur beschouwd.",
+                            "solar_forecast_entry": "Een optionele integratie die zonopwekking voorspelt, gebruikt om goedkope blokken met voldoende verwachte zonopwekking te markeren als 'goedkoop + zon'.",
+                            "solar_threshold_kwh": "De verwachte zonopwekking (kWh per uur) vanaf waar een goedkoop blok wordt gemarkeerd als 'goedkoop + zon'."
+                        }
+                    },
+                    "cheapest_period": {
+                        "name": "Goedkoopste periode (relatief)",
+                        "description": "Zoekt elke dag het goedkoopste blok van deze lengte, ongeacht de prijs. Gebruikt door 'Goedkoopste elektriciteitsperiode nu' en 'Volgende goedkoopste elektriciteitsperiode'.",
+                        "data": {
+                            "cheapest_period_minutes": "Lengte goedkoopste periode"
+                        },
+                        "data_description": {
+                            "cheapest_period_minutes": "De lengte van de aaneengesloten periode met de laagste gemiddelde prijs waar de prijsanalyse naar zoekt."
+                        }
+                    }
                 }
             }
         },
@@ -74,6 +97,14 @@
             "options": {
                 "home_assistant": "Tijdzone van Home Assistant",
                 "utc": "UTC"
+            }
+        },
+        "sensor_groups": {
+            "options": {
+                "daily_statistics": "Dagstatistieken (laagste, hoogste, gemiddelde van vandaag)",
+                "upcoming": "Aankomende en morgen prijzen",
+                "price_analysis": "Prijsanalyse (prijsniveaus, goedkoopste periode, grafiekgegevens)",
+                "costs": "Kosten en facturen"
             }
         }
     },

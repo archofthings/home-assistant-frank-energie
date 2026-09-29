@@ -915,7 +915,11 @@ async def test_changing_prices_timezone_via_options_flow_updates_prices_notation
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     result2 = await hass.config_entries.options.async_configure(
-        result["flow_id"], {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT}
+        result["flow_id"],
+        {
+            const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+            const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS],
+        },
     )
     await hass.async_block_till_done()
     assert result2["type"] == "create_entry"

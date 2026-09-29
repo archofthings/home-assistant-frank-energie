@@ -45,22 +45,45 @@
         "step": {
             "init": {
                 "title": "Frank Energie options",
-                "description": "Choose the notation used for the 'from'/'till' times in the price sensors' attributes and the get_prices action, and configure the electricity price analysis (cheap/expensive thresholds, the cheapest period length and, optionally, a solar production forecast).",
+                "description": "Choose which sensor groups to show. Current prices are always available.",
                 "data": {
                     "prices_timezone": "Time zone for price times",
-                    "cheap_price_threshold": "Cheap price below (€/kWh)",
-                    "expensive_price_threshold": "Expensive price above (€/kWh)",
-                    "cheapest_period_minutes": "Cheapest period length",
-                    "solar_forecast_entry": "Solar forecast",
-                    "solar_threshold_kwh": "Solar threshold"
+                    "sensor_groups": "Sensor groups"
                 },
                 "data_description": {
-                    "prices_timezone": "Only changes how the 'from'/'till' times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting.",
-                    "cheap_price_threshold": "All-in electricity prices at or below this are considered cheap.",
-                    "expensive_price_threshold": "All-in electricity prices above this are considered expensive.",
-                    "cheapest_period_minutes": "The length of the contiguous period with the lowest average price that the price analysis looks for.",
-                    "solar_forecast_entry": "An optional integration that forecasts solar production, used to mark cheap slots with enough forecast solar production as 'cheap + solar'.",
-                    "solar_threshold_kwh": "The forecast solar production (kWh per hour) from which a cheap slot is marked as 'cheap + solar'."
+                    "prices_timezone": "Only changes how the 'from'/'till' times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting."
+                }
+            },
+            "analysis": {
+                "title": "Price analysis settings",
+                "description": "The two calculations are independent: price levels use fixed prices, the cheapest period always finds the best block of the day.",
+                "sections": {
+                    "price_levels": {
+                        "name": "Price levels (fixed prices)",
+                        "description": "Labels every hour as cheap, normal or expensive based on these prices. Used by 'Electricity price level' and 'Cheap electricity price now'.",
+                        "data": {
+                            "cheap_price_threshold": "Cheap price below (€/kWh)",
+                            "expensive_price_threshold": "Expensive price above (€/kWh)",
+                            "solar_forecast_entry": "Solar forecast",
+                            "solar_threshold_kwh": "Solar threshold"
+                        },
+                        "data_description": {
+                            "cheap_price_threshold": "All-in electricity prices at or below this are considered cheap.",
+                            "expensive_price_threshold": "All-in electricity prices above this are considered expensive.",
+                            "solar_forecast_entry": "An optional integration that forecasts solar production, used to mark cheap slots with enough forecast solar production as 'cheap + solar'.",
+                            "solar_threshold_kwh": "The forecast solar production (kWh per hour) from which a cheap slot is marked as 'cheap + solar'."
+                        }
+                    },
+                    "cheapest_period": {
+                        "name": "Cheapest period (relative)",
+                        "description": "Finds the cheapest block of this length each day, whatever the price. Used by 'Cheapest electricity period now' and 'Next cheapest electricity period'.",
+                        "data": {
+                            "cheapest_period_minutes": "Cheapest period length"
+                        },
+                        "data_description": {
+                            "cheapest_period_minutes": "The length of the contiguous period with the lowest average price that the price analysis looks for."
+                        }
+                    }
                 }
             }
         },
@@ -73,6 +96,14 @@
             "options": {
                 "home_assistant": "Home Assistant's time zone",
                 "utc": "UTC"
+            }
+        },
+        "sensor_groups": {
+            "options": {
+                "daily_statistics": "Daily statistics (lowest, highest, average today)",
+                "upcoming": "Upcoming and tomorrow prices",
+                "price_analysis": "Price analysis (price levels, cheapest period, chart data)",
+                "costs": "Costs and invoices"
             }
         }
     },
