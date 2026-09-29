@@ -79,10 +79,12 @@
                         "name": "Goedkoopste periode (relatief)",
                         "description": "Zoekt elke dag het goedkoopste blok van deze lengte, ongeacht de prijs. Gebruikt door 'Goedkoopste elektriciteitsperiode nu' en 'Volgende goedkoopste elektriciteitsperiode'.",
                         "data": {
-                            "cheapest_period_minutes": "Lengte goedkoopste periode"
+                            "cheapest_period_minutes": "Lengte goedkoopste periode",
+                            "cheapest_period_only_when_cheap": "Alleen als goedkoop"
                         },
                         "data_description": {
-                            "cheapest_period_minutes": "De lengte van de aaneengesloten periode met de laagste gemiddelde prijs waar de prijsanalyse naar zoekt."
+                            "cheapest_period_minutes": "De lengte van de aaneengesloten periode met de laagste gemiddelde prijs waar de prijsanalyse naar zoekt.",
+                            "cheapest_period_only_when_cheap": "Zet 'Goedkoopste elektriciteitsperiode nu' alleen aan als de gemiddelde prijs van de periode op of onder de drempel voor een goedkope prijs ligt."
                         }
                     }
                 }

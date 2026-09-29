@@ -51,6 +51,8 @@ async def setup_price_analysis_entry(
     *,
     with_tomorrow: bool = False,
     prices_timezone: str = const.PRICES_TIMEZONE_HOME_ASSISTANT,
+    cheap_price_threshold: float = 0.15,
+    cheapest_period_only_when_cheap: bool = False,
 ) -> MockConfigEntry:
     """Set up a Frank Energie entry with a known price pattern, thresholds and a fake solar forecast.
 
@@ -109,9 +111,10 @@ async def setup_price_analysis_entry(
         data={"site_reference": "site-1"},
         options={
             const.CONF_PRICES_TIMEZONE: prices_timezone,
-            const.CONF_CHEAP_PRICE_THRESHOLD: 0.15,
+            const.CONF_CHEAP_PRICE_THRESHOLD: cheap_price_threshold,
             const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.35,
             const.CONF_CHEAPEST_PERIOD_MINUTES: 30,
+            const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: cheapest_period_only_when_cheap,
             const.CONF_SOLAR_THRESHOLD_KWH: 1.0,
             const.CONF_SOLAR_FORECAST_ENTRY: solar_entry.entry_id,
         },
@@ -171,6 +174,38 @@ async def test_cheapest_period_now_binary_sensor(
     await hass.async_block_till_done()
 
     assert state_for_key(hass, entry, "binary_sensor", "cheapest_period_now").state == "off"
+
+
+@pytest.mark.parametrize(
+    ("only_when_cheap", "cheap_price_threshold", "expected_state"),
+    [
+        (False, 0.05, "on"),  # option off, period average (0.10) above threshold: unaffected
+        (True, 0.05, "off"),  # option on, period average above threshold: forced off
+        (True, 0.10, "on"),  # option on, period average equal to threshold: still on
+    ],
+)
+async def test_cheapest_period_now_binary_sensor_only_when_cheap(
+    hass,
+    enable_custom_integrations,
+    mock_frank_energie_class,
+    freezer,
+    monkeypatch,
+    only_when_cheap,
+    cheap_price_threshold,
+    expected_state,
+):
+    """cheapest_period_now respects the "only when cheap" option against the period's average price."""
+    entry = await setup_price_analysis_entry(
+        hass,
+        enable_custom_integrations,
+        mock_frank_energie_class,
+        freezer,
+        monkeypatch,
+        cheap_price_threshold=cheap_price_threshold,
+        cheapest_period_only_when_cheap=only_when_cheap,
+    )
+
+    assert state_for_key(hass, entry, "binary_sensor", "cheapest_period_now").state == expected_state
 
 
 async def test_price_analysis_today_sensor(

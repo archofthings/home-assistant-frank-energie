@@ -122,7 +122,7 @@ The solar forecast can come from any integration that provides one for the Energ
 |---|---|
 | Electricity price level | Level of the current slot |
 | Cheap electricity price now | On while the current slot is cheap or cheap + solar |
-| Cheapest electricity period now | On during today's cheapest period |
+| Cheapest electricity period now | On during today's cheapest period (optionally only when it's also cheap) |
 | Next cheapest electricity period | Start of the next cheapest period (attributes `end`, `average_price`, `minutes`) |
 | Electricity price analysis today / tomorrow | Start of that day's cheapest period, with chart attributes (not recorded): `slots` (per slot: `from`, `till`, `price`, `level`, `solar_kwh`, `in_cheapest_period`, `is_current`), `cheapest_period`, `cheap_windows`, `expensive_windows`, `solar_windows`, `thresholds` |
 
