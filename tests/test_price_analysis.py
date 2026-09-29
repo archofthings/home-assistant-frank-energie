@@ -11,6 +11,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.frank_energie import const
+from custom_components.frank_energie.config_flow import SECTION_CHEAPEST_PERIOD, SECTION_PRICE_LEVELS
 from tests.utils import install_prices, local_midnight
 
 # Local midnight slot indices (15-minute slots): 10:00-10:15 local is slot 40.
@@ -298,15 +299,27 @@ async def test_options_flow_submit_keeps_next_cheapest_period_available(
         result["flow_id"],
         {
             const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
-            const.CONF_CHEAP_PRICE_THRESHOLD: 0.15,
-            const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.35,
-            const.CONF_CHEAPEST_PERIOD_MINUTES: 30,
-            const.CONF_SOLAR_THRESHOLD_KWH: 1.0,
+            const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS],
+        },
+    )
+    assert result2["step_id"] == "analysis"
+
+    result3 = await hass.config_entries.options.async_configure(
+        result2["flow_id"],
+        {
+            SECTION_PRICE_LEVELS: {
+                const.CONF_CHEAP_PRICE_THRESHOLD: 0.15,
+                const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.35,
+                const.CONF_SOLAR_THRESHOLD_KWH: 1.0,
+            },
+            SECTION_CHEAPEST_PERIOD: {
+                const.CONF_CHEAPEST_PERIOD_MINUTES: 30,
+            },
         },
     )
     await hass.async_block_till_done()
 
-    assert result2["type"] == "create_entry"
+    assert result3["type"] == "create_entry"
     assert entry.options[const.CONF_CHEAPEST_PERIOD_MINUTES] == 30
     assert isinstance(entry.options[const.CONF_CHEAPEST_PERIOD_MINUTES], int)
 

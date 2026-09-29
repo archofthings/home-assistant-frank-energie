@@ -40,6 +40,7 @@ Use the price sensors to run appliances, charge a car or battery, or heat water 
 - **Optional login** for your personal contract prices, plus your monthly cost and invoice sensors.
 - **Choose your delivery address** when your account has more than one, and change it later with **Reconfigure**.
 - **Local or UTC times** for the price list, configurable per installation.
+- **Choose your sensors**: turn groups of sensors (daily statistics, upcoming prices, price analysis, costs) on or off, so you only get what you use.
 - **Price analysis**: every quarter hour labelled cheap, normal or expensive (optionally "cheap + solar"), the cheapest period of the length you choose, and chart-ready data. See [Price analysis](#price-analysis).
 - **Diagnostics download** for bug reports, with tokens and personal details removed.
 - **Keeps working through API hiccups**: if an update fails, the last prices stay available as long as they still cover the future. Tokens are renewed automatically, and you're only asked to log in again when that fails.
@@ -91,18 +92,40 @@ If your login expires and can't be renewed automatically, Home Assistant asks yo
 
 ### Options
 
-Choose **Configure** on the integration to change these settings:
+Choose **Configure** on the integration. The settings have up to two pages.
+
+**Page 1: time zone and sensor groups**
 
 | Option | Choices | Default |
 |---|---|---|
 | **Time zone for price times** | Home Assistant's time zone, or UTC | Home Assistant's time zone for new installations; UTC for installations set up before this option existed |
-| **Cheap price below** | €/kWh (all-in) | €0.25 |
-| **Expensive price above** | €/kWh (all-in); must be higher than the cheap price | €0.40 |
-| **Cheapest period length** | 15 minutes to 6 hours, in steps of 15 minutes | 2 hours |
-| **Solar forecast** | Any installed integration that provides the Energy dashboard's solar forecast (for example Forecast.Solar or Solcast), or none | None |
-| **Solar threshold** | kWh per hour | 1.5 |
+| **Sensor groups** | Tick the groups you want (see below) | New installations: daily statistics and costs. Installations set up before this option existed: all groups |
 
-The price, period and solar settings are used by the [price analysis](#price-analysis). The time zone option sets the notation of the times in the `prices` list, the `from_time` attributes and the `get_prices` action. The moments are the same either way: `2026-09-28T10:00:00+02:00` and `2026-09-28T08:00:00+00:00` are the same time. See [Switching the time zone](#switching-the-time-zone) before changing it if automations read these times.
+| Sensor group | Entities |
+|---|---|
+| *Current prices* | Always available: current all-in, market and including-tax prices (and the hidden VAT, markup and tax sensors) for electricity and gas |
+| **Daily statistics** | Lowest, highest and average price today |
+| **Upcoming and tomorrow prices** | Next price; average, lowest and highest price tomorrow; lowest and highest upcoming price; average gas price tomorrow |
+| **Price analysis** | Price level, cheap price now, cheapest period now, next cheapest period, price analysis today and tomorrow (see [Price analysis](#price-analysis)) |
+| **Costs and invoices** | Monthly cost and invoice sensors (only offered when you're logged in) |
+
+When you untick a group, its entities are removed from Home Assistant after saving. Their history stays in the database; when you tick the group again, the entities come back with the same entity IDs and their history continues. The `get_prices` action is always available.
+
+**Page 2: price analysis settings** (only shown when *Price analysis* is ticked)
+
+The two sections are independent calculations:
+
+| Section | Option | Choices | Default |
+|---|---|---|---|
+| **Price levels (fixed prices)** | **Cheap price below** | €/kWh (all-in) | €0.25 |
+| | **Expensive price above** | €/kWh (all-in); must be higher than the cheap price | €0.40 |
+| | **Solar forecast** | Any installed integration that provides the Energy dashboard's solar forecast (for example Forecast.Solar or Solcast), or none | None |
+| | **Solar threshold** | kWh per hour | 1.5 |
+| **Cheapest period (relative)** | **Cheapest period length** | 15 minutes to 6 hours, in steps of 15 minutes | 2 hours |
+
+*Price levels* label every quarter hour as cheap, normal or expensive using your fixed prices; on an expensive day nothing is cheap. The *cheapest period* always finds the cheapest block of the chosen length, whatever the price. If you untick *Price analysis*, these settings are kept for when you turn it back on, and the analysis isn't calculated at all.
+
+The time zone option sets the notation of the times in the `prices` list, the `from_time` attributes and the `get_prices` action. The moments are the same either way: `2026-09-28T10:00:00+02:00` and `2026-09-28T08:00:00+00:00` are the same time. See [Switching the time zone](#switching-the-time-zone) before changing it if automations read these times.
 
 #### Switching the time zone
 
@@ -114,6 +137,8 @@ Installations set up before the time zone option existed keep UTC times, so exis
 ## Sensors
 
 Prices are fetched every hour. Sensor states switch at every quarter hour (:00, :15, :30, :45) to the price of the current 15-minute slot.
+
+Which of these sensors exist depends on the [sensor groups](#options) you've selected.
 
 ### Electricity (€/kWh)
 

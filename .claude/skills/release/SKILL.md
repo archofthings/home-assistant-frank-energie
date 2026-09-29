@@ -30,10 +30,10 @@ Arguments: `$ARGUMENTS`. If empty, ask whether the user wants `pr` or `publish`.
    - Testing: the real numbers from step 2. Write "Not tested against a live Home Assistant instance" unless
      the change was verified through the `home-assistant` MCP in this session; then say what was checked.
    - Leave out sections that don't apply.
-5. **Show the title and description to the user** and wait for confirmation or edits.
-6. **Publish:** if the branch isn't on `origin` yet, `git push -u origin <branch>`. Then
+5. **Don't ask for confirmation of the text.** The user reviews and edits the PR on GitHub.
+6. **Publish right away:** if the branch isn't on `origin` yet, `git push -u origin <branch>`. Then
    `gh pr create --base main --head <branch> --title "<title>" --body-file <file>`
-   (write the body to a file in the scratchpad). Report the PR URL.
+   (write the body to a file in the scratchpad). Report the PR URL and a 2–3 line summary of what it contains.
 
 ## Mode `publish`: create a release from `main`
 

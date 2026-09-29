@@ -18,7 +18,7 @@ from homeassistant.const import (
     UnitOfEnergy,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.data_entry_flow import FlowResult, section
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from python_frank_energie import FrankEnergie
@@ -31,15 +31,21 @@ from .const import (
     CONF_COORDINATOR,
     CONF_EXPENSIVE_PRICE_THRESHOLD,
     CONF_PRICES_TIMEZONE,
+    CONF_SENSOR_GROUPS,
     CONF_SOLAR_FORECAST_ENTRY,
     CONF_SOLAR_THRESHOLD_KWH,
     DEFAULT_CHEAP_PRICE_THRESHOLD,
     DEFAULT_CHEAPEST_PERIOD_MINUTES,
     DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
+    DEFAULT_SENSOR_GROUPS,
     DEFAULT_SOLAR_THRESHOLD_KWH,
     DOMAIN,
     PRICES_TIMEZONE_HOME_ASSISTANT,
     PRICES_TIMEZONE_UTC,
+    SENSOR_GROUP_COSTS,
+    SENSOR_GROUP_PRICE_ANALYSIS,
+    SENSOR_GROUPS,
+    enabled_groups,
 )
 from .sites import build_site_title, discover_in_delivery_sites
 from .solar_forecast import warn_energy_platforms_import_failed_once
@@ -118,19 +124,55 @@ async def _solar_forecast_entry_options(hass: HomeAssistant) -> list[selector.Se
     ]
 
 
-def _options_schema(options: Mapping[str, Any], solar_entry_options: list[selector.SelectOptionDict]) -> vol.Schema:
-    """Build the options flow schema: prices_timezone plus the price analysis fields."""
+def _init_schema(options: Mapping[str, Any], logged_in: bool) -> vol.Schema:
+    """Build the options flow's "init" step schema: prices_timezone and sensor_groups.
+
+    The "costs" group is only offered as a choice when the entry is logged in
+    (has an access token); a public entry keeps whatever is currently stored
+    for it, it just can't newly select it, so it is also left out of the
+    default shown here (async_step_init adds it back to the submission).
+    """
+    current_groups = list(options.get(CONF_SENSOR_GROUPS, SENSOR_GROUPS))
+    group_options = [group for group in SENSOR_GROUPS if group != SENSOR_GROUP_COSTS or logged_in]
+    # The default must only contain values actually offered as choices:
+    # SelectSelector validates each submitted item with vol.In(options), and
+    # the frontend can't untick a value it can't see. This also guards
+    # against stale/renamed values in current_groups.
+    default_groups = [group for group in current_groups if group in group_options]
+
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_PRICES_TIMEZONE, default=options.get(CONF_PRICES_TIMEZONE, PRICES_TIMEZONE_UTC)
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key=CONF_PRICES_TIMEZONE,
+                )
+            ),
+            vol.Required(CONF_SENSOR_GROUPS, default=default_groups): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=group_options,
+                    mode=selector.SelectSelectorMode.LIST,
+                    multiple=True,
+                    translation_key=CONF_SENSOR_GROUPS,
+                )
+            ),
+        }
+    )
+
+
+SECTION_PRICE_LEVELS = "price_levels"
+SECTION_CHEAPEST_PERIOD = "cheapest_period"
+
+
+def _price_levels_section_schema(
+    options: Mapping[str, Any], solar_entry_options: list[selector.SelectOptionDict]
+) -> vol.Schema:
+    """Build the "price_levels" section schema: cheap/expensive thresholds and the solar forecast fields."""
     price_unit = f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
     schema: dict[Any, Any] = {
-        vol.Required(
-            CONF_PRICES_TIMEZONE, default=options.get(CONF_PRICES_TIMEZONE, PRICES_TIMEZONE_UTC)
-        ): selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=[PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC],
-                mode=selector.SelectSelectorMode.DROPDOWN,
-                translation_key=CONF_PRICES_TIMEZONE,
-            )
-        ),
         vol.Required(
             CONF_CHEAP_PRICE_THRESHOLD,
             default=options.get(CONF_CHEAP_PRICE_THRESHOLD, DEFAULT_CHEAP_PRICE_THRESHOLD),
@@ -139,18 +181,6 @@ def _options_schema(options: Mapping[str, Any], solar_entry_options: list[select
             CONF_EXPENSIVE_PRICE_THRESHOLD,
             default=options.get(CONF_EXPENSIVE_PRICE_THRESHOLD, DEFAULT_EXPENSIVE_PRICE_THRESHOLD),
         ): _price_number_selector(0.001, price_unit),
-        vol.Required(
-            CONF_CHEAPEST_PERIOD_MINUTES,
-            default=options.get(CONF_CHEAPEST_PERIOD_MINUTES, DEFAULT_CHEAPEST_PERIOD_MINUTES),
-        ): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                mode=selector.NumberSelectorMode.BOX, min=15, max=360, step=15, unit_of_measurement="min"
-            )
-        ),
-        vol.Required(
-            CONF_SOLAR_THRESHOLD_KWH,
-            default=options.get(CONF_SOLAR_THRESHOLD_KWH, DEFAULT_SOLAR_THRESHOLD_KWH),
-        ): _price_number_selector(0.1, UnitOfEnergy.KILO_WATT_HOUR),
     }
 
     # No `default=`: with a default, voluptuous puts it back whenever the
@@ -171,8 +201,54 @@ def _options_schema(options: Mapping[str, Any], solar_entry_options: list[select
     schema[solar_forecast_entry_key] = selector.SelectSelector(
         selector.SelectSelectorConfig(options=solar_entry_options, mode=selector.SelectSelectorMode.DROPDOWN)
     )
+    schema[
+        vol.Required(
+            CONF_SOLAR_THRESHOLD_KWH, default=options.get(CONF_SOLAR_THRESHOLD_KWH, DEFAULT_SOLAR_THRESHOLD_KWH)
+        )
+    ] = _price_number_selector(0.1, UnitOfEnergy.KILO_WATT_HOUR)
 
     return vol.Schema(schema)
+
+
+def _cheapest_period_section_schema(options: Mapping[str, Any]) -> vol.Schema:
+    """Build the "cheapest_period" section schema: the cheapest period length."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_CHEAPEST_PERIOD_MINUTES,
+                default=options.get(CONF_CHEAPEST_PERIOD_MINUTES, DEFAULT_CHEAPEST_PERIOD_MINUTES),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    mode=selector.NumberSelectorMode.BOX, min=15, max=360, step=15, unit_of_measurement="min"
+                )
+            ),
+        }
+    )
+
+
+def _analysis_schema(options: Mapping[str, Any], solar_entry_options: list[selector.SelectOptionDict]) -> vol.Schema:
+    """Build the options flow's "analysis" step schema: two sections, price_levels and cheapest_period."""
+    return vol.Schema(
+        {
+            vol.Required(SECTION_PRICE_LEVELS): section(
+                _price_levels_section_schema(options, solar_entry_options), {"collapsed": False}
+            ),
+            vol.Required(SECTION_CHEAPEST_PERIOD): section(
+                _cheapest_period_section_schema(options), {"collapsed": False}
+            ),
+        }
+    )
+
+
+def _flatten_analysis_input(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a sectioned "analysis" step submission into a flat options dict.
+
+    The stored option keys are unaffected by the sections (cosmetic UI
+    grouping only): submitted values arrive nested per section
+    (user_input[SECTION_PRICE_LEVELS][CONF_CHEAP_PRICE_THRESHOLD], ...) and
+    are flattened back to the same flat keys used before sections existed.
+    """
+    return {**user_input[SECTION_PRICE_LEVELS], **user_input[SECTION_CHEAPEST_PERIOD]}
 
 
 def _site_selection_schema(sites: list[DeliverySite], default: str | None = None) -> vol.Schema:
@@ -432,7 +508,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             title=title or data.get(CONF_USERNAME, "Frank Energie"),
             data=data,
-            options={CONF_PRICES_TIMEZONE: PRICES_TIMEZONE_HOME_ASSISTANT},
+            options={
+                CONF_PRICES_TIMEZONE: PRICES_TIMEZONE_HOME_ASSISTANT,
+                CONF_SENSOR_GROUPS: list(DEFAULT_SENSOR_GROUPS),
+            },
         )
 
     @staticmethod
@@ -443,31 +522,87 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(OptionsFlowWithReload):
-    """Handle the Frank Energie options flow: prices_timezone and the price analysis settings.
+    """Handle the Frank Energie options flow: sensor groups and, when selected, price analysis settings.
 
     Inherits from OptionsFlowWithReload so a changed option automatically
     reloads the config entry; do not also register an update listener in
     async_setup_entry for this (they cannot both be used at once).
+
+    Two steps: "init" (prices_timezone, sensor_groups) is always shown first;
+    "analysis" (the price analysis fields) only follows when price_analysis
+    is among the selected sensor_groups. `_prices_timezone`/`_sensor_groups`
+    carry the "init" step's submission over to "analysis", since both steps
+    together produce a single options entry.
     """
 
+    def __init__(self) -> None:
+        """Initialize the options flow."""
+        self._prices_timezone: str | None = None
+        self._sensor_groups: list[str] | None = None
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Manage the single options step: prices_timezone plus the price analysis fields."""
+        """Manage the "init" step: prices_timezone and sensor_groups."""
+        if user_input is not None:
+            self._prices_timezone = user_input[CONF_PRICES_TIMEZONE]
+            self._sensor_groups = list(user_input[CONF_SENSOR_GROUPS])
+
+            # "costs" isn't offered as a choice for a public entry (see
+            # _init_schema), so it's never part of the submitted list; keep
+            # it stored as is instead of dropping it. Its sensors are
+            # skipped anyway while the entry isn't authenticated.
+            logged_in = self.config_entry.data.get(CONF_ACCESS_TOKEN) is not None
+            if not logged_in and SENSOR_GROUP_COSTS in enabled_groups(self.config_entry):
+                self._sensor_groups.append(SENSOR_GROUP_COSTS)
+
+            if SENSOR_GROUP_PRICE_ANALYSIS in self._sensor_groups:
+                return await self.async_step_analysis()
+
+            return self.async_create_entry(data=self._data_without_analysis())
+
+        logged_in = self.config_entry.data.get(CONF_ACCESS_TOKEN) is not None
+        return self.async_show_form(
+            step_id="init", data_schema=_init_schema(self.config_entry.options, logged_in)
+        )
+
+    def _data_without_analysis(self) -> dict[str, Any]:
+        """Build the options entry when price_analysis wasn't selected.
+
+        Any previously stored price analysis options are kept as is, so
+        re-enabling the group later restores them.
+        """
+        data: dict[str, Any] = {CONF_PRICES_TIMEZONE: self._prices_timezone, CONF_SENSOR_GROUPS: self._sensor_groups}
+        for key in (
+            CONF_CHEAP_PRICE_THRESHOLD,
+            CONF_EXPENSIVE_PRICE_THRESHOLD,
+            CONF_CHEAPEST_PERIOD_MINUTES,
+            CONF_SOLAR_FORECAST_ENTRY,
+            CONF_SOLAR_THRESHOLD_KWH,
+        ):
+            if key in self.config_entry.options:
+                data[key] = self.config_entry.options[key]
+        return data
+
+    async def async_step_analysis(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Manage the "analysis" step: the price analysis fields (only reached when price_analysis is selected)."""
         solar_entry_options = await _solar_forecast_entry_options(self.hass)
 
         if user_input is not None:
-            if user_input[CONF_CHEAP_PRICE_THRESHOLD] >= user_input[CONF_EXPENSIVE_PRICE_THRESHOLD]:
+            flat_input = _flatten_analysis_input(user_input)
+            if flat_input[CONF_CHEAP_PRICE_THRESHOLD] >= flat_input[CONF_EXPENSIVE_PRICE_THRESHOLD]:
                 return self.async_show_form(
-                    step_id="init",
-                    data_schema=_options_schema(user_input, solar_entry_options),
+                    step_id="analysis",
+                    data_schema=_analysis_schema(flat_input, solar_entry_options),
                     errors={"base": "thresholds_invalid"},
                 )
             # NumberSelector always returns a float; cast back to int before
             # saving so find_cheapest_period() (which uses it in range()/
             # slicing) doesn't get handed a float.
-            data = dict(user_input)
+            data = dict(flat_input)
             data[CONF_CHEAPEST_PERIOD_MINUTES] = int(data[CONF_CHEAPEST_PERIOD_MINUTES])
+            data[CONF_PRICES_TIMEZONE] = self._prices_timezone
+            data[CONF_SENSOR_GROUPS] = self._sensor_groups
             return self.async_create_entry(data=data)
 
         return self.async_show_form(
-            step_id="init", data_schema=_options_schema(self.config_entry.options, solar_entry_options)
+            step_id="analysis", data_schema=_analysis_schema(self.config_entry.options, solar_entry_options)
         )

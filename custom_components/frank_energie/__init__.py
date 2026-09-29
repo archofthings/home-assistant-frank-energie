@@ -6,12 +6,20 @@ from homeassistant.const import CONF_ACCESS_TOKEN, Platform, CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from python_frank_energie import FrankEnergie
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, FrankEnergieException
 from python_frank_energie.models import DeliverySite
 
-from .const import CONF_COORDINATOR, CONF_PRICE_ANALYSIS, DOMAIN
+from .const import (
+    CONF_COORDINATOR,
+    CONF_PRICE_ANALYSIS,
+    DOMAIN,
+    SENSOR_GROUP_PRICE_ANALYSIS,
+    enabled_groups,
+    key_enabled,
+)
 from .coordinator import FrankEnergieCoordinator
 from .price_analysis import PriceAnalysisCoordinator
 from .services import async_setup_services
@@ -46,6 +54,23 @@ async def _async_discover_site(api: FrankEnergie) -> DeliverySite:
     return delivery_sites[0]
 
 
+def _async_remove_disabled_group_entities(hass: HomeAssistant, entry: ConfigEntry, groups: set[str]) -> None:
+    """Remove this entry's entity registry entries whose sensor group is not in `groups`.
+
+    Current-price entities (absent from SENSOR_GROUP_BY_KEY) are never
+    touched. Re-enabling a group later recreates its entities with the same
+    unique_id, so Home Assistant assigns them the same entity_id again.
+    """
+    registry = er.async_get(hass)
+    prefix = f"{entry.unique_id}."
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if not entity.unique_id.startswith(prefix):
+            continue
+        key = entity.unique_id[len(prefix):]
+        if not key_enabled(key, groups):
+            registry.async_remove(entity.entity_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up the Frank Energie component from a config entry."""
 
@@ -68,6 +93,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if title is not None:
             hass.config_entries.async_update_entry(entry, title=title)
 
+    groups = enabled_groups(entry)
+    _async_remove_disabled_group_entities(hass, entry, groups)
+
     # Initialise the coordinator and save it as domain-data
     api = FrankEnergie(
         clientsession=async_get_clientsession(hass),
@@ -83,18 +111,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # so it is never used to gate setup readiness: a failure here should not
     # prevent the rest of the integration (and its other entities) from
     # loading. It refreshes itself, so the initial async_refresh() result
-    # doesn't need to be checked either.
-    price_analysis_coordinator = PriceAnalysisCoordinator(hass, entry, frank_coordinator)
-    await price_analysis_coordinator.async_refresh()
+    # doesn't need to be checked either. It is only created at all when the
+    # price_analysis sensor group is enabled: no timer, no solar fetch, and
+    # no entities otherwise.
+    price_analysis_coordinator = None
+    if SENSOR_GROUP_PRICE_ANALYSIS in groups:
+        price_analysis_coordinator = PriceAnalysisCoordinator(hass, entry, frank_coordinator)
+        await price_analysis_coordinator.async_refresh()
+        for unsub in price_analysis_coordinator.async_setup_listeners():
+            entry.async_on_unload(unsub)
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         CONF_COORDINATOR: frank_coordinator,
         CONF_PRICE_ANALYSIS: price_analysis_coordinator,
     }
-
-    for unsub in price_analysis_coordinator.async_setup_listeners():
-        entry.async_on_unload(unsub)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

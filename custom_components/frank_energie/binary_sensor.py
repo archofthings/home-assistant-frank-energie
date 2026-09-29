@@ -19,18 +19,23 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Frank Energie binary sensor entries."""
-    price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id][CONF_PRICE_ANALYSIS]
+    price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_PRICE_ANALYSIS)
 
+    # price_analysis_coordinator is None when the price_analysis sensor group
+    # is disabled (see __init__.py): no PriceAnalysisCoordinator is created
+    # or refreshed in that case, so these entities are skipped entirely.
+    #
     # update_before_add=False: these read PriceAnalysisCoordinator.data, which
     # is already populated by the time platforms are set up (see sensor.py's
     # async_setup_entry for the full rationale).
-    async_add_entities(
-        [
-            CheapPriceNowBinarySensor(price_analysis_coordinator, config_entry),
-            CheapestPeriodNowBinarySensor(price_analysis_coordinator, config_entry),
-        ],
-        False,
-    )
+    if price_analysis_coordinator is not None:
+        async_add_entities(
+            [
+                CheapPriceNowBinarySensor(price_analysis_coordinator, config_entry),
+                CheapestPeriodNowBinarySensor(price_analysis_coordinator, config_entry),
+            ],
+            False,
+        )
 
 
 class FrankEnergiePriceAnalysisBinarySensor(CoordinatorEntity, BinarySensorEntity):
