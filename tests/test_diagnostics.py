@@ -186,6 +186,37 @@ async def test_diagnostics_coordinator_section(
 
 
 # --------------------------------------------------------------------------
+# Contract section
+# --------------------------------------------------------------------------
+
+
+async def test_diagnostics_contract_section_redacts_connection_id(
+    hass, enable_custom_integrations, hass_client, mock_frank_energie_class, authenticated_config_entry
+):
+    """The contract section reports the price resolution state, with the connection id redacted."""
+    setup_authenticated_api(mock_frank_energie_class)
+    mock_frank_energie_class.user.return_value = MagicMock(
+        connections=[MagicMock(segment="ELECTRICITY", connectionId="elec-conn")]
+    )
+    mock_frank_energie_class.contract_price_resolution_state.return_value = MagicMock(
+        active_option="PT60M",
+        available_options=["PT15M", "PT60M"],
+        is_change_request_possible=True,
+    )
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    diag = await get_diag(hass, hass_client, authenticated_config_entry)
+
+    assert diag["contract"]["exists"] is True
+    assert diag["contract"]["last_update_success"] is True
+    assert diag["contract"]["connection_id"] == "**REDACTED**"
+    assert diag["contract"]["active_option"] == "PT60M"
+    assert diag["contract"]["available_options"] == ["PT15M", "PT60M"]
+
+
+# --------------------------------------------------------------------------
 # Data counts, resolution and has_tomorrow
 # --------------------------------------------------------------------------
 
