@@ -111,7 +111,7 @@ class PriceAnalysisCoordinator(DataUpdateCoordinator[AnalysisResult | None]):
         # _next_cheapest_period below): the window found on the previous
         # update, and the exact slot list it was computed from.
         self._cached_next_window: Window | None = None
-        self._cached_next_window_slots: list[Price] | None = None
+        self._cached_next_window_key: tuple | None = None
 
         super().__init__(
             hass,
@@ -213,10 +213,14 @@ class PriceAnalysisCoordinator(DataUpdateCoordinator[AnalysisResult | None]):
         (e.g. tomorrow's prices become available).
         """
         cached = self._cached_next_window
-        if cached is not None and self._cached_next_window_slots == slots and cached.start <= now < cached.end:
+        # Compare a key of plain values, not the Price objects: the library's dataclass
+        # Price.__eq__ reads the unset `price_data` field and raises AttributeError
+        # when a refresh returns new (equal) Price objects.
+        key = tuple((slot.date_from, slot.date_till, slot.total) for slot in slots)
+        if cached is not None and self._cached_next_window_key == key and cached.start <= now < cached.end:
             return cached
 
         window = find_cheapest_period(slots, cheapest_minutes, not_before=now)
         self._cached_next_window = window
-        self._cached_next_window_slots = slots
+        self._cached_next_window_key = key
         return window
