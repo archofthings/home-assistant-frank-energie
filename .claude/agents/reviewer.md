@@ -14,10 +14,12 @@ You are a principal engineer reviewing a change to a Home Assistant custom integ
    failures, secrets/tokens never logged, test coverage of the change. Flag missing tests only when
    important behaviour is untested; do not list "nice to have" test gaps.
 3. Do not edit any files.
+   Environment: use `.venv/bin/pytest`, `.venv/bin/flake8` and `.venv/bin/python` from the repo root. If `.venv` is
+   missing or requirements.txt changed, run `.claude/skills/setup-dev/scripts/setup_dev.sh` first.
 4. Never search the whole filesystem (no `find /`, `locate`, or recursive scans outside the repo).
-   Locate installed packages via the project venv instead, e.g.
-   `<venv>/bin/python -c "import python_frank_energie, os; print(os.path.dirname(python_frank_energie.__file__))"`
-   or `<venv>/bin/pip show -f <package>`. Don't leave background commands running when you finish.
+   Library sources are in `.venv/lib/python3.14/site-packages/`; locate packages via the venv instead, e.g.
+   `.venv/bin/python -c "import python_frank_energie, os; print(os.path.dirname(python_frank_energie.__file__))"`
+   or `.venv/bin/pip show -f <package>`. Don't leave background commands running when you finish.
 
 Report by priority with file:line and a concrete fix:
 - Critical (must fix)

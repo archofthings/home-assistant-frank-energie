@@ -5,6 +5,11 @@
 - Library: `python-frank-energie` (version pinned in `manifest.json`)
 - Tests: `tests/` with `pytest-homeassistant-custom-component`
 - CI: flake8 (max line 120, complexity 10) + pytest, Python 3.14 (`.github/workflows/ci.yaml`)
+- Local environment: `.venv` (Python 3.14, gitignored). Create/update it with the `setup-dev` skill
+  (`.claude/skills/setup-dev/scripts/setup_dev.sh`); run tools as `.venv/bin/pytest` and `.venv/bin/flake8`.
+  Library sources: `.venv/lib/python3.14/site-packages/{python_frank_energie,homeassistant}/`.
+- Hooks (`.claude/hooks/`, wired in `.claude/settings.json`): flake8 runs on every edited `.py` file and reports
+  errors immediately (fix them before continuing); whole-disk searches (`find /`, `find ~`, `locate`, …) are blocked.
 
 ## Roles
 - **You (main session, Opus 5.5)**: architect, problem solver and orchestrator.
@@ -24,6 +29,11 @@
    (or to `tester` if the test is wrong). Repeat 3–4.
 5. Delegate review to `reviewer` with the spec. Send Critical/Warning items back to `developer`.
 6. Summarise to me: what changed, test results, review verdict, anything I need to decide.
+
+## Scope discipline
+Agents (and the orchestrator) change only what the task requires: no unrequested improvements, features or
+abstractions; unrelated issues are reported, not fixed. Adapted from the Karpathy guidelines
+(github.com/multica-ai/andrej-karpathy-skills); the full rules are in `.claude/agents/developer.md`.
 
 ## Test budget
 Keep tests lean; they are read and run by every agent, so size costs tokens.
@@ -47,4 +57,13 @@ Small, single-file changes (typo, constant, one-line fix): do it directly, then 
 - Never commit on `main` directly: work on a feature branch (the orchestrator creates it).
 - Only the orchestrator pushes, and only when I explicitly ask; `git push` always requires my approval
   (`ask` rule in `.claude/settings.json`). Subagents never push.
+- GitHub: use the `gh` CLI (logged in as archofthings; repo `archofthings/home-assistant-frank-energie`).
+  Read-only commands (`gh pr view/list/diff/checks`, `gh run`, `gh release view/list`) are allowed; anything that
+  publishes (PRs, comments, releases, `gh api`, workflow runs) needs my approval and is only done when I ask.
+  Subagents never run `gh` commands that publish.
+- PRs and releases: use the `/release` skill (`/release pr`, `/release publish [vX.Y.Z]`); only when I ask.
 - Never call the real Frank Energie API in tests; never log tokens or credentials.
+- Home Assistant MCP (`home-assistant`, user-scoped, connected to my real Home Assistant): use it only to
+  verify the integration (states, attributes, history, logs, integration info). Never switch devices, change
+  configuration, automations, dashboards or HACS, reload or restart unless I ask; those tools require my approval,
+  and deleting tools are blocked. Never paste the HA URL or token anywhere. Subagents don't use it.
