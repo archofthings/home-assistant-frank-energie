@@ -105,7 +105,6 @@ class FrankEnergieEntityDescription(SensorEntityDescription):
 SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     FrankEnergieEntityDescription(
         key="elec_markup",
-        name="Current electricity price (All-in)",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -114,7 +113,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_market",
-        name="Current electricity market price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -123,7 +121,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tax",
-        name="Current electricity price including tax",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -134,7 +131,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tax_vat",
-        name="Current electricity VAT price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -143,7 +139,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_sourcing",
-        name="Current electricity sourcing markup",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -152,7 +147,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tax_only",
-        name="Current electricity tax only",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -161,7 +155,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_markup",
-        name="Current gas price (All-in)",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -170,7 +163,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_market",
-        name="Current gas market price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -179,7 +171,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_tax",
-        name="Current gas price including tax",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -188,7 +179,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_tax_vat",
-        name="Current gas VAT price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -197,7 +187,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_sourcing",
-        name="Current gas sourcing price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -206,7 +195,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_tax_only",
-        name="Current gas tax only",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -215,7 +203,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_min",
-        name="Lowest gas price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -228,7 +215,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_max",
-        name="Highest gas price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -241,7 +227,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_min",
-        name="Lowest energy price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -254,7 +239,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_max",
-        name="Highest energy price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -267,7 +251,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_avg",
-        name="Average electricity price today",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -275,7 +258,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_next",
-        name="Next electricity price (All-in)",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -288,7 +270,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tomorrow_avg",
-        name="Average electricity price tomorrow",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -296,7 +277,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tomorrow_min",
-        name="Lowest electricity price tomorrow",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -309,7 +289,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_tomorrow_max",
-        name="Highest electricity price tomorrow",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -322,7 +301,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_upcoming_min",
-        name="Lowest upcoming electricity price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -335,7 +313,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="elec_upcoming_max",
-        name="Highest upcoming electricity price",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -348,7 +325,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="gas_tomorrow_avg",
-        name="Average gas price tomorrow",
         native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfVolume.CUBIC_METERS}",
         suggested_display_precision=2,
         state_class=SensorStateClass.MEASUREMENT,
@@ -356,7 +332,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="actual_costs_until_last_meter_reading_date",
-        name="Actual monthly cost",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -375,7 +350,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="expected_costs_until_last_meter_reading_date",
-        name="Expected monthly cost until now",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -394,7 +368,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="expected_costs_this_month",
-        name="Expected cost this month",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -406,7 +379,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="invoice_previous_period",
-        name="Invoice previous period",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -428,7 +400,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="invoice_current_period",
-        name="Invoice current period",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -450,7 +421,6 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
     ),
     FrankEnergieEntityDescription(
         key="invoice_upcoming_period",
-        name="Invoice upcoming period",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -543,7 +513,6 @@ def _daily_last_reset(data: UsageData | None) -> Any:
 DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     UsageEntityDescription(
         key="elec_usage_yesterday",
-        name="Electricity usage yesterday",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -554,7 +523,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="elec_costs_yesterday",
-        name="Electricity costs yesterday",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -565,7 +533,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="gas_usage_yesterday",
-        name="Gas usage yesterday",
         device_class=SensorDeviceClass.GAS,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
@@ -577,7 +544,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="gas_costs_yesterday",
-        name="Gas costs yesterday",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -589,7 +555,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="feed_in_yesterday",
-        name="Feed-in yesterday",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -601,7 +566,6 @@ DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="feed_in_revenue_yesterday",
-        name="Feed-in revenue yesterday",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -674,7 +638,6 @@ def _monthly_last_reset(data: UsageData | None) -> Any:
 MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     UsageEntityDescription(
         key="elec_usage_month",
-        name="Electricity usage this month",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -685,7 +648,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="elec_costs_month",
-        name="Electricity costs this month",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -696,7 +658,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="gas_usage_month",
-        name="Gas usage this month",
         device_class=SensorDeviceClass.GAS,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
@@ -708,7 +669,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="gas_costs_month",
-        name="Gas costs this month",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -720,7 +680,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="feed_in_month",
-        name="Feed-in this month",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -732,7 +691,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="feed_in_revenue_month",
-        name="Feed-in revenue this month",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -744,7 +702,6 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
     ),
     UsageEntityDescription(
         key="fixed_costs_month",
-        name="Fixed costs this month (expected)",
         device_class=SensorDeviceClass.MONETARY,
         state_class=None,
         native_unit_of_measurement=CURRENCY_EURO,
@@ -859,6 +816,7 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
 
     _attr_attribution = ATTRIBUTION
     _attr_icon = ICON
+    _attr_has_entity_name = True
     # The "prices" attribute holds up to 192+ quarter-hour price slots (~17 KB
     # once serialized), over the recorder's 16 KB attribute size limit, so
     # exclude it from being recorded to avoid it being dropped/warned about.
@@ -873,6 +831,7 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         self.entity_description: FrankEnergieEntityDescription = description
         self._attr_unique_id = f"{entry.unique_id}.{description.key}"
+        self._attr_translation_key = description.key
         self._attr_device_info = device_info(entry, description.service_name)
 
         super().__init__(coordinator)
@@ -980,12 +939,13 @@ class FrankEnergiePriceAnalysisEntity(CoordinatorEntity, SensorEntity):
 
     _attr_attribution = ATTRIBUTION
     _attr_icon = ICON
+    _attr_has_entity_name = True
     coordinator: PriceAnalysisCoordinator
 
-    def __init__(self, coordinator: PriceAnalysisCoordinator, key: str, name: str, entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: PriceAnalysisCoordinator, key: str, entry: ConfigEntry) -> None:
         """Initialize the price analysis entity."""
         self._attr_unique_id = f"{entry.unique_id}.{key}"
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_device_info = device_info(entry, SERVICE_NAME_PRICES)
         super().__init__(coordinator)
 
@@ -1005,11 +965,10 @@ class FrankEnergiePriceLevelSensor(FrankEnergiePriceAnalysisEntity):
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = list(PRICE_LEVELS)
-    _attr_translation_key = "price_level"
 
     def __init__(self, coordinator: PriceAnalysisCoordinator, entry: ConfigEntry) -> None:
         """Initialize the price level sensor."""
-        super().__init__(coordinator, "price_level", "Electricity price level", entry)
+        super().__init__(coordinator, "price_level", entry)
 
     @property
     def native_value(self) -> StateType:
@@ -1039,8 +998,7 @@ class FrankEnergiePriceAnalysisDaySensor(FrankEnergiePriceAnalysisEntity):
         """Initialize the price analysis sensor for `period` ("today" or "tomorrow")."""
         self._period = period
         key = f"price_analysis_{period}"
-        name = f"Electricity price analysis {period}"
-        super().__init__(coordinator, key, name, entry)
+        super().__init__(coordinator, key, entry)
 
     def _day(self) -> DayAnalysis | None:
         """Return this sensor's DayAnalysis (today's or tomorrow's), or None when unavailable."""
@@ -1083,7 +1041,7 @@ class FrankEnergieNextCheapestPeriodSensor(FrankEnergiePriceAnalysisEntity):
 
     def __init__(self, coordinator: PriceAnalysisCoordinator, entry: ConfigEntry) -> None:
         """Initialize the next cheapest period sensor."""
-        super().__init__(coordinator, "next_cheapest_period", "Next cheapest electricity period", entry)
+        super().__init__(coordinator, "next_cheapest_period", entry)
 
     def _window(self) -> Window | None:
         result = self._result
@@ -1111,6 +1069,7 @@ class FrankEnergieUsageSensor(CoordinatorEntity, SensorEntity):
     """Representation of a daily/monthly usage or costs sensor, backed by UsageCoordinator."""
 
     _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
     # The "hours" attribute holds up to 24 hourly usage/cost entries; keep it
     # out of the recorder like the "prices"/price-analysis attributes above.
     _unrecorded_attributes = frozenset({"hours"})
@@ -1122,6 +1081,7 @@ class FrankEnergieUsageSensor(CoordinatorEntity, SensorEntity):
         """Initialize the usage sensor."""
         self.entity_description: UsageEntityDescription = description
         self._attr_unique_id = f"{entry.unique_id}.{description.key}"
+        self._attr_translation_key = description.key
         self._attr_device_info = device_info(entry, SERVICE_NAME_COSTS)
         # Only force the currency icon for monetary sensors; the
         # ENERGY/GAS device-class usage sensors use HA's own device-class

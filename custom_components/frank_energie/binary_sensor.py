@@ -43,12 +43,13 @@ class FrankEnergiePriceAnalysisBinarySensor(CoordinatorEntity, BinarySensorEntit
 
     _attr_attribution = ATTRIBUTION
     _attr_icon = ICON
+    _attr_has_entity_name = True
     coordinator: PriceAnalysisCoordinator
 
-    def __init__(self, coordinator: PriceAnalysisCoordinator, key: str, name: str, entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: PriceAnalysisCoordinator, key: str, entry: ConfigEntry) -> None:
         """Initialize the price analysis binary sensor."""
         self._attr_unique_id = f"{entry.unique_id}.{key}"
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_device_info = device_info(entry)
         super().__init__(coordinator)
 
@@ -68,7 +69,7 @@ class CheapPriceNowBinarySensor(FrankEnergiePriceAnalysisBinarySensor):
 
     def __init__(self, coordinator: PriceAnalysisCoordinator, entry: ConfigEntry) -> None:
         """Initialize the cheap price now binary sensor."""
-        super().__init__(coordinator, "cheap_price_now", "Cheap electricity price now", entry)
+        super().__init__(coordinator, "cheap_price_now", entry)
 
     @property
     def is_on(self) -> bool | None:
@@ -83,7 +84,7 @@ class CheapestPeriodNowBinarySensor(FrankEnergiePriceAnalysisBinarySensor):
 
     def __init__(self, coordinator: PriceAnalysisCoordinator, entry: ConfigEntry) -> None:
         """Initialize the cheapest period now binary sensor."""
-        super().__init__(coordinator, "cheapest_period_now", "Cheapest electricity period now", entry)
+        super().__init__(coordinator, "cheapest_period_now", entry)
 
     @property
     def is_on(self) -> bool | None:

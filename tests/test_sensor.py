@@ -116,6 +116,11 @@ async def test_price_sensors_report_current_15min_slot(hass, mock_frank_energie_
     assert state_for_key(hass, config_entry, "elec_markup").state == "0.42"
     assert state_for_key(hass, config_entry, "gas_markup").state == "1.75"
 
+    # has_entity_name + translation_key: the friendly name combines the
+    # device name and the translated entity name.
+    friendly_name = state_for_key(hass, config_entry, "elec_markup").attributes["friendly_name"]
+    assert friendly_name == "Frank Energie - Prices Current electricity price (All-in)"
+
     # Advance to the next 15-minute boundary and fire the entity's scheduled update.
     freezer.move_to("2026-01-15 10:15:00+01:00")
     async_fire_time_changed(hass, dt_util.utcnow())
