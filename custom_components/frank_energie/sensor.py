@@ -24,7 +24,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
-from python_frank_energie.models import Price, PriceData
+from python_frank_energie.models import EnergyCategory, Price, PriceData
 
 from .analysis import ClassifiedSlot, Window
 from .const import (
@@ -32,6 +32,7 @@ from .const import (
     ATTRIBUTION,
     CONF_COORDINATOR,
     CONF_PRICE_ANALYSIS,
+    CONF_USAGE_COORDINATOR,
     DATA_ELECTRICITY,
     DATA_GAS,
     DATA_INVOICES,
@@ -47,6 +48,7 @@ from .const import (
 from .coordinator import FrankEnergieCoordinator
 from .device import device_info
 from .price_analysis import AnalysisResult, DayAnalysis, PriceAnalysisCoordinator
+from .usage import UsageCoordinator, UsageData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -475,6 +477,269 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
 )
 
 
+@dataclass
+class UsageEntityDescription(SensorEntityDescription):
+    """Describes a Frank Energie daily/monthly usage or costs sensor entity."""
+
+    value_fn: Callable[[UsageData | None], StateType] = None
+    attr_fn: Callable[[UsageData | None, tzinfo], dict[str, Any]] = lambda _data, _tz: {}
+    last_reset_fn: Callable[[UsageData | None], Any] = lambda _data: None
+    is_gas: bool = False
+
+
+def _daily_category(data: UsageData | None, name: str) -> EnergyCategory | None:
+    """Return `data.daily.<name>` (electricity/gas/feed_in), or None when unavailable."""
+    if data is None or data.daily is None:
+        return None
+    return getattr(data.daily, name)
+
+
+def _daily_usage(data: UsageData | None, name: str) -> StateType:
+    category = _daily_category(data, name)
+    return category.usage_total if category is not None else None
+
+
+def _daily_costs(data: UsageData | None, name: str) -> StateType:
+    category = _daily_category(data, name)
+    return category.costs_total if category is not None else None
+
+
+def _localize_datetime(value: str, tz: tzinfo) -> Any:
+    """Parse an ISO datetime string and localize it to `tz`, like other Frank Energie attributes."""
+    parsed = dt_util.parse_datetime(value)
+    return parsed.astimezone(tz) if parsed is not None else value
+
+
+def _hours_attr(category: EnergyCategory | None, tz: tzinfo) -> list[dict[str, Any]] | None:
+    """Build the "hours" attribute: a list of {from, till, usage, costs} per UsageItem."""
+    if category is None:
+        return None
+    return [
+        {
+            "from": _localize_datetime(item.from_time, tz),
+            "till": _localize_datetime(item.till_time, tz),
+            "usage": item.usage,
+            "costs": item.costs,
+        }
+        for item in category.items
+    ]
+
+
+def _daily_attrs(data: UsageData | None, name: str, tz: tzinfo) -> dict[str, Any]:
+    """Build the shared "date"/"hours" attributes for a daily_usage sensor."""
+    if data is None or data.daily_date is None:
+        return {}
+    attrs: dict[str, Any] = {"date": data.daily_date.isoformat()}
+    hours = _hours_attr(_daily_category(data, name), tz)
+    if hours is not None:
+        attrs["hours"] = hours
+    return attrs
+
+
+def _daily_last_reset(data: UsageData | None) -> Any:
+    """Return local midnight of the covered day, for a daily_usage sensor's last_reset."""
+    if data is None or data.daily_date is None:
+        return None
+    return dt_util.start_of_local_day(data.daily_date)
+
+
+DAILY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
+    UsageEntityDescription(
+        key="elec_usage_yesterday",
+        name="Electricity usage yesterday",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        value_fn=lambda data: _daily_usage(data, "electricity"),
+        attr_fn=lambda data, tz: _daily_attrs(data, "electricity", tz),
+        last_reset_fn=_daily_last_reset,
+    ),
+    UsageEntityDescription(
+        key="elec_costs_yesterday",
+        name="Electricity costs yesterday",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        suggested_display_precision=2,
+        value_fn=lambda data: _daily_costs(data, "electricity"),
+        attr_fn=lambda data, tz: _daily_attrs(data, "electricity", tz),
+        last_reset_fn=_daily_last_reset,
+    ),
+    UsageEntityDescription(
+        key="gas_usage_yesterday",
+        name="Gas usage yesterday",
+        device_class=SensorDeviceClass.GAS,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+        suggested_display_precision=2,
+        value_fn=lambda data: _daily_usage(data, "gas"),
+        attr_fn=lambda data, tz: _daily_attrs(data, "gas", tz),
+        last_reset_fn=_daily_last_reset,
+        is_gas=True,
+    ),
+    UsageEntityDescription(
+        key="gas_costs_yesterday",
+        name="Gas costs yesterday",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        suggested_display_precision=2,
+        value_fn=lambda data: _daily_costs(data, "gas"),
+        attr_fn=lambda data, tz: _daily_attrs(data, "gas", tz),
+        last_reset_fn=_daily_last_reset,
+        is_gas=True,
+    ),
+    UsageEntityDescription(
+        key="feed_in_yesterday",
+        name="Feed-in yesterday",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        value_fn=lambda data: _daily_usage(data, "feed_in"),
+        attr_fn=lambda data, tz: _daily_attrs(data, "feed_in", tz),
+        last_reset_fn=_daily_last_reset,
+    ),
+    UsageEntityDescription(
+        key="feed_in_revenue_yesterday",
+        name="Feed-in revenue yesterday",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        suggested_display_precision=2,
+        value_fn=lambda data: _daily_costs(data, "feed_in"),
+        attr_fn=lambda data, tz: _daily_attrs(data, "feed_in", tz),
+        last_reset_fn=_daily_last_reset,
+    ),
+)
+
+
+def _monthly_difference(data: UsageData | None, name: str) -> Any:
+    """Return `data.monthly.<name>Difference`, or None when unavailable."""
+    if data is None or data.monthly is None:
+        return None
+    return getattr(data.monthly, name)
+
+
+def _monthly_value(data: UsageData | None, name: str, field: str) -> StateType:
+    difference = _monthly_difference(data, name)
+    return getattr(difference, field) if difference is not None else None
+
+
+def _monthly_attrs(data: UsageData | None, extra: dict[str, Any]) -> dict[str, Any]:
+    """Build the shared "last_meter_reading" attribute for a monthly_usage sensor, plus `extra`."""
+    if data is None or data.monthly is None:
+        return {}
+    return {"last_meter_reading": data.monthly.lastMeterReadingDate, **extra}
+
+
+def _monthly_usage_attrs(data: UsageData | None, name: str) -> dict[str, Any]:
+    return _monthly_attrs(data, {"expected_usage": _monthly_value(data, name, "expectedUsage")})
+
+
+def _monthly_costs_attrs(data: UsageData | None, name: str) -> dict[str, Any]:
+    return _monthly_attrs(
+        data,
+        {
+            "expected_costs": _monthly_value(data, name, "expectedCosts"),
+            "average_price": _monthly_value(data, name, "actualAverageUnitPrice"),
+        },
+    )
+
+
+MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
+    UsageEntityDescription(
+        key="elec_usage_month",
+        name="Electricity usage this month",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        value_fn=lambda data: _monthly_value(data, "electricityDifference", "actualUsage"),
+        attr_fn=lambda data, tz: _monthly_usage_attrs(data, "electricityDifference"),
+    ),
+    UsageEntityDescription(
+        key="elec_costs_month",
+        name="Electricity costs this month",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        suggested_display_precision=2,
+        value_fn=lambda data: _monthly_value(data, "electricityDifference", "actualCosts"),
+        attr_fn=lambda data, tz: _monthly_costs_attrs(data, "electricityDifference"),
+    ),
+    UsageEntityDescription(
+        key="gas_usage_month",
+        name="Gas usage this month",
+        device_class=SensorDeviceClass.GAS,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+        suggested_display_precision=2,
+        value_fn=lambda data: _monthly_value(data, "gasDifference", "actualUsage"),
+        attr_fn=lambda data, tz: _monthly_usage_attrs(data, "gasDifference"),
+        is_gas=True,
+    ),
+    UsageEntityDescription(
+        key="gas_costs_month",
+        name="Gas costs this month",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        suggested_display_precision=2,
+        value_fn=lambda data: _monthly_value(data, "gasDifference", "actualCosts"),
+        attr_fn=lambda data, tz: _monthly_costs_attrs(data, "gasDifference"),
+        is_gas=True,
+    ),
+    UsageEntityDescription(
+        key="feed_in_month",
+        name="Feed-in this month",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        value_fn=lambda data: _monthly_value(data, "feedInDifference", "actualUsage"),
+        attr_fn=lambda data, tz: _monthly_usage_attrs(data, "feedInDifference"),
+    ),
+    UsageEntityDescription(
+        key="feed_in_revenue_month",
+        name="Feed-in revenue this month",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        suggested_display_precision=2,
+        value_fn=lambda data: _monthly_value(data, "feedInDifference", "actualCosts"),
+        attr_fn=lambda data, tz: _monthly_costs_attrs(data, "feedInDifference"),
+    ),
+    UsageEntityDescription(
+        key="fixed_costs_month",
+        name="Fixed costs this month (expected)",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        suggested_display_precision=2,
+        value_fn=lambda data: data.monthly.expectedCostsFixed if data is not None and data.monthly else None,
+        attr_fn=lambda data, tz: _monthly_attrs(data, {}),
+    ),
+)
+
+
+def _usage_has_gas(data: UsageData | None) -> bool:
+    """Return whether gas usage data is available, to decide whether to create gas usage sensors.
+
+    Defaults to True (create the sensors) unless the fetched data positively
+    shows there is no gas, so a temporarily failed/empty first refresh
+    doesn't permanently hide them.
+    """
+    if data is None:
+        return True
+    if data.daily is not None and data.daily.gas is None:
+        return False
+    if data.monthly is not None and data.monthly.gasExcluded:
+        return False
+    return True
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -483,6 +748,7 @@ async def async_setup_entry(
     """Set up Frank Energie sensor entries."""
     frank_coordinator = hass.data[DOMAIN][config_entry.entry_id][CONF_COORDINATOR]
     price_analysis_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_PRICE_ANALYSIS)
+    usage_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(CONF_USAGE_COORDINATOR)
     groups = enabled_groups(config_entry)
 
     # Add an entity for each sensor type, when authenticated is True, only
@@ -516,6 +782,19 @@ async def async_setup_entry(
             ],
             False,
         )
+
+    # usage_coordinator is None when neither daily_usage nor monthly_usage is
+    # enabled, or the entry isn't authenticated (see __init__.py). Gas
+    # sensors are only created when the first refresh's data has gas; see
+    # _usage_has_gas().
+    if usage_coordinator is not None:
+        has_gas = _usage_has_gas(usage_coordinator.data)
+        usage_entities = [
+            FrankEnergieUsageSensor(usage_coordinator, description, config_entry)
+            for description in (*DAILY_USAGE_SENSOR_TYPES, *MONTHLY_USAGE_SENSOR_TYPES)
+            if key_enabled(description.key, groups) and (not description.is_gas or has_gas)
+        ]
+        async_add_entities(usage_entities, False)
 
 
 class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
@@ -769,3 +1048,49 @@ class FrankEnergieNextCheapestPeriodSensor(FrankEnergiePriceAnalysisEntity):
             "average_price": _round_price(window.average_price),
             "minutes": window.minutes,
         }
+
+
+class FrankEnergieUsageSensor(CoordinatorEntity, SensorEntity):
+    """Representation of a daily/monthly usage or costs sensor, backed by UsageCoordinator."""
+
+    _attr_attribution = ATTRIBUTION
+    _attr_icon = ICON
+    # The "hours" attribute holds up to 24 hourly usage/cost entries; keep it
+    # out of the recorder like the "prices"/price-analysis attributes above.
+    _unrecorded_attributes = frozenset({"hours"})
+    coordinator: UsageCoordinator
+
+    def __init__(
+        self, coordinator: UsageCoordinator, description: UsageEntityDescription, entry: ConfigEntry
+    ) -> None:
+        """Initialize the usage sensor."""
+        self.entity_description: UsageEntityDescription = description
+        self._attr_unique_id = f"{entry.unique_id}.{description.key}"
+        self._attr_device_info = device_info(entry, SERVICE_NAME_COSTS)
+        super().__init__(coordinator)
+
+    @property
+    def native_value(self) -> StateType:
+        try:
+            return self.entity_description.value_fn(self.coordinator.data)
+        except _NO_DATA_ERRORS:
+            return None
+
+    @property
+    def last_reset(self):
+        try:
+            return self.entity_description.last_reset_fn(self.coordinator.data)
+        except _NO_DATA_ERRORS:
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        try:
+            tz = self.coordinator.price_coordinator.prices_tzinfo
+            return self.entity_description.attr_fn(self.coordinator.data, tz)
+        except _NO_DATA_ERRORS:
+            return {}
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None

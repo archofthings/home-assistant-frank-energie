@@ -111,6 +111,19 @@ SENSOR_GROUP_BY_KEY: dict[str, str] = {
     "invoice_previous_period": SENSOR_GROUP_COSTS,
     "invoice_current_period": SENSOR_GROUP_COSTS,
     "invoice_upcoming_period": SENSOR_GROUP_COSTS,
+    "elec_usage_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "elec_costs_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "gas_usage_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "gas_costs_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "feed_in_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "feed_in_revenue_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "elec_usage_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "elec_costs_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "gas_usage_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "gas_costs_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "feed_in_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "feed_in_revenue_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "fixed_costs_month": SENSOR_GROUP_MONTHLY_USAGE,
 }
 
 
