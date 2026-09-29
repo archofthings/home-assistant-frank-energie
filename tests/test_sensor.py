@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
@@ -344,6 +344,32 @@ async def test_price_resolution_sensor_reports_state_and_attributes(
     assert state.attributes["available_options"] == ["PT15M", "PT60M"]
     assert state.attributes["is_change_request_possible"] is True
     assert state.attributes["upcoming_change"] is None
+
+
+async def test_price_resolution_sensor_state_is_none_for_an_unknown_active_option(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """An active_option outside PT15M/PT60M (e.g. an API extension) reports state None, not a raw value."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    setup_authenticated_api(mock_frank_energie_class, Invoices.empty(), month_summary=make_month_summary())
+    mock_frank_energie_class.user.return_value = MagicMock(
+        connections=[MagicMock(segment="ELECTRICITY", connectionId="elec-conn")]
+    )
+    mock_frank_energie_class.contract_price_resolution_state.return_value = ContractPriceResolutionState(
+        active_option="PT30M",
+        available_options=["PT15M", "PT60M"],
+        change_request_effective_date=None,
+        is_change_request_possible=True,
+        upcoming_change=None,
+        upcoming_change_effective_date=None,
+    )
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, authenticated_config_entry, "price_resolution")
+    assert state.state == STATE_UNKNOWN
 
 
 # --------------------------------------------------------------------------
@@ -855,6 +881,34 @@ async def test_tomorrow_prices_available_binary_sensor(
     state = hass.states.get(entity_id)
     assert state.state == ("on" if expected_is_on else "off")
     assert ("date" in state.attributes) == expected_is_on
+
+
+async def test_tomorrow_prices_available_binary_sensor_turns_off_after_midnight_without_a_poll(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """After midnight, is_on flips off on the next quarter-hour timer tick, without a new API call."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 23:59:00+01:00")
+
+    install_public_prices(mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=[0.3] * 96)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", const.DOMAIN, f"{config_entry.unique_id}.tomorrow_prices_available"
+    )
+    assert hass.states.get(entity_id).state == "on"
+    assert hass.states.get(entity_id).attributes["date"] == "2026-01-16"
+
+    prices_call_count = mock_frank_energie_class.prices.call_count
+    freezer.move_to("2026-01-16 00:00:00+01:00")
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state == "off"
+    assert "date" not in hass.states.get(entity_id).attributes
+    assert mock_frank_energie_class.prices.call_count == prices_call_count
 
 
 def test_next_price_returns_none_for_empty_price_data():
