@@ -10,7 +10,7 @@ from homeassistant.core import State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
-from python_frank_energie.models import Invoice, Invoices
+from python_frank_energie.models import ContractPriceResolutionState, Invoice, Invoices
 
 from custom_components.frank_energie import const, sensor
 from tests.utils import (
@@ -196,6 +196,7 @@ async def test_unauthenticated_entry_has_no_cost_or_invoice_sensors(
     assert entity_id_for_key(hass, config_entry, "invoice_previous_period") is None
     assert entity_id_for_key(hass, config_entry, "invoice_current_period") is None
     assert entity_id_for_key(hass, config_entry, "invoice_upcoming_period") is None
+    assert entity_id_for_key(hass, config_entry, "price_resolution") is None
 
 
 # --------------------------------------------------------------------------
@@ -314,6 +315,35 @@ async def test_yearly_cost_sensors_unavailable_when_invoices_is_none(
 
     assert state_for_key(hass, authenticated_config_entry, "costs_this_year").state == STATE_UNAVAILABLE
     assert state_for_key(hass, authenticated_config_entry, "costs_previous_year").state == STATE_UNAVAILABLE
+
+
+async def test_price_resolution_sensor_reports_state_and_attributes(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """price_resolution reports the active option and its attributes, from ContractCoordinator."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    setup_authenticated_api(mock_frank_energie_class, Invoices.empty(), month_summary=make_month_summary())
+    mock_frank_energie_class.user.return_value = MagicMock(
+        connections=[MagicMock(segment="ELECTRICITY", connectionId="elec-conn")]
+    )
+    mock_frank_energie_class.contract_price_resolution_state.return_value = ContractPriceResolutionState(
+        active_option="PT60M",
+        available_options=["PT15M", "PT60M"],
+        change_request_effective_date=None,
+        is_change_request_possible=True,
+        upcoming_change=None,
+        upcoming_change_effective_date=None,
+    )
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, authenticated_config_entry, "price_resolution")
+    assert state.state == "PT60M"
+    assert state.attributes["available_options"] == ["PT15M", "PT60M"]
+    assert state.attributes["is_change_request_possible"] is True
+    assert state.attributes["upcoming_change"] is None
 
 
 # --------------------------------------------------------------------------

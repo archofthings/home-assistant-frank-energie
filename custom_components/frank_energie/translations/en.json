@@ -263,6 +263,13 @@
             },
             "costs_previous_year": {
                 "name": "Costs last year"
+            },
+            "price_resolution": {
+                "name": "Price resolution",
+                "state": {
+                    "PT15M": "15 minutes",
+                    "PT60M": "Hourly"
+                }
             }
         },
         "binary_sensor": {

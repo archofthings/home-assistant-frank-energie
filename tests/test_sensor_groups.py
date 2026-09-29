@@ -32,6 +32,8 @@ COST_KEYS = [
     "invoice_previous_period",
     "invoice_current_period",
     "invoice_upcoming_period",
+    "costs_this_year",
+    "costs_previous_year",
 ]
 
 
@@ -226,12 +228,17 @@ async def test_disabling_costs_on_logged_in_entry_removes_cost_entities_but_keep
     mock_frank_energie_class.is_authenticated = True
     mock_frank_energie_class.user_country.return_value = make_me("NL")
     mock_frank_energie_class.user_prices.return_value = market_prices
+    mock_frank_energie_class.user.return_value = MagicMock(
+        connections=[MagicMock(segment="ELECTRICITY", connectionId="elec-conn")]
+    )
+    mock_frank_energie_class.contract_price_resolution_state.return_value = None
 
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
     for key in COST_KEYS:
         assert entity_id_for_key(hass, entry, "sensor", key) is not None
+    assert entity_id_for_key(hass, entry, "sensor", "price_resolution") is not None
 
     hass.config_entries.async_update_entry(
         entry, options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS]}
@@ -241,6 +248,7 @@ async def test_disabling_costs_on_logged_in_entry_removes_cost_entities_but_keep
 
     for key in COST_KEYS:
         assert entity_id_for_key(hass, entry, "sensor", key) is None
+    assert entity_id_for_key(hass, entry, "sensor", "price_resolution") is None
     # Current-price entities are unaffected.
     assert entity_id_for_key(hass, entry, "sensor", "elec_markup") is not None
 

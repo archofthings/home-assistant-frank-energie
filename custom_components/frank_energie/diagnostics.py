@@ -16,8 +16,11 @@ from .const import (
     DATA_MONTH_SUMMARY,
     enabled_groups,
 )
+from .contract import ContractCoordinator
 from .coordinator import FrankEnergieCoordinator
 from .usage import UsageCoordinator
+
+CONTRACT_TO_REDACT = {"connection_id"}
 
 TO_REDACT = {CONF_ACCESS_TOKEN, CONF_TOKEN, CONF_USERNAME, "site_reference", "title", "unique_id"}
 
@@ -132,6 +135,25 @@ def _diagnostics_usage(usage_coordinator: UsageCoordinator | None) -> dict[str, 
     }
 
 
+def _diagnostics_contract(contract_coordinator: ContractCoordinator | None) -> dict[str, Any]:
+    """Build the "contract" section of the diagnostics: the price resolution state, connection id redacted."""
+    if contract_coordinator is None:
+        return {"exists": False}
+
+    state = contract_coordinator.data
+    return async_redact_data(
+        {
+            "exists": True,
+            "last_update_success": contract_coordinator.last_update_success,
+            "connection_id": contract_coordinator.connection_id,
+            "active_option": state.active_option if state is not None else None,
+            "available_options": state.available_options if state is not None else None,
+            "is_change_request_possible": state.is_change_request_possible if state is not None else None,
+        },
+        CONTRACT_TO_REDACT,
+    )
+
+
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """Return diagnostics for a config entry.
 
@@ -157,4 +179,5 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         "coordinator": _diagnostics_coordinator(coordinator),
         "data": _diagnostics_data(coordinator),
         "usage": _diagnostics_usage(runtime_data.usage),
+        "contract": _diagnostics_contract(runtime_data.contract),
     }

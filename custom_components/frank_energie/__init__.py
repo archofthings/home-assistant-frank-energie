@@ -16,12 +16,14 @@ from python_frank_energie.models import DeliverySite
 
 from .const import (
     DOMAIN,
+    SENSOR_GROUP_COSTS,
     SENSOR_GROUP_DAILY_USAGE,
     SENSOR_GROUP_MONTHLY_USAGE,
     SENSOR_GROUP_PRICE_ANALYSIS,
     enabled_groups,
     key_enabled,
 )
+from .contract import ContractCoordinator
 from .coordinator import FrankEnergieCoordinator
 from .price_analysis import PriceAnalysisCoordinator
 from .services import async_setup_services
@@ -40,6 +42,7 @@ class FrankEnergieRuntimeData:
     coordinator: FrankEnergieCoordinator
     price_analysis: PriceAnalysisCoordinator | None
     usage: UsageCoordinator | None
+    contract: ContractCoordinator | None = None
 
 
 type FrankEnergieConfigEntry = ConfigEntry[FrankEnergieRuntimeData]
@@ -147,10 +150,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         usage_coordinator = UsageCoordinator(hass, entry, frank_coordinator, groups)
         await usage_coordinator.async_refresh()
 
+    # Same rationale as the price analysis/usage coordinators above: a
+    # failure here should not prevent the rest of the integration from
+    # loading. Only created for an authenticated entry with the costs
+    # sensor group enabled.
+    contract_coordinator = None
+    if frank_coordinator.api.is_authenticated and SENSOR_GROUP_COSTS in groups:
+        contract_coordinator = ContractCoordinator(hass, entry, frank_coordinator)
+        await contract_coordinator.async_refresh()
+
     entry.runtime_data = FrankEnergieRuntimeData(
         coordinator=frank_coordinator,
         price_analysis=price_analysis_coordinator,
         usage=usage_coordinator,
+        contract=contract_coordinator,
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

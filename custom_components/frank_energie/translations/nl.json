@@ -264,6 +264,13 @@
             },
             "costs_previous_year": {
                 "name": "Kosten vorig jaar"
+            },
+            "price_resolution": {
+                "name": "Prijsresolutie",
+                "state": {
+                    "PT15M": "Per kwartier",
+                    "PT60M": "Per uur"
+                }
             }
         },
         "binary_sensor": {

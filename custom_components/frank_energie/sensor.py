@@ -41,6 +41,7 @@ from .const import (
     enabled_groups,
     key_enabled,
 )
+from .contract import ContractCoordinator
 from .coordinator import FrankEnergieCoordinator
 from .device import device_info
 from .price_analysis import AnalysisResult, DayAnalysis, PriceAnalysisCoordinator
@@ -800,6 +801,7 @@ async def async_setup_entry(
     frank_coordinator = runtime_data.coordinator
     price_analysis_coordinator = runtime_data.price_analysis
     usage_coordinator = runtime_data.usage
+    contract_coordinator = runtime_data.contract
     groups = enabled_groups(config_entry)
 
     # Add an entity for each sensor type, when authenticated is True, only
@@ -849,6 +851,11 @@ async def async_setup_entry(
             and (not description.is_feed_in or has_feed_in)
         ]
         async_add_entities(usage_entities, False)
+
+    # contract_coordinator is None when the entry isn't authenticated or the
+    # costs sensor group is disabled (see __init__.py).
+    if contract_coordinator is not None:
+        async_add_entities([PriceResolutionSensor(contract_coordinator, config_entry)], False)
 
 
 class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
@@ -1155,3 +1162,55 @@ class FrankEnergieUsageSensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         return super().available and self.native_value is not None
+
+
+_PRICE_RESOLUTION_OPTIONS = ("PT15M", "PT60M")
+
+
+def _iso_date(value: Any) -> str | None:
+    """Return `value` as an ISO date string, whether it is already a str, a date, or None."""
+    if value is None or isinstance(value, str):
+        return value
+    return value.isoformat()
+
+
+class PriceResolutionSensor(CoordinatorEntity, SensorEntity):
+    """The contract's price resolution (PT15M/PT60M), backed by ContractCoordinator."""
+
+    _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
+    _attr_translation_key = "price_resolution"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(_PRICE_RESOLUTION_OPTIONS)
+    coordinator: ContractCoordinator
+
+    def __init__(self, coordinator: ContractCoordinator, entry: ConfigEntry) -> None:
+        """Initialize the price resolution sensor."""
+        self._attr_unique_id = f"{entry.unique_id}.price_resolution"
+        self._attr_device_info = device_info(entry, SERVICE_NAME_COSTS)
+        super().__init__(coordinator)
+
+    @property
+    def native_value(self) -> StateType:
+        state = self.coordinator.data
+        if state is None or state.active_option not in _PRICE_RESOLUTION_OPTIONS:
+            return None
+        return state.active_option
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        state = self.coordinator.data
+        if state is None:
+            return {}
+        return {
+            "available_options": state.available_options,
+            "is_change_request_possible": state.is_change_request_possible,
+            "upcoming_change": _iso_date(state.upcoming_change),
+            "upcoming_change_effective_date": _iso_date(state.upcoming_change_effective_date),
+            "change_request_effective_date": _iso_date(state.change_request_effective_date),
+        }
+
+    @property
+    def available(self) -> bool:
+        """Unavailable when no electricity connection was found (ContractCoordinator.data is None)."""
+        return super().available and self.coordinator.data is not None
