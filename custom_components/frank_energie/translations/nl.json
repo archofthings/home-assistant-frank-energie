@@ -260,10 +260,10 @@
                 "name": "Volgende goedkoopste elektriciteitsperiode"
             },
             "costs_this_year": {
-                "name": "Kosten dit jaar"
+                "name": "Totaal dit jaar"
             },
             "costs_previous_year": {
-                "name": "Kosten vorig jaar"
+                "name": "Totaal vorig jaar"
             },
             "price_resolution": {
                 "name": "Prijsresolutie",

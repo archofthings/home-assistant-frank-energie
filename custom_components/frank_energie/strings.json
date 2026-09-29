@@ -260,10 +260,10 @@
         "name": "Next cheapest electricity period"
       },
       "costs_this_year": {
-        "name": "Costs this year"
+        "name": "Total this year"
       },
       "costs_previous_year": {
-        "name": "Costs last year"
+        "name": "Total last year"
       },
       "price_resolution": {
         "name": "Price resolution",
