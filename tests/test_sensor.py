@@ -329,14 +329,15 @@ async def test_unload_entry_cancels_update_timers(
 
     # One timer per legacy (declarative SENSOR_TYPES) sensor that was actually added
     # (disabled-by-default sensors get none), plus the single shared quarter-hour
-    # timer PriceAnalysisCoordinator itself registers (see __init__.py). The
-    # newer price-analysis sensors/binary sensors don't register their own
-    # per-entity timer: they read PriceAnalysisCoordinator's cached, already
+    # timer PriceAnalysisCoordinator itself registers (see __init__.py), plus the
+    # tomorrow_prices_available binary sensor's own quarter-hour timer. The
+    # price-analysis sensors/binary sensors don't register their own per-entity
+    # timer: they read PriceAnalysisCoordinator's cached, already
     # quarter-hourly-refreshed result instead.
     legacy_keys = [description.key for description in sensor.SENSOR_TYPES if not description.authenticated]
     legacy_added = [key for key in legacy_keys if state_for_key(hass, config_entry, key) is not None]
     assert unsubscribers
-    assert len(unsubscribers) == len(legacy_added) + 1
+    assert len(unsubscribers) == len(legacy_added) + 2
     assert all(unsub.call_count == 0 for unsub in unsubscribers)
 
     assert await hass.config_entries.async_unload(config_entry.entry_id)
@@ -738,6 +739,34 @@ async def test_new_price_sensors_with_today_and_tomorrow_data(
     upcoming_max_state = state_for_key(hass, config_entry, "elec_upcoming_max")
     assert float(upcoming_max_state.state) == pytest.approx(9.99)
     assert upcoming_max_state.attributes["from_time"] == tomorrow_midnight + timedelta(minutes=15 * 5)
+
+
+@pytest.mark.parametrize(
+    "tomorrow_electricity, expected_is_on",
+    [([0.3] * 96, True), ([], False)],
+    ids=["tomorrow_present", "tomorrow_absent"],
+)
+async def test_tomorrow_prices_available_binary_sensor(
+    hass, mock_frank_energie_class, config_entry, freezer, tomorrow_electricity, expected_is_on
+):
+    """The tomorrow_prices_available binary sensor is on iff tomorrow's electricity prices are present."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+
+    install_public_prices(
+        mock_frank_energie_class, [0.2] * 96, [1.0] * 96, tomorrow_electricity=tomorrow_electricity
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", const.DOMAIN, f"{config_entry.unique_id}.tomorrow_prices_available"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state.state == ("on" if expected_is_on else "off")
+    assert ("date" in state.attributes) == expected_is_on
 
 
 def test_next_price_returns_none_for_empty_price_data():

@@ -261,6 +261,9 @@
             }
         },
         "binary_sensor": {
+            "tomorrow_prices_available": {
+                "name": "Prijzen morgen beschikbaar"
+            },
             "cheap_price_now": {
                 "name": "Goedkope elektriciteitsprijs nu"
             },

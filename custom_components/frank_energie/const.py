@@ -89,6 +89,7 @@ SENSOR_GROUP_BY_KEY: dict[str, str] = {
     "elec_avg": SENSOR_GROUP_DAILY_STATISTICS,
     "gas_min": SENSOR_GROUP_DAILY_STATISTICS,
     "gas_max": SENSOR_GROUP_DAILY_STATISTICS,
+    "tomorrow_prices_available": SENSOR_GROUP_UPCOMING,
     "elec_next": SENSOR_GROUP_UPCOMING,
     "elec_tomorrow_avg": SENSOR_GROUP_UPCOMING,
     "elec_tomorrow_min": SENSOR_GROUP_UPCOMING,

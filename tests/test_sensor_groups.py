@@ -89,6 +89,7 @@ async def test_disabling_group_removes_entities_and_reenabling_recreates_them_wi
 
     original_entity_id = entity_id_for_key(hass, entry, "sensor", "elec_next")
     assert original_entity_id is not None
+    assert entity_id_for_key(hass, entry, "binary_sensor", "tomorrow_prices_available") is not None
 
     hass.config_entries.async_update_entry(
         entry, options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS]}
@@ -97,6 +98,7 @@ async def test_disabling_group_removes_entities_and_reenabling_recreates_them_wi
     await hass.async_block_till_done()
 
     assert entity_id_for_key(hass, entry, "sensor", "elec_next") is None
+    assert entity_id_for_key(hass, entry, "binary_sensor", "tomorrow_prices_available") is None
     # Current-price entities (not part of any group) are never touched.
     assert entity_id_for_key(hass, entry, "sensor", "elec_markup") is not None
 

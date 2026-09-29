@@ -261,6 +261,9 @@
       }
     },
     "binary_sensor": {
+      "tomorrow_prices_available": {
+        "name": "Tomorrow's prices available"
+      },
       "cheap_price_now": {
         "name": "Cheap electricity price now"
       },
