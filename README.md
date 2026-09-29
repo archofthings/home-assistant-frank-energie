@@ -340,7 +340,7 @@ Tips that avoid common problems with this card:
 
 #### Today
 
-<!-- Screenshot: images/prices_today.png -->
+![Today's prices coloured by level, with the Sell line and the solar forecast](images/prices_today.png)
 
 The optional **Sell** line shows the price minus a fixed amount (here 0.11085) for feed-in; adjust or remove it.
 
