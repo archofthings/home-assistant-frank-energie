@@ -13,6 +13,7 @@ ICON = "mdi:currency-eur"
 COMPONENT_TITLE = "Frank Energie"
 
 CONF_COORDINATOR = "coordinator"
+CONF_USAGE_COORDINATOR = "usage_coordinator"
 ATTR_TIME = "from_time"
 
 CONF_PRICES_TIMEZONE = "prices_timezone"
@@ -54,8 +55,32 @@ SENSOR_GROUP_DAILY_STATISTICS = "daily_statistics"
 SENSOR_GROUP_UPCOMING = "upcoming"
 SENSOR_GROUP_PRICE_ANALYSIS = "price_analysis"
 SENSOR_GROUP_COSTS = "costs"
-SENSOR_GROUPS = (SENSOR_GROUP_DAILY_STATISTICS, SENSOR_GROUP_UPCOMING, SENSOR_GROUP_PRICE_ANALYSIS, SENSOR_GROUP_COSTS)
+SENSOR_GROUP_DAILY_USAGE = "daily_usage"
+SENSOR_GROUP_MONTHLY_USAGE = "monthly_usage"
+SENSOR_GROUPS = (
+    SENSOR_GROUP_DAILY_STATISTICS,
+    SENSOR_GROUP_UPCOMING,
+    SENSOR_GROUP_PRICE_ANALYSIS,
+    SENSOR_GROUP_COSTS,
+    SENSOR_GROUP_DAILY_USAGE,
+    SENSOR_GROUP_MONTHLY_USAGE,
+)
 DEFAULT_SENSOR_GROUPS = [SENSOR_GROUP_DAILY_STATISTICS, SENSOR_GROUP_COSTS]
+
+# The groups that existed before daily_usage/monthly_usage were added: the
+# fallback enabled_groups() uses for a legacy entry with no CONF_SENSOR_GROUPS
+# option stored, so such an entry keeps exactly its previous behaviour
+# instead of gaining the two new, off-by-default groups.
+LEGACY_SENSOR_GROUPS = (
+    SENSOR_GROUP_DAILY_STATISTICS,
+    SENSOR_GROUP_UPCOMING,
+    SENSOR_GROUP_PRICE_ANALYSIS,
+    SENSOR_GROUP_COSTS,
+)
+
+# Sensor groups only offered as a choice (and only ever selectable) for a
+# logged-in entry; see config_flow._init_schema/OptionsFlowHandler.async_step_init.
+SENSOR_GROUPS_REQUIRE_LOGIN = (SENSOR_GROUP_COSTS, SENSOR_GROUP_DAILY_USAGE, SENSOR_GROUP_MONTHLY_USAGE)
 
 # Maps each grouped sensor/binary_sensor entity description key to its
 # sensor group. Keys absent from this dict (the "current prices" sensors)
@@ -86,6 +111,19 @@ SENSOR_GROUP_BY_KEY: dict[str, str] = {
     "invoice_previous_period": SENSOR_GROUP_COSTS,
     "invoice_current_period": SENSOR_GROUP_COSTS,
     "invoice_upcoming_period": SENSOR_GROUP_COSTS,
+    "elec_usage_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "elec_costs_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "gas_usage_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "gas_costs_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "feed_in_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "feed_in_revenue_yesterday": SENSOR_GROUP_DAILY_USAGE,
+    "elec_usage_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "elec_costs_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "gas_usage_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "gas_costs_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "feed_in_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "feed_in_revenue_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "fixed_costs_month": SENSOR_GROUP_MONTHLY_USAGE,
 }
 
 
@@ -103,8 +141,10 @@ def enabled_groups(entry: "ConfigEntry") -> set[str]:
     """Return the sensor groups enabled for `entry`.
 
     Entries without CONF_SENSOR_GROUPS in their options (i.e. created before
-    this feature existed) default to all groups enabled, computed here
-    rather than migrated, so nothing disappears after an update.
+    this feature existed) default to LEGACY_SENSOR_GROUPS, computed here
+    rather than migrated, so nothing disappears after an update. daily_usage
+    and monthly_usage are new, off-by-default groups: a legacy entry does not
+    gain them just because it predates CONF_SENSOR_GROUPS.
     """
     groups = entry.options.get(CONF_SENSOR_GROUPS)
-    return set(groups) if groups is not None else set(SENSOR_GROUPS)
+    return set(groups) if groups is not None else set(LEGACY_SENSOR_GROUPS)

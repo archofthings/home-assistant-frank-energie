@@ -12,11 +12,16 @@ from homeassistant.util import dt as dt_util
 from python_frank_energie.models import (
     Address,
     DeliverySite,
+    Difference,
+    EnergyCategory,
     Invoices,
     MarketPrices,
     Me,
+    MonthInsights,
     MonthSummary,
+    PeriodUsageAndCosts,
     PriceData,
+    UsageItem,
     UserSites,
 )
 
@@ -166,6 +171,73 @@ def make_month_summary(**overrides) -> MonthSummary:
     )
     defaults.update(overrides)
     return MonthSummary(**defaults)
+
+
+def make_usage_item(from_dt: datetime, till_dt: datetime, usage: float, costs: float, unit: str = "kWh") -> UsageItem:
+    """Build a ``UsageItem`` instance, e.g. for an ``EnergyCategory``'s ``items``."""
+    return UsageItem(
+        date=from_dt.date().isoformat(),
+        from_time=from_dt.isoformat(),
+        till_time=till_dt.isoformat(),
+        usage=usage,
+        costs=costs,
+        unit=unit,
+    )
+
+
+def make_energy_category(
+    usage_total: float | None, costs_total: float | None, unit: str = "kWh", items: list[UsageItem] | None = None
+) -> EnergyCategory:
+    """Build an ``EnergyCategory`` instance, e.g. for a ``PeriodUsageAndCosts``'s electricity/gas/feed_in."""
+    return EnergyCategory(usage_total=usage_total, costs_total=costs_total, unit=unit, items=items or [])
+
+
+def make_period_usage_and_costs(
+    electricity: EnergyCategory | None = None,
+    gas: EnergyCategory | None = None,
+    feed_in: EnergyCategory | None = None,
+    _id: str = "1",
+) -> PeriodUsageAndCosts:
+    """Build a ``PeriodUsageAndCosts`` instance, e.g. for mock_api.period_usage_and_costs()."""
+    return PeriodUsageAndCosts(_id=_id, gas=gas, electricity=electricity, feed_in=feed_in)
+
+
+def make_difference(**overrides) -> Difference:
+    """Build a minimal ``Difference`` instance, e.g. for a ``MonthInsights``'s electricity/gas/feed_in difference."""
+    defaults = dict(
+        actualUsage=0.0,
+        actualAverageUnitPrice=0.0,
+        actualCosts=0.0,
+        expectedUsage=0.0,
+        expectedAverageUnitPrice=0.0,
+        expectedCosts=0.0,
+        unit="kWh",
+    )
+    defaults.update(overrides)
+    return Difference(**defaults)
+
+
+def make_month_insights(**overrides) -> MonthInsights:
+    """Build a minimal ``MonthInsights`` instance, e.g. for mock_api.month_insights()."""
+    defaults = dict(
+        _id="1",
+        expectedCosts=100.0,
+        expectedCostsGas=20.0,
+        expectedCostsFixed=10.0,
+        expectedCostsElectricity=70.0,
+        expectedCostsFeedIn=0.0,
+        expectedCostsUntilLastMeterReading=50.0,
+        actualCostsUntilLastMeterReading=48.0,
+        lastMeterReadingDate=dt_util.utcnow(),
+        invoiceId=None,
+        gasDifference=make_difference(),
+        electricityDifference=make_difference(),
+        feedInDifference=make_difference(),
+        meterReadingDayCompleteness=1.0,
+        gasExcluded=False,
+    )
+    defaults.update(overrides)
+    return MonthInsights(**defaults)
 
 
 def configure_authenticated_api(mock_api, resolution_minutes: int = 60) -> None:
