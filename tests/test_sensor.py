@@ -359,8 +359,8 @@ async def test_price_resolution_sensor_reports_state_and_attributes(
     await hass.async_block_till_done()
 
     state = state_for_key(hass, authenticated_config_entry, "price_resolution")
-    assert state.state == "PT60M"
-    assert state.attributes["available_options"] == ["PT15M", "PT60M"]
+    assert state.state == "pt60m"
+    assert state.attributes["available_options"] == ["pt15m", "pt60m"]
     assert state.attributes["is_change_request_possible"] is True
     assert state.attributes["upcoming_change"] is None
 

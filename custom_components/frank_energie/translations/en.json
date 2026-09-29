@@ -267,8 +267,8 @@
             "price_resolution": {
                 "name": "Price resolution",
                 "state": {
-                    "PT15M": "15 minutes",
-                    "PT60M": "Hourly"
+                    "pt15m": "15 minutes",
+                    "pt60m": "Hourly"
                 }
             }
         },

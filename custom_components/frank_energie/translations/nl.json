@@ -268,8 +268,8 @@
             "price_resolution": {
                 "name": "Prijsresolutie",
                 "state": {
-                    "PT15M": "Per kwartier",
-                    "PT60M": "Per uur"
+                    "pt15m": "Per kwartier",
+                    "pt60m": "Per uur"
                 }
             }
         },

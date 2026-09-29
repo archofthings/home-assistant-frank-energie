@@ -1190,7 +1190,7 @@ class FrankEnergieUsageSensor(CoordinatorEntity, SensorEntity):
         return super().available and self.native_value is not None
 
 
-_PRICE_RESOLUTION_OPTIONS = ("PT15M", "PT60M")
+_PRICE_RESOLUTION_OPTIONS = ("pt15m", "pt60m")
 
 
 def _iso_date(value: Any) -> str | None:
@@ -1219,9 +1219,10 @@ class PriceResolutionSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         state = self.coordinator.data
-        if state is None or state.active_option not in _PRICE_RESOLUTION_OPTIONS:
+        if state is None or state.active_option is None:
             return None
-        return state.active_option
+        lowered = state.active_option.lower()
+        return lowered if lowered in _PRICE_RESOLUTION_OPTIONS else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -1229,7 +1230,7 @@ class PriceResolutionSensor(CoordinatorEntity, SensorEntity):
         if state is None:
             return {}
         return {
-            "available_options": state.available_options,
+            "available_options": [option.lower() for option in state.available_options],
             "is_change_request_possible": state.is_change_request_possible,
             "upcoming_change": _iso_date(state.upcoming_change),
             "upcoming_change_effective_date": _iso_date(state.upcoming_change_effective_date),
