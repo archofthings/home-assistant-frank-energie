@@ -73,6 +73,7 @@ Choose **Configure** on the integration.
 | **Costs and invoices** 🔑 | Monthly costs and invoices | On |
 | **Daily usage and costs** 🔑 | Yesterday's electricity, gas and feed-in usage and costs | Off |
 | **Monthly usage and costs** 🔑 | This month's usage and costs, with expected values | Off |
+| **Energy dashboard statistics** 🔑 | Hourly usage and costs as long-term statistics, see [Energy dashboard statistics](#energy-dashboard-statistics) | Off |
 
 🔑 = only when logged in. Installations set up before groups existed keep all their sensors. Unticking a group removes its entities; ticking it again brings them back with the same entity IDs and history.
 
@@ -101,6 +102,16 @@ Prices are fetched every hour, and every 15 minutes from 12:00 until tomorrow's 
 - The daily sensors show **yesterday**, because Frank Energie receives smart meter data a day later. In long-term statistics each day's value therefore lands **one day late**; for the Energy dashboard keep using your own meter.
 - Gas and feed-in sensors are only created when your account has gas or feed-in data. Feed-in and its revenue are positive numbers.
 
+## Energy dashboard statistics
+
+Tick **Energy dashboard statistics** 🔑 under **Configure** to import Frank Energie's hourly usage and costs as long-term statistics. This creates no entities; six statistics appear in the pickers of the Energy dashboard: electricity usage, electricity costs, feed-in, feed-in revenue, gas usage and gas costs. For example:
+
+- *Grid consumption:* Frank electricity usage, with **Use an entity tracking the total costs** set to Frank electricity costs.
+- *Return to grid:* Frank feed-in, with Frank feed-in revenue as the compensation.
+- *Gas consumption:* Frank gas usage, with Frank gas costs.
+
+Frank Energie publishes yesterday's usage, so the data arrives a day later. The first time 30 days are imported; after that the last 2 days are imported again every 3 hours to pick up corrections. Unticking the group stops the import and keeps the statistics already imported.
+
 ## Price analysis
 
 Two independent calculations for electricity, set on page 2 of **Configure**:
@@ -122,7 +133,7 @@ The solar forecast can come from any integration that provides one for the Energ
 |---|---|
 | Electricity price level | Level of the current slot |
 | Cheap electricity price now | On while the current slot is cheap or cheap + solar |
-| Cheapest electricity period now | On during today's cheapest period |
+| Cheapest electricity period now | On during today's cheapest period (optionally only when it's also cheap) |
 | Next cheapest electricity period | Start of the next cheapest period (attributes `end`, `average_price`, `minutes`) |
 | Electricity price analysis today / tomorrow | Start of that day's cheapest period, with chart attributes (not recorded): `slots` (per slot: `from`, `till`, `price`, `level`, `solar_kwh`, `in_cheapest_period`, `is_current`), `cheapest_period`, `cheap_windows`, `expensive_windows`, `solar_windows`, `thresholds` |
 

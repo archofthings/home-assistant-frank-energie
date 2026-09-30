@@ -935,6 +935,7 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
             },
             SECTION_CHEAPEST_PERIOD: {
                 const.CONF_CHEAPEST_PERIOD_MINUTES: const.DEFAULT_CHEAPEST_PERIOD_MINUTES,
+                const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: True,
             },
         },
     )
@@ -950,6 +951,7 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
         const.CONF_CHEAP_PRICE_THRESHOLD: const.DEFAULT_CHEAP_PRICE_THRESHOLD,
         const.CONF_EXPENSIVE_PRICE_THRESHOLD: const.DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
         const.CONF_CHEAPEST_PERIOD_MINUTES: const.DEFAULT_CHEAPEST_PERIOD_MINUTES,
+        const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: True,
         const.CONF_SOLAR_THRESHOLD_KWH: const.DEFAULT_SOLAR_THRESHOLD_KWH,
     }
     assert entry.state is ConfigEntryState.LOADED

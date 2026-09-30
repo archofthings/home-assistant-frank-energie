@@ -30,12 +30,14 @@ SERVICE_NAME_COSTS = "Costs"
 CONF_CHEAP_PRICE_THRESHOLD = "cheap_price_threshold"
 CONF_EXPENSIVE_PRICE_THRESHOLD = "expensive_price_threshold"
 CONF_CHEAPEST_PERIOD_MINUTES = "cheapest_period_minutes"
+CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP = "cheapest_period_only_when_cheap"
 CONF_SOLAR_FORECAST_ENTRY = "solar_forecast_entry"
 CONF_SOLAR_THRESHOLD_KWH = "solar_threshold_kwh"
 
 DEFAULT_CHEAP_PRICE_THRESHOLD = 0.25
 DEFAULT_EXPENSIVE_PRICE_THRESHOLD = 0.40
 DEFAULT_CHEAPEST_PERIOD_MINUTES = 120
+DEFAULT_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP = False
 DEFAULT_SOLAR_THRESHOLD_KWH = 1.5
 
 PRICE_LEVEL_CHEAP_SOLAR = "cheap_solar"
@@ -54,6 +56,7 @@ SENSOR_GROUP_PRICE_ANALYSIS = "price_analysis"
 SENSOR_GROUP_COSTS = "costs"
 SENSOR_GROUP_DAILY_USAGE = "daily_usage"
 SENSOR_GROUP_MONTHLY_USAGE = "monthly_usage"
+SENSOR_GROUP_ENERGY_STATISTICS = "energy_statistics"
 SENSOR_GROUPS = (
     SENSOR_GROUP_DAILY_STATISTICS,
     SENSOR_GROUP_UPCOMING,
@@ -61,6 +64,7 @@ SENSOR_GROUPS = (
     SENSOR_GROUP_COSTS,
     SENSOR_GROUP_DAILY_USAGE,
     SENSOR_GROUP_MONTHLY_USAGE,
+    SENSOR_GROUP_ENERGY_STATISTICS,
 )
 DEFAULT_SENSOR_GROUPS = [SENSOR_GROUP_DAILY_STATISTICS, SENSOR_GROUP_COSTS]
 
@@ -77,7 +81,12 @@ LEGACY_SENSOR_GROUPS = (
 
 # Sensor groups only offered as a choice (and only ever selectable) for a
 # logged-in entry; see config_flow._init_schema/OptionsFlowHandler.async_step_init.
-SENSOR_GROUPS_REQUIRE_LOGIN = (SENSOR_GROUP_COSTS, SENSOR_GROUP_DAILY_USAGE, SENSOR_GROUP_MONTHLY_USAGE)
+SENSOR_GROUPS_REQUIRE_LOGIN = (
+    SENSOR_GROUP_COSTS,
+    SENSOR_GROUP_DAILY_USAGE,
+    SENSOR_GROUP_MONTHLY_USAGE,
+    SENSOR_GROUP_ENERGY_STATISTICS,
+)
 
 # Maps each grouped sensor/binary_sensor entity description key to its
 # sensor group. Keys absent from this dict (the "current prices" sensors)
@@ -143,9 +152,9 @@ def enabled_groups(entry: "ConfigEntry") -> set[str]:
 
     Entries without CONF_SENSOR_GROUPS in their options (i.e. created before
     this feature existed) default to LEGACY_SENSOR_GROUPS, computed here
-    rather than migrated, so nothing disappears after an update. daily_usage
-    and monthly_usage are new, off-by-default groups: a legacy entry does not
-    gain them just because it predates CONF_SENSOR_GROUPS.
+    rather than migrated, so nothing disappears after an update. daily_usage,
+    monthly_usage and energy_statistics are new, off-by-default groups: a
+    legacy entry does not gain them just because it predates CONF_SENSOR_GROUPS.
     """
     groups = entry.options.get(CONF_SENSOR_GROUPS)
     return set(groups) if groups is not None else set(LEGACY_SENSOR_GROUPS)

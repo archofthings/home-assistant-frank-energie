@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, Platform, CONF_TOKEN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_interval
 from python_frank_energie import FrankEnergie
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, FrankEnergieException
 from python_frank_energie.models import DeliverySite
@@ -18,6 +20,7 @@ from .const import (
     DOMAIN,
     SENSOR_GROUP_COSTS,
     SENSOR_GROUP_DAILY_USAGE,
+    SENSOR_GROUP_ENERGY_STATISTICS,
     SENSOR_GROUP_MONTHLY_USAGE,
     SENSOR_GROUP_PRICE_ANALYSIS,
     enabled_groups,
@@ -25,6 +28,7 @@ from .const import (
 )
 from .contract import ContractCoordinator
 from .coordinator import FrankEnergieCoordinator
+from .energy_statistics import FrankEnergieStatisticsImporter
 from .price_analysis import PriceAnalysisCoordinator
 from .services import async_setup_services
 from .sites import build_site_title, discover_in_delivery_sites
@@ -158,6 +162,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if frank_coordinator.api.is_authenticated and SENSOR_GROUP_COSTS in groups:
         contract_coordinator = ContractCoordinator(hass, entry, frank_coordinator)
         await contract_coordinator.async_refresh()
+
+    # Imports hourly usage and costs as Energy dashboard statistics. The first
+    # import runs in the background so setup isn't delayed; API errors are logged, not raised.
+    if frank_coordinator.api.is_authenticated and SENSOR_GROUP_ENERGY_STATISTICS in groups:
+        importer = FrankEnergieStatisticsImporter(hass, entry, frank_coordinator)
+
+        @callback
+        def _start_import(_now=None) -> None:
+            entry.async_create_background_task(hass, importer.async_import(), "frank_energie_statistics_import")
+
+        _start_import()
+        entry.async_on_unload(async_track_time_interval(hass, _start_import, timedelta(hours=3)))
 
     entry.runtime_data = FrankEnergieRuntimeData(
         coordinator=frank_coordinator,

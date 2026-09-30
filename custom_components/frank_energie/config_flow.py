@@ -34,6 +34,7 @@ from python_frank_energie.models import DeliverySite
 from .const import (
     CONF_CHEAP_PRICE_THRESHOLD,
     CONF_CHEAPEST_PERIOD_MINUTES,
+    CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
     CONF_EXPENSIVE_PRICE_THRESHOLD,
     CONF_PRICES_TIMEZONE,
     CONF_SENSOR_GROUPS,
@@ -41,6 +42,7 @@ from .const import (
     CONF_SOLAR_THRESHOLD_KWH,
     DEFAULT_CHEAP_PRICE_THRESHOLD,
     DEFAULT_CHEAPEST_PERIOD_MINUTES,
+    DEFAULT_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
     DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
     DEFAULT_SENSOR_GROUPS,
     DEFAULT_SOLAR_THRESHOLD_KWH,
@@ -229,6 +231,12 @@ def _cheapest_period_section_schema(options: Mapping[str, Any]) -> vol.Schema:
                     mode=selector.NumberSelectorMode.BOX, min=15, max=360, step=15, unit_of_measurement="min"
                 )
             ),
+            vol.Required(
+                CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
+                default=options.get(
+                    CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP, DEFAULT_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP
+                ),
+            ): selector.BooleanSelector(),
         }
     )
 
@@ -583,6 +591,7 @@ class OptionsFlowHandler(OptionsFlowWithReload):
             CONF_CHEAP_PRICE_THRESHOLD,
             CONF_EXPENSIVE_PRICE_THRESHOLD,
             CONF_CHEAPEST_PERIOD_MINUTES,
+            CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
             CONF_SOLAR_FORECAST_ENTRY,
             CONF_SOLAR_THRESHOLD_KWH,
         ):

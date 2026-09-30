@@ -78,10 +78,12 @@
                         "name": "Cheapest period (relative)",
                         "description": "Finds the cheapest block of this length each day, whatever the price. Used by 'Cheapest electricity period now' and 'Next cheapest electricity period'.",
                         "data": {
-                            "cheapest_period_minutes": "Cheapest period length"
+                            "cheapest_period_minutes": "Cheapest period length",
+                            "cheapest_period_only_when_cheap": "Only when cheap"
                         },
                         "data_description": {
-                            "cheapest_period_minutes": "The length of the contiguous period with the lowest average price that the price analysis looks for."
+                            "cheapest_period_minutes": "The length of the contiguous period with the lowest average price that the price analysis looks for.",
+                            "cheapest_period_only_when_cheap": "Only turn on the cheapest period now sensor when the period's average price is at or below the cheap price threshold."
                         }
                     }
                 }
@@ -105,7 +107,8 @@
                 "price_analysis": "Price analysis (price levels, cheapest period, chart data)",
                 "costs": "Costs and invoices",
                 "daily_usage": "Daily usage and costs (yesterday)",
-                "monthly_usage": "Monthly usage and costs"
+                "monthly_usage": "Monthly usage and costs",
+                "energy_statistics": "Energy dashboard statistics (hourly usage and costs)"
             }
         }
     },

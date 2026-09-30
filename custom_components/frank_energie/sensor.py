@@ -110,19 +110,23 @@ def _amsterdam_year() -> int:
 
 
 def _yearly_invoices_attrs(data: dict, year: int) -> dict[str, Any]:
-    """Build the "invoices" attribute for a costs_this_year/costs_previous_year sensor."""
+    """Build the "invoices" attribute for a costs_this_year/costs_previous_year sensor.
+
+    Invoices for the same period (e.g. a correction invoice) are summed into one entry.
+    """
     if data[DATA_INVOICES] is None:
         return {}
-    return {
-        "invoices": [
-            {
-                "start_date": invoice.StartDate.date().isoformat(),
-                "description": invoice.PeriodDescription,
-                "total_amount": round(invoice.TotalAmount, 2),
-            }
-            for invoice in data[DATA_INVOICES].get_invoices_for_year(year)
-        ]
-    }
+    periods: dict[str, dict[str, Any]] = {}
+    for invoice in data[DATA_INVOICES].get_invoices_for_year(year):
+        start_date = invoice.StartDate.date().isoformat()
+        period = periods.setdefault(
+            start_date,
+            {"start_date": start_date, "description": invoice.PeriodDescription, "total_amount": 0.0},
+        )
+        period["total_amount"] += invoice.TotalAmount
+    for period in periods.values():
+        period["total_amount"] = round(period["total_amount"], 2)
+    return {"invoices": list(periods.values())}
 
 
 def _yearly_costs_last_reset(_data: dict) -> Any:

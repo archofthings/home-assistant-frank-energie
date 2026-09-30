@@ -14,7 +14,9 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTRIBUTION,
+    CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
     DATA_ELECTRICITY,
+    DEFAULT_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
     ICON,
     PRICE_LEVEL_CHEAP,
     PRICE_LEVEL_CHEAP_SOLAR,
@@ -157,6 +159,9 @@ class CheapestPeriodNowBinarySensor(FrankEnergiePriceAnalysisBinarySensor):
     def __init__(self, coordinator: PriceAnalysisCoordinator, entry: ConfigEntry) -> None:
         """Initialize the cheapest period now binary sensor."""
         super().__init__(coordinator, "cheapest_period_now", entry)
+        self._only_when_cheap = entry.options.get(
+            CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP, DEFAULT_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP
+        )
 
     @property
     def is_on(self) -> bool | None:
@@ -165,6 +170,8 @@ class CheapestPeriodNowBinarySensor(FrankEnergiePriceAnalysisBinarySensor):
             return None
         cheapest_period = result.today.cheapest_period
         if cheapest_period is None:
+            return False
+        if self._only_when_cheap and cheapest_period.average_price > result.cheap_threshold:
             return False
         now = dt_util.utcnow()
         return cheapest_period.start <= now < cheapest_period.end
