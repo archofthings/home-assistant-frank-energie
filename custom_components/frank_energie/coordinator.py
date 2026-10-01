@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta, tzinfo
-from typing import TypedDict
+from collections.abc import Awaitable, Callable
+from typing import Any, TypedDict
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -135,12 +136,10 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             LOGGER.debug("No market prices available for tomorrow yet: %s", ex)
             prices_tomorrow = None
 
-        data_month_summary = (
-            await self.api.month_summary(self.site_reference) if self.api.is_authenticated else None
+        data_month_summary = await self._fetch_optional(
+            DATA_MONTH_SUMMARY, lambda: self.api.month_summary(self.site_reference)
         )
-        data_invoices = (
-            await self.api.invoices(self.site_reference) if self.api.is_authenticated else None
-        )
+        data_invoices = await self._fetch_optional(DATA_INVOICES, lambda: self.api.invoices(self.site_reference))
 
         tomorrow_electricity = prices_tomorrow.electricity if prices_tomorrow else None
         tomorrow_gas = prices_tomorrow.gas if prices_tomorrow else None
@@ -151,6 +150,23 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
             DATA_MONTH_SUMMARY: data_month_summary,
             DATA_INVOICES: data_invoices,
         }
+
+    async def _fetch_optional(self, key: str, fetch: Callable[[], Awaitable[Any]]) -> Any:
+        """Fetch optional account data; on a non-auth failure keep the previous value (or None).
+
+        Auth errors and "user-error:" request errors propagate to the normal handling.
+        """
+        if not self.api.is_authenticated:
+            return None
+        try:
+            return await fetch()
+        except (AuthException, AuthRequiredException):
+            raise
+        except (FrankEnergieException, ValueError) as ex:
+            if isinstance(ex, RequestException) and str(ex).startswith("user-error:"):
+                raise
+            LOGGER.warning("Could not fetch %s, keeping the previous value: %s", key, ex)
+            return self.data.get(key) if self.data else None
 
     async def _handle_auth_error(self, ex: Exception, today: date) -> FrankEnergieData:
         """Handle an auth error from the first fetch attempt: renew the token and retry once.

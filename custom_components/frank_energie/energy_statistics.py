@@ -29,6 +29,8 @@ LOGGER = logging.getLogger(__name__)
 
 FIRST_RUN_DAYS = 30
 SUM_LOOKBACK = timedelta(days=31)
+# Frank's API allows ~25 requests per 60 s; pace the calls when many days are fetched in one run.
+FETCH_PAUSE_SECONDS = 5
 
 # (kind, readable name, category attribute, UsageItem field, unit, unit class)
 STATISTICS = (
@@ -103,7 +105,9 @@ class FrankEnergieStatisticsImporter:
         Older empty days (e.g. before the customer started) are skipped; the last day is yesterday.
         """
         fetched = []
-        for day in days:
+        for index, day in enumerate(days):
+            if index and len(days) > 3:
+                await asyncio.sleep(FETCH_PAUSE_SECONDS)
             try:
                 data = await self.price_coordinator.api.period_usage_and_costs(
                     self.price_coordinator.site_reference, day.isoformat()

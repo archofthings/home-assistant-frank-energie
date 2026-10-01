@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -53,6 +55,17 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
             update_interval=timedelta(hours=3),
         )
 
+    @staticmethod
+    async def _fetch_part(label: str, request: Awaitable[Any], previous: Any) -> tuple[Any, bool]:
+        """Await one request; on a non-auth failure warn and return (previous value, False)."""
+        try:
+            return await request, True
+        except (AuthException, AuthRequiredException):
+            raise
+        except (FrankEnergieException, ValueError) as ex:
+            LOGGER.warning("Could not update %s usage and costs, using previous data: %s", label, ex)
+            return previous, False
+
     async def _async_update_data(self) -> UsageData:
         """Fetch yesterday's usage/costs and this month's insights, for the enabled groups only."""
         # Usage/costs are published per Frank Energie's market day, fixed to
@@ -63,18 +76,26 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
         api = self.price_coordinator.api
         site_reference = self.price_coordinator.site_reference
 
+        previous = self.data
+        daily, daily_date, monthly = None, yesterday, None
+        failures = 0
+
         try:
             try:
-                daily = (
-                    await api.period_usage_and_costs(site_reference, yesterday.isoformat())
-                    if self._daily_enabled
-                    else None
-                )
-                monthly = (
-                    await api.month_insights(site_reference, today.strftime("%Y-%m"))
-                    if self._monthly_enabled
-                    else None
-                )
+                if self._daily_enabled:
+                    daily, ok = await self._fetch_part(
+                        "daily", api.period_usage_and_costs(site_reference, yesterday.isoformat()),
+                        previous.daily if previous else None,
+                    )
+                    if not ok:
+                        failures += 1
+                        daily_date = previous.daily_date if previous else None
+                if self._monthly_enabled:
+                    monthly, ok = await self._fetch_part(
+                        "monthly", api.month_insights(site_reference, today.strftime("%Y-%m")),
+                        previous.monthly if previous else None,
+                    )
+                    failures += not ok
             except (AuthException, AuthRequiredException) as ex:
                 # The library wraps exceptions raised while querying (e.g. an
                 # expired access token) into FrankEnergieException, so in
@@ -84,11 +105,8 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
                 # Reauth itself is handled by the main coordinator's own
                 # update cycle, not here.
                 raise UpdateFailed(ex) from ex
-            except (FrankEnergieException, ValueError) as ex:
-                if self.data is not None:
-                    LOGGER.warning("Could not update usage and costs, using previous data: %s", ex)
-                    return self.data
-                raise UpdateFailed(ex) from ex
+            if previous is None and failures == self._daily_enabled + self._monthly_enabled:
+                raise UpdateFailed("Could not fetch usage and costs")
         finally:
             # Tokens can be renewed transparently inside _query() during any
             # of the awaited calls above, including ones that ultimately
@@ -98,4 +116,4 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
             if api.is_authenticated:
                 self.price_coordinator._async_persist_tokens()
 
-        return UsageData(daily=daily, daily_date=yesterday, monthly=monthly)
+        return UsageData(daily=daily, daily_date=daily_date, monthly=monthly)
