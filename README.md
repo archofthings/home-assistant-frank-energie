@@ -6,7 +6,7 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5.svg?logo=homeassistant)](https://www.home-assistant.io/)
 [![Downloads](https://img.shields.io/github/downloads/archofthings/home-assistant-frank-energie/total?label=downloads)](https://github.com/archofthings/home-assistant-frank-energie/releases)
 
-A Home Assistant custom integration for [Frank Energie](https://www.frankenergie.nl/): electricity and gas prices per 15 minutes, a price analysis for automations and charts, and optionally your own usage, costs and invoices.
+A Home Assistant custom integration for [Frank Energie](https://www.frankenergie.nl/): electricity and gas prices per quarter-hour or per hour, a price analysis for automations and charts, and optionally your own usage, costs and invoices.
 
 > [!NOTE]
 > This project continues [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie), which is no longer maintained. See [Project history](#project-history).
@@ -32,7 +32,7 @@ A Home Assistant custom integration for [Frank Energie](https://www.frankenergie
 
 - **Prices per quarter-hour or per hour** for electricity and gas: all-in, market price, tax, VAT and markup. No account needed.
 - **Statistics:** lowest, highest and average price today and tomorrow, the next price, and the lowest and highest price still to come.
-- **Price analysis:** every quarter hour labelled cheap, normal or expensive (optionally "cheap + solar"), plus the cheapest block of hours you choose. Chart-ready.
+- **Price analysis:** every price slot (quarter-hour or hour) labelled cheap, normal or expensive (optionally "cheap + solar"), plus the cheapest block of hours you choose. Chart-ready.
 - **With your Frank Energie login:** your contract prices, monthly costs, invoices, and yesterday's and this month's usage, costs and feed-in.
 - **Energy dashboard statistics:** Frank Energie's hourly usage and costs as long-term statistics.
 - **Choose your sensors** in groups, so you only get what you use.
@@ -373,7 +373,7 @@ grid_options:
 
 ## Price list and get_prices action
 
-The current all-in, market and including-tax sensors have a `prices` attribute: every known 15-minute slot for today and tomorrow as `from`, `till` and `price` (3 decimals). It's up to 200 entries, so it's **not stored in history**, but it's always available on the live state. Example, the lowest price in the next six hours:
+The current all-in, market and including-tax sensors have a `prices` attribute: every known price slot (quarter-hour or hour) for today and tomorrow as `from`, `till` and `price` (3 decimals). It's up to 200 entries, so it's **not stored in history**, but it's always available on the live state. Example, the lowest price in the next six hours:
 
 ```jinja
 {{ state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices')
@@ -404,7 +404,7 @@ The **`frank_energie.get_prices`** action returns the same slots with all compon
 2. Remove the old custom repository (`bajansen/home-assistant-frank_energie` or `archofthings/home-assistant-frank_energie`), then add this one and download it as described under [Installation](#installation).
 3. Restart Home Assistant.
 
-Entity IDs and history are kept. What changes: Home Assistant 2026.9+ is required; prices are per 15 minutes (96 per day, 92/100 on daylight-saving days), so today's lowest/highest can be more extreme than the old hourly values; the `prices` attribute is no longer stored in history.
+Entity IDs and history are kept. What changes: Home Assistant 2026.9+ is required; prices are per quarter-hour by default (96 per day, 92/100 on daylight-saving days), so today's lowest/highest can be more extreme than the old hourly values (for hourly prices see [Price resolution](#price-resolution-quarter-hour-or-hourly-prices)); the `prices` attribute is no longer stored in history.
 
 ## Troubleshooting
 
