@@ -283,6 +283,19 @@ def _flatten_analysis_input(user_input: dict[str, Any]) -> dict[str, Any]:
     return {**user_input[SECTION_PRICE_LEVELS], **user_input[SECTION_CHEAPEST_PERIOD]}
 
 
+def _parse_analysis_input(user_input: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Flatten a submitted "analysis" step and return (flat_input, thresholds_valid).
+
+    When valid, the cheapest period length is cast back to int: NumberSelector
+    always returns a float, but find_cheapest_period() uses it in range()/slicing.
+    """
+    flat_input = _flatten_analysis_input(user_input)
+    if flat_input[CONF_CHEAP_PRICE_THRESHOLD] >= flat_input[CONF_EXPENSIVE_PRICE_THRESHOLD]:
+        return flat_input, False
+    flat_input[CONF_CHEAPEST_PERIOD_MINUTES] = int(flat_input[CONF_CHEAPEST_PERIOD_MINUTES])
+    return flat_input, True
+
+
 def _site_selection_schema(sites: list[DeliverySite], default: str | None = None) -> vol.Schema:
     """Build a schema with a dropdown to choose one of `sites` by reference."""
     options = [
@@ -309,6 +322,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pending_sites: list[DeliverySite] | None = None
         self._reconfigure_sites: list[DeliverySite] | None = None
         self._reconfigure_api: FrankEnergie | None = None
+        self._entry_data: dict = {}
+        self._entry_title: str | None = None
+        self._entry_options: dict[str, Any] = {}
 
     async def async_step_login(self, user_input=None, errors=None) -> ConfigFlowResult:
         """Handle login with credentials by user."""
@@ -393,7 +409,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if len(sites) == 1:
             site = sites[0]
-            return await self._async_create_entry(
+            return await self._async_start_settings(
                 {**data, SITE_REFERENCE: site.reference},
                 title=build_site_title(site) or data[CONF_USERNAME],
             )
@@ -414,7 +430,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         site = next((s for s in self._pending_sites if s.reference == chosen_reference), None)
         data = {**self._pending_login_data, SITE_REFERENCE: chosen_reference}
 
-        return await self._async_create_entry(
+        return await self._async_start_settings(
             data, title=(build_site_title(site) if site else None) or data[CONF_USERNAME]
         )
 
@@ -432,9 +448,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input[CONF_AUTHENTICATION]:
             return await self.async_step_login()
 
-        data = {}
-
-        return await self._async_create_entry(data)
+        return await self._async_start_settings({})
 
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         """Handle configuration by re-auth."""
@@ -530,17 +544,59 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_update_reload_and_abort(entry, data=new_data, title=title)
 
-    async def _async_create_entry(self, data: dict, title: str | None = None) -> ConfigFlowResult:
+    async def _async_start_settings(self, data: dict, title: str | None = None) -> ConfigFlowResult:
+        """Remember the pending entry, abort on a duplicate, and continue to the "settings" step."""
         await self.async_set_unique_id(data.get(CONF_USERNAME, "frank_energie"))
         self._abort_if_unique_id_configured()
 
+        self._entry_data = data
+        self._entry_title = title
+        return await self.async_step_settings()
+
+    async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Ask the time zone, price resolution (public entries only) and sensor groups for the new entry."""
+        if user_input is not None:
+            self._entry_options = {
+                CONF_PRICES_TIMEZONE: user_input[CONF_PRICES_TIMEZONE],
+                CONF_SENSOR_GROUPS: list(user_input[CONF_SENSOR_GROUPS]),
+            }
+            if CONF_PUBLIC_PRICE_RESOLUTION in user_input:
+                self._entry_options[CONF_PUBLIC_PRICE_RESOLUTION] = user_input[CONF_PUBLIC_PRICE_RESOLUTION]
+
+            if SENSOR_GROUP_PRICE_ANALYSIS in self._entry_options[CONF_SENSOR_GROUPS]:
+                return await self.async_step_analysis()
+
+            return self._async_create_entry()
+
+        defaults = {
+            CONF_PRICES_TIMEZONE: PRICES_TIMEZONE_HOME_ASSISTANT,
+            CONF_SENSOR_GROUPS: list(DEFAULT_SENSOR_GROUPS),
+        }
+        logged_in = self._entry_data.get(CONF_ACCESS_TOKEN) is not None
+        return self.async_show_form(step_id="settings", data_schema=_init_schema(defaults, logged_in))
+
+    async def async_step_analysis(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Ask the price analysis settings (only reached when price_analysis is selected)."""
+        solar_entry_options = await _solar_forecast_entry_options(self.hass)
+
+        if user_input is not None:
+            flat_input, valid = _parse_analysis_input(user_input)
+            if not valid:
+                return self.async_show_form(
+                    step_id="analysis",
+                    data_schema=_analysis_schema(flat_input, solar_entry_options),
+                    errors={"base": "thresholds_invalid"},
+                )
+            self._entry_options.update(flat_input)
+            return self._async_create_entry()
+
+        return self.async_show_form(step_id="analysis", data_schema=_analysis_schema({}, solar_entry_options))
+
+    def _async_create_entry(self) -> ConfigFlowResult:
         return self.async_create_entry(
-            title=title or data.get(CONF_USERNAME, "Frank Energie"),
-            data=data,
-            options={
-                CONF_PRICES_TIMEZONE: PRICES_TIMEZONE_HOME_ASSISTANT,
-                CONF_SENSOR_GROUPS: list(DEFAULT_SENSOR_GROUPS),
-            },
+            title=self._entry_title or self._entry_data.get(CONF_USERNAME, "Frank Energie"),
+            data=self._entry_data,
+            options=self._entry_options,
         )
 
     @staticmethod
@@ -628,18 +684,14 @@ class OptionsFlowHandler(OptionsFlowWithReload):
         solar_entry_options = await _solar_forecast_entry_options(self.hass)
 
         if user_input is not None:
-            flat_input = _flatten_analysis_input(user_input)
-            if flat_input[CONF_CHEAP_PRICE_THRESHOLD] >= flat_input[CONF_EXPENSIVE_PRICE_THRESHOLD]:
+            flat_input, valid = _parse_analysis_input(user_input)
+            if not valid:
                 return self.async_show_form(
                     step_id="analysis",
                     data_schema=_analysis_schema(flat_input, solar_entry_options),
                     errors={"base": "thresholds_invalid"},
                 )
-            # NumberSelector always returns a float; cast back to int before
-            # saving so find_cheapest_period() (which uses it in range()/
-            # slicing) doesn't get handed a float.
             data = dict(flat_input)
-            data[CONF_CHEAPEST_PERIOD_MINUTES] = int(data[CONF_CHEAPEST_PERIOD_MINUTES])
             data[CONF_PRICES_TIMEZONE] = self._prices_timezone
             data[CONF_SENSOR_GROUPS] = self._sensor_groups
             if self._public_price_resolution is not None:

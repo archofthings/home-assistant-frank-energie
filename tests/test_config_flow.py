@@ -461,6 +461,13 @@ async def _start_login_flow(hass):
     return result
 
 
+async def _submit_settings(hass, result, user_input=None):
+    """Assert the flow is at the settings step and submit it (the form defaults when no input is given)."""
+    assert result["type"] == "form"
+    assert result["step_id"] == "settings"
+    return await hass.config_entries.flow.async_configure(result["flow_id"], user_input or {})
+
+
 async def test_login_single_site_creates_entry_with_site_reference_and_address_title(
     hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class
 ):
@@ -474,6 +481,7 @@ async def test_login_single_site_creates_entry_with_site_reference_and_address_t
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
     )
+    result2 = await _submit_settings(hass, result2)
     await hass.async_block_till_done()
 
     assert result2["type"] == "create_entry"
@@ -507,6 +515,7 @@ async def test_login_single_site_without_address_falls_back_to_username_title(
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
     )
+    result2 = await _submit_settings(hass, result2)
     await hass.async_block_till_done()
 
     assert result2["type"] == "create_entry"
@@ -539,6 +548,7 @@ async def test_login_multiple_sites_shows_site_step_and_creates_entry_with_chose
     assert {opt["label"] for opt in options} == {"Vondelstraat 7", "Kalverstraat 99"}
 
     result3 = await hass.config_entries.flow.async_configure(result2["flow_id"], {SITE_REFERENCE: "site-2"})
+    result3 = await _submit_settings(hass, result3)
     await hass.async_block_till_done()
 
     assert result3["type"] == "create_entry"
@@ -827,10 +837,12 @@ async def test_unauthenticated_flow_creates_entry_with_no_data_and_home_assistan
         const.DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
     result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AUTHENTICATION: False})
+    result2 = await _submit_settings(hass, result2)
 
     expected_options = {
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
-        const.CONF_SENSOR_GROUPS: const.DEFAULT_SENSOR_GROUPS,
+        const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT15M,
+        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS],
     }
     assert result2["type"] == "create_entry"
     assert result2["data"] == {}
@@ -854,6 +866,7 @@ async def test_login_single_site_creates_entry_with_home_assistant_prices_timezo
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
     )
+    result2 = await _submit_settings(hass, result2)
     await hass.async_block_till_done()
 
     expected_options = {
@@ -866,6 +879,122 @@ async def test_login_single_site_creates_entry_with_home_assistant_prices_timezo
     entries = hass.config_entries.async_entries(const.DOMAIN)
     assert len(entries) == 1
     assert entries[0].options == expected_options
+
+
+async def _start_public_settings(hass):
+    """Start a flow without signing in and return the settings form."""
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    return await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AUTHENTICATION: False})
+
+
+async def test_public_flow_stores_chosen_resolution_and_groups(hass, enable_custom_integrations):
+    """The settings step stores the chosen time zone, price resolution and sensor groups in the entry options."""
+    result = await _start_public_settings(hass)
+    result2 = await _submit_settings(
+        hass,
+        result,
+        {
+            const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC,
+            const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
+            const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING, const.SENSOR_GROUP_DAILY_STATISTICS],
+        },
+    )
+
+    assert result2["type"] == "create_entry"
+    assert result2["options"] == {
+        const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC,
+        const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
+        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING, const.SENSOR_GROUP_DAILY_STATISTICS],
+    }
+
+
+@pytest.mark.parametrize("logged_in", [False, True], ids=["public", "logged_in"])
+async def test_settings_form_fields_depend_on_login(
+    hass, enable_custom_integrations, mock_config_flow_api, mock_frank_energie_class, logged_in
+):
+    """Only a public entry gets the price resolution field; only a logged-in one is offered the login-only groups."""
+    if logged_in:
+        site = make_delivery_site("site-1", "IN_DELIVERY")
+        mock_config_flow_api.UserSites = AsyncMock(return_value=make_user_sites([site]))
+        mock_config_flow_api.login.return_value = MagicMock(authToken="access-token", refreshToken="refresh-token")
+        result = await _start_login_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+        )
+    else:
+        result = await _start_public_settings(hass)
+
+    assert result["step_id"] == "settings"
+    schema = result["data_schema"].schema
+    keys = {getattr(k, "schema", None): k for k in schema}
+    assert (const.CONF_PUBLIC_PRICE_RESOLUTION in keys) is (not logged_in)
+    offered = set(schema[keys[const.CONF_SENSOR_GROUPS]].config["options"])
+    assert (const.SENSOR_GROUPS_REQUIRE_LOGIN[0] in offered) is logged_in
+    assert keys[const.CONF_PRICES_TIMEZONE].default() == const.PRICES_TIMEZONE_HOME_ASSISTANT
+
+
+async def test_settings_step_with_price_analysis_continues_to_analysis_step(hass, enable_custom_integrations):
+    """Ticking price_analysis leads to the analysis step; invalid thresholds are rejected, valid ones are stored."""
+    result = await _start_public_settings(hass)
+    result2 = await _submit_settings(
+        hass,
+        result,
+        {
+            const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+            const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT15M,
+            const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS],
+        },
+    )
+    assert result2["type"] == "form"
+    assert result2["step_id"] == "analysis"
+
+    def analysis_input(cheap, expensive):
+        return {
+            SECTION_PRICE_LEVELS: {
+                const.CONF_CHEAP_PRICE_THRESHOLD: cheap,
+                const.CONF_EXPENSIVE_PRICE_THRESHOLD: expensive,
+                const.CONF_SOLAR_THRESHOLD_KWH: 1.5,
+            },
+            SECTION_CHEAPEST_PERIOD: {
+                const.CONF_CHEAPEST_PERIOD_MINUTES: 120.0,
+                const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: True,
+            },
+        }
+
+    result3 = await hass.config_entries.flow.async_configure(result2["flow_id"], analysis_input(0.40, 0.40))
+    assert result3["type"] == "form"
+    assert result3["step_id"] == "analysis"
+    assert result3["errors"] == {"base": "thresholds_invalid"}
+
+    result4 = await hass.config_entries.flow.async_configure(result3["flow_id"], analysis_input(0.20, 0.40))
+
+    assert result4["type"] == "create_entry"
+    assert result4["options"] == {
+        const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+        const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT15M,
+        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS],
+        const.CONF_CHEAP_PRICE_THRESHOLD: 0.20,
+        const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.40,
+        const.CONF_SOLAR_THRESHOLD_KWH: 1.5,
+        const.CONF_CHEAPEST_PERIOD_MINUTES: 120,
+        const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: True,
+    }
+    assert isinstance(result4["options"][const.CONF_CHEAPEST_PERIOD_MINUTES], int)
+
+
+async def test_duplicate_public_entry_aborts_before_the_settings_form(hass, enable_custom_integrations):
+    """A second public entry aborts before the user is asked for any settings."""
+    MockConfigEntry(domain=const.DOMAIN, data={}, unique_id="frank_energie").add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AUTHENTICATION: False})
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] in ("already_configured", "single_instance_allowed")
 
 
 @pytest.mark.parametrize(

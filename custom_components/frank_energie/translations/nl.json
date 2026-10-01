@@ -11,7 +11,8 @@
         },
         "error": {
             "cannot_connect": "Verbinden mislukt, probeer het opnieuw.",
-            "invalid_auth": "Inloggegevens niet geaccepteerd, controleer de gegevens en probeer het opnieuw."
+            "invalid_auth": "Inloggegevens niet geaccepteerd, controleer de gegevens en probeer het opnieuw.",
+            "thresholds_invalid": "De grens voor goedkope prijs moet lager zijn dan de grens voor dure prijs."
         },
         "step": {
             "login": {
@@ -39,6 +40,53 @@
                 "data": {
                     "site_reference": "Adres"
                 }
+            },
+            "settings": {
+                "data": {
+                    "prices_timezone": "Tijdzone voor prijstijden",
+                    "public_price_resolution": "Prijsresolutie",
+                    "sensor_groups": "Sensorgroepen"
+                },
+                "data_description": {
+                    "prices_timezone": "Dit verandert alleen hoe de 'van'/'tot'-tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt.",
+                    "public_price_resolution": "Of de openbare prijzen van Frank Energie per kwartier of per uur worden opgehaald. De uurprijzen komen van Frank Energie en zijn gelijk aan het gemiddelde van de vier kwartieren. Niet beschikbaar als je bent ingelogd: dan volgen de prijzen je contract."
+                },
+                "description": "Kies welke sensorgroepen worden getoond. Actuele prijzen zijn altijd beschikbaar. Je kunt deze instellingen later wijzigen via Configureren.",
+                "title": "Frank Energie-instellingen"
+            },
+            "analysis": {
+                "description": "De twee berekeningen staan los van elkaar: prijsniveaus gebruiken vaste prijzen, de goedkoopste periode vindt altijd het beste blok van de dag.",
+                "sections": {
+                    "cheapest_period": {
+                        "data": {
+                            "cheapest_period_minutes": "Lengte goedkoopste periode",
+                            "cheapest_period_only_when_cheap": "Alleen als goedkoop"
+                        },
+                        "data_description": {
+                            "cheapest_period_minutes": "De lengte van de aaneengesloten periode met de laagste gemiddelde prijs waar de prijsanalyse naar zoekt.",
+                            "cheapest_period_only_when_cheap": "Zet 'Goedkoopste elektriciteitsperiode nu' alleen aan als de gemiddelde prijs van de periode op of onder de drempel voor een goedkope prijs ligt."
+                        },
+                        "description": "Zoekt elke dag het goedkoopste blok van deze lengte, ongeacht de prijs. Gebruikt door 'Goedkoopste elektriciteitsperiode nu' en 'Volgende goedkoopste elektriciteitsperiode'.",
+                        "name": "Goedkoopste periode (relatief)"
+                    },
+                    "price_levels": {
+                        "data": {
+                            "cheap_price_threshold": "Goedkoop onder (€/kWh)",
+                            "expensive_price_threshold": "Duur boven (€/kWh)",
+                            "solar_forecast_entry": "Zonprognose",
+                            "solar_threshold_kwh": "Zon-drempel"
+                        },
+                        "data_description": {
+                            "cheap_price_threshold": "All-in elektriciteitsprijzen op of onder deze grens worden als goedkoop beschouwd.",
+                            "expensive_price_threshold": "All-in elektriciteitsprijzen boven deze grens worden als duur beschouwd.",
+                            "solar_forecast_entry": "Een optionele integratie die zonopwekking voorspelt, gebruikt om goedkope blokken met voldoende verwachte zonopwekking te markeren als 'goedkoop + zon'.",
+                            "solar_threshold_kwh": "De verwachte zonopwekking (kWh per uur) vanaf waar een goedkoop blok wordt gemarkeerd als 'goedkoop + zon'."
+                        },
+                        "description": "Geeft elk uur het label goedkoop, normaal of duur op basis van deze prijzen. Gebruikt door 'Elektriciteitsprijsniveau' en 'Goedkope elektriciteitsprijs nu'.",
+                        "name": "Prijsniveaus (vaste prijzen)"
+                    }
+                },
+                "title": "Prijsanalyse-instellingen"
             }
         }
     },
