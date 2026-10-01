@@ -6,12 +6,14 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5.svg?logo=homeassistant)](https://www.home-assistant.io/)
 [![Downloads](https://img.shields.io/github/downloads/archofthings/home-assistant-frank-energie/total?label=downloads)](https://github.com/archofthings/home-assistant-frank-energie/releases)
 
-A Home Assistant custom integration for [Frank Energie](https://www.frankenergie.nl/): electricity and gas prices per 15 minutes, a price analysis for automations and charts, and optionally your own usage, costs and invoices.
+A Home Assistant custom integration for [Frank Energie](https://www.frankenergie.nl/): electricity and gas prices per quarter-hour or per hour, a price analysis for automations and charts, and optionally your own usage, costs and invoices.
 
 > [!NOTE]
 > This project continues [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie), which is no longer maintained. See [Project history](#project-history).
 
 ![Today's prices coloured by level, with the Sell line and the solar forecast](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/prices_today.png)
+
+**📖 Full documentation: the [wiki](https://github.com/archofthings/home-assistant-frank-energie/wiki)**, with every setting, sensor and attribute explained, a [chart gallery](https://github.com/archofthings/home-assistant-frank-energie/wiki/Chart-gallery) and [automation examples](https://github.com/archofthings/home-assistant-frank-energie/wiki/Automation-examples). This README is the short version.
 
 ## Contents
 
@@ -25,15 +27,16 @@ A Home Assistant custom integration for [Frank Energie](https://www.frankenergie
 - [Price list and get_prices action](#price-list-and-get_prices-action)
 - [Upgrading from the original integration](#upgrading-from-the-original-integration)
 - [Troubleshooting](#troubleshooting)
+- [Documentation](#documentation)
 - [Development](#development)
 - [Project history](#project-history)
 
 ## Features
 
 - **Prices per quarter-hour or per hour** for electricity and gas: all-in, market price, tax, VAT and markup. No account needed.
-- **Statistics:** lowest, highest and average price today and tomorrow, the next price, and the lowest and highest price still to come.
-- **Price analysis:** every quarter hour labelled cheap, normal or expensive (optionally "cheap + solar"), plus the cheapest block of hours you choose. Chart-ready.
-- **With your Frank Energie login:** your contract prices, monthly costs, invoices, and yesterday's and this month's usage, costs and feed-in.
+- **Statistics:** lowest, highest and average price today and tomorrow, the next price, the lowest and highest price still to come, and a signal when tomorrow's prices arrive.
+- **Price analysis:** every price slot (quarter-hour or hour) labelled cheap, normal or expensive (optionally "cheap + solar"), plus the cheapest block of hours you choose. Chart-ready.
+- **With your Frank Energie login:** your contract prices, monthly costs, invoices, yearly totals, and yesterday's and this month's usage, costs and feed-in.
 - **Energy dashboard statistics:** Frank Energie's hourly usage and costs as long-term statistics.
 - **Choose your sensors** in groups, so you only get what you use.
 - **`frank_energie.get_prices` action** with all prices and components, for scripts and automations.
@@ -69,10 +72,10 @@ Choose **Configure** on the integration.
 | Group | Entities | Default |
 |---|---|---|
 | *Current prices* | Current all-in, market and including-tax prices (+ hidden VAT, markup and tax sensors), electricity and gas | Always on |
-| **Daily statistics** | Lowest, highest and average price today | On |
-| **Upcoming and tomorrow prices** | Next price; tomorrow's average, lowest and highest; lowest and highest upcoming | Off |
+| **Daily statistics** | Lowest, highest and average electricity price today; lowest and highest gas price today | On |
+| **Upcoming and tomorrow prices** | Next price; tomorrow's average, lowest and highest; lowest and highest upcoming; *Tomorrow's prices available* | Off |
 | **Price analysis** | See [Price analysis](#price-analysis) | Off |
-| **Costs and invoices** 🔑 | Monthly costs and invoices | On |
+| **Costs and invoices** 🔑 | Monthly costs, invoices, total this year and last year, price resolution | On |
 | **Daily usage and costs** 🔑 | Yesterday's electricity, gas and feed-in usage and costs | Off |
 | **Monthly usage and costs** 🔑 | This month's usage and costs, with expected values | Off |
 | **Energy dashboard statistics** 🔑 | Hourly usage and costs as long-term statistics, see [Energy dashboard statistics](#energy-dashboard-statistics) | Off |
@@ -104,8 +107,9 @@ Prices are fetched every hour, and every 15 minutes from 12:00 until tomorrow's 
 - *Current:* all-in, market price, including tax; VAT, sourcing markup and tax only are disabled by default.
 - *Statistics:* lowest, highest and average price today; next price; tomorrow's average, lowest and highest; lowest and highest upcoming price. Lowest/highest/next have a `from_time` attribute.
 - The current all-in, market and including-tax sensors have the [`prices` attribute](#price-list-and-get_prices-action).
+- *Tomorrow's prices available* (binary sensor) turns on when tomorrow's electricity prices arrive, and off again after midnight.
 
-**Costs and invoices** 🔑: actual and expected monthly costs, and the previous, current and upcoming invoice.
+**Costs and invoices** 🔑: actual and expected monthly costs; the previous, current and upcoming invoice; the total of this year and last year (with an `invoices` attribute per period); and the price resolution of your contract.
 
 **Usage and costs** 🔑 (fetched every 3 hours):
 
@@ -178,11 +182,13 @@ actions:
       entity_id: switch.battery_charging
 ```
 
+More about the levels, the cheapest period and all attributes: [Price analysis](https://github.com/archofthings/home-assistant-frank-energie/wiki/Price-analysis) on the wiki. More examples: [Automation examples](https://github.com/archofthings/home-assistant-frank-energie/wiki/Automation-examples).
+
 Entity IDs in this README are those of a new installation. Installations upgraded from the original integration keep their older IDs without the `frank_energie_prices_` prefix.
 
 ## Charts
 
-[ApexCharts Card](https://github.com/RomRider/apexcharts-card) cards for the price analysis: columns coloured by level (yellowgreen = cheap + solar, green = cheap, yellow = normal, red = expensive) and the solar forecast on the right axis. The screenshot at the top shows the *today* card.
+[ApexCharts Card](https://github.com/RomRider/apexcharts-card) cards for the price analysis: columns coloured by level (yellowgreen = cheap + solar, green = cheap, yellow = normal, red = expensive) and the solar forecast on the right axis. The screenshot at the top shows the *today* card. The wiki's [chart gallery](https://github.com/archofthings/home-assistant-frank-energie/wiki/Chart-gallery) has many more: today and tomorrow in one chart, prices without the price analysis, gas, usage and costs per day and per month, and invoices per month.
 
 ![Tomorrow's prices coloured by level, with the solar forecast](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/prices_tomorrow.png)
 
@@ -373,7 +379,7 @@ grid_options:
 
 ## Price list and get_prices action
 
-The current all-in, market and including-tax sensors have a `prices` attribute: every known 15-minute slot for today and tomorrow as `from`, `till` and `price` (3 decimals). It's up to 200 entries, so it's **not stored in history**, but it's always available on the live state. Example, the lowest price in the next six hours:
+The current all-in, market and including-tax sensors have a `prices` attribute: every known price slot (quarter-hour or hour) for today and tomorrow as `from`, `till` and `price` (3 decimals). It's up to 200 entries, so it's **not stored in history**, but it's always available on the live state. Example, the lowest price in the next six hours:
 
 ```jinja
 {{ state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices')
@@ -404,7 +410,7 @@ The **`frank_energie.get_prices`** action returns the same slots with all compon
 2. Remove the old custom repository (`bajansen/home-assistant-frank_energie` or `archofthings/home-assistant-frank_energie`), then add this one and download it as described under [Installation](#installation).
 3. Restart Home Assistant.
 
-Entity IDs and history are kept. What changes: Home Assistant 2026.9+ is required; prices are per 15 minutes (96 per day, 92/100 on daylight-saving days), so today's lowest/highest can be more extreme than the old hourly values; the `prices` attribute is no longer stored in history.
+Entity IDs and history are kept. What changes: Home Assistant 2026.9+ is required; prices are per quarter-hour by default (96 per day, 92/100 on daylight-saving days), so today's lowest/highest can be more extreme than the old hourly values (for hourly prices see [Price resolution](#price-resolution-quarter-hour-or-hourly-prices)); the `prices` attribute is no longer stored in history.
 
 ## Troubleshooting
 
@@ -423,7 +429,25 @@ Entity IDs and history are kept. What changes: Home Assistant 2026.9+ is require
 
   Library debug logs can contain your address and price data; remove personal details before sharing. The integration never logs tokens or passwords.
 
-Report problems via [GitHub issues](https://github.com/archofthings/home-assistant-frank-energie/issues).
+More problems and solutions, and the meaning of the log messages: [Troubleshooting](https://github.com/archofthings/home-assistant-frank-energie/wiki/Troubleshooting) on the wiki. Report problems via [GitHub issues](https://github.com/archofthings/home-assistant-frank-energie/issues).
+
+## Documentation
+
+The [wiki](https://github.com/archofthings/home-assistant-frank-energie/wiki) has the full documentation:
+
+| Page | Contents |
+|---|---|
+| [Installation](https://github.com/archofthings/home-assistant-frank-energie/wiki/Installation) | HACS, manual install, updating, removing |
+| [Configuration](https://github.com/archofthings/home-assistant-frank-energie/wiki/Configuration) | Setup, re-authenticate, reconfigure and every option explained |
+| [Sensors](https://github.com/archofthings/home-assistant-frank-energie/wiki/Sensors) | Every entity with its state and attributes |
+| [Price analysis](https://github.com/archofthings/home-assistant-frank-energie/wiki/Price-analysis) | Price levels, cheapest period, solar forecast |
+| [Energy dashboard statistics](https://github.com/archofthings/home-assistant-frank-energie/wiki/Energy-dashboard-statistics) | Frank Energie's usage and costs in the Energy dashboard |
+| [Price list and get_prices action](https://github.com/archofthings/home-assistant-frank-energie/wiki/Price-list-and-get_prices-action) | The `prices` attribute and the action, with templates |
+| [Chart gallery](https://github.com/archofthings/home-assistant-frank-energie/wiki/Chart-gallery) | Ready-to-use dashboard cards |
+| [Automation examples](https://github.com/archofthings/home-assistant-frank-energie/wiki/Automation-examples) | Ready-to-use automations |
+| [How it works](https://github.com/archofthings/home-assistant-frank-energie/wiki/How-it-works) | Update schedule, error handling, privacy |
+| [Troubleshooting](https://github.com/archofthings/home-assistant-frank-energie/wiki/Troubleshooting) | Problems, log messages, diagnostics |
+| [Upgrading](https://github.com/archofthings/home-assistant-frank-energie/wiki/Upgrading) | Moving from the original integration |
 
 ## Development
 
@@ -435,7 +459,7 @@ python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/pytest
 ```
 
-`CLAUDE.md` has a module map of `custom_components/frank_energie/`. The tests mock the Frank Energie API completely. Publishing a GitHub release builds `frank_energie.zip` for HACS.
+`CLAUDE.md` has a module map of `custom_components/frank_energie/`. The tests mock the Frank Energie API completely. Publishing a GitHub release builds `frank_energie.zip` for HACS. The wiki pages are kept in the `wiki/` folder.
 
 ## Project history
 
