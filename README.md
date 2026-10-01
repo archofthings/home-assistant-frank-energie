@@ -62,7 +62,7 @@ If your login expires and can't be renewed, Home Assistant asks you to re-authen
 
 Choose **Configure** on the integration.
 
-**Page 1:** the time zone for price times, and the sensor groups:
+**Page 1:** the time zone for price times, the price resolution (per quarter-hour or per hour; only when not logged in, logged-in entries follow their contract) and the sensor groups:
 
 | Group | Entities | Default |
 |---|---|---|

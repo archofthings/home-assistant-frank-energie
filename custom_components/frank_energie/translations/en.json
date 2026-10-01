@@ -48,10 +48,12 @@
                 "description": "Choose which sensor groups to show. Current prices are always available.",
                 "data": {
                     "prices_timezone": "Time zone for price times",
+                    "public_price_resolution": "Price resolution",
                     "sensor_groups": "Sensor groups"
                 },
                 "data_description": {
-                    "prices_timezone": "Only changes how the 'from'/'till' times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting."
+                    "prices_timezone": "Only changes how the 'from'/'till' times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting.",
+                    "public_price_resolution": "Whether Frank Energie's public prices are fetched per quarter-hour or per hour. The hourly prices come from Frank Energie and equal the average of the four quarters. Not available when logged in: then the prices follow your contract."
                 }
             },
             "analysis": {
@@ -98,6 +100,12 @@
             "options": {
                 "home_assistant": "Home Assistant's time zone",
                 "utc": "UTC"
+            }
+        },
+        "public_price_resolution": {
+            "options": {
+                "pt15m": "Per quarter-hour",
+                "pt60m": "Per hour"
             }
         },
         "sensor_groups": {

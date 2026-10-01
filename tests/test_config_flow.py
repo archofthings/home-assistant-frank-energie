@@ -15,6 +15,7 @@ from custom_components.frank_energie.config_flow import (
     SECTION_CHEAPEST_PERIOD,
     SECTION_PRICE_LEVELS,
     SITE_REFERENCE,
+    _init_schema,
     _merge_reauth_data,
     _same_account,
 )
@@ -919,6 +920,7 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
         result["flow_id"],
         {
             const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+            const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
             const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS],
         },
     )
@@ -944,6 +946,7 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
     assert result3["type"] == "create_entry"
     assert entry.options == {
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+        const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
         # "costs" is kept: this entry is public (no access token) and had it
         # enabled by default (legacy entry, no options), so it's added back
         # even though it wasn't offered as a choice (see config_flow.py).
@@ -992,6 +995,7 @@ async def test_options_flow_without_price_analysis_creates_entry_directly_and_ke
     assert result2["type"] == "create_entry"
     assert entry.options == {
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
+        const.CONF_PUBLIC_PRICE_RESOLUTION: const.DEFAULT_PUBLIC_PRICE_RESOLUTION,
         # "costs" is kept: this entry is public (no access token) and had it
         # stored/enabled, so it's added back even though it wasn't offered
         # as a choice (see config_flow.py).
@@ -1244,3 +1248,11 @@ async def test_options_flow_solar_forecast_entry_lists_entries_with_a_solar_fore
     options = section_schema[solar_key].config["options"]
     assert {opt["value"] for opt in options} == {solar_entry.entry_id}
     assert options[0]["label"] == "My Roof (fake_solar)"
+
+
+@pytest.mark.parametrize("logged_in", [False, True], ids=["public", "logged_in"])
+def test_init_schema_offers_public_price_resolution_only_when_not_logged_in(logged_in):
+    """The price resolution field is only part of the init form for a public entry."""
+    schema = _init_schema({}, logged_in).schema
+    keys = {getattr(k, "schema", None) for k in schema}
+    assert (const.CONF_PUBLIC_PRICE_RESOLUTION in keys) is not logged_in

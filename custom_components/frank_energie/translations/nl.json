@@ -49,10 +49,12 @@
                 "description": "Kies welke sensorgroepen worden getoond. Actuele prijzen zijn altijd beschikbaar.",
                 "data": {
                     "prices_timezone": "Tijdzone voor prijstijden",
+                    "public_price_resolution": "Prijsresolutie",
                     "sensor_groups": "Sensorgroepen"
                 },
                 "data_description": {
-                    "prices_timezone": "Dit verandert alleen hoe de 'van'/'tot'-tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt."
+                    "prices_timezone": "Dit verandert alleen hoe de 'van'/'tot'-tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt.",
+                    "public_price_resolution": "Of de openbare prijzen van Frank Energie per kwartier of per uur worden opgehaald. De uurprijzen komen van Frank Energie en zijn gelijk aan het gemiddelde van de vier kwartieren. Niet beschikbaar als je bent ingelogd: dan volgen de prijzen je contract."
                 }
             },
             "analysis": {
@@ -99,6 +101,12 @@
             "options": {
                 "home_assistant": "Tijdzone van Home Assistant",
                 "utc": "UTC"
+            }
+        },
+        "public_price_resolution": {
+            "options": {
+                "pt15m": "Per kwartier",
+                "pt60m": "Per uur"
             }
         },
         "sensor_groups": {
