@@ -42,6 +42,7 @@ Each card says which [sensor group](Configuration#sensor-groups) it needs. Repla
 - **Scale:** set `max` of the price axis to a little above your highest price, and `max` of the solar axis to your peak production in kWh per hour.
 - Use **one** column series with colours per column; a separate series per colour makes the columns very narrow.
 - Don't return `null` values and don't use an `area` series; the card then stays on "Loading".
+- When you change a card: a series returns either `[time, value]` pairs, or `{ x, y, fillColor }` objects for coloured columns. Use the objects only on an axis with a fixed `min` and `max`; on an automatic axis the card stays on "Loading".
 - If a card shows nothing at all, check that the pasted `data_generator` code is complete. One cut-off line stops the whole card.
 - The tooltip uses Dutch date notation (`nl-NL`); change it to your own, for example `en-GB`.
 
@@ -282,11 +283,11 @@ series:
       const prices = entity.attributes.prices;
 
       if (!prices || prices.length === 0) {
-        return [{ x: Date.now(), y: 0 }];
+        return [[Date.now(), 0]];
       }
 
       return prices.map((p) => {
-        return { x: new Date(p.from).getTime(), y: p.price };
+        return [new Date(p.from).getTime(), p.price];
       });
 apex_config:
   chart:
@@ -723,11 +724,11 @@ series:
       const hours = entity.attributes.hours;
 
       if (!hours || hours.length === 0) {
-        return [{ x: Date.now(), y: 0 }];
+        return [[Date.now(), 0]];
       }
 
       return hours.map((h) => {
-        return { x: new Date(h.from).getTime() + 30 * 60 * 1000, y: h.usage };
+        return [new Date(h.from).getTime() + 30 * 60 * 1000, h.usage];
       });
   - entity: sensor.frank_energie_costs_feed_in_yesterday
     name: Feed-in
@@ -739,11 +740,11 @@ series:
       const hours = entity.attributes.hours;
 
       if (!hours || hours.length === 0) {
-        return [{ x: Date.now(), y: 0 }];
+        return [[Date.now(), 0]];
       }
 
       return hours.map((h) => {
-        return { x: new Date(h.from).getTime() + 30 * 60 * 1000, y: h.usage };
+        return [new Date(h.from).getTime() + 30 * 60 * 1000, h.usage];
       });
   - entity: sensor.frank_energie_costs_electricity_costs_yesterday
     name: Costs
@@ -756,11 +757,11 @@ series:
       const hours = entity.attributes.hours;
 
       if (!hours || hours.length === 0) {
-        return [{ x: Date.now(), y: 0 }];
+        return [[Date.now(), 0]];
       }
 
       return hours.map((h) => {
-        return { x: new Date(h.from).getTime() + 30 * 60 * 1000, y: h.costs };
+        return [new Date(h.from).getTime() + 30 * 60 * 1000, h.costs];
       });
 apex_config:
   chart:
@@ -904,14 +905,14 @@ series:
       const invoices = entity.attributes.invoices;
 
       if (!invoices || invoices.length === 0) {
-        return [{ x: Date.now(), y: 0 }];
+        return [[Date.now(), 0]];
       }
 
       return invoices.map((i) => {
         const d = new Date(i.start_date + 'T12:00:00');
         d.setFullYear(d.getFullYear() + 1);
         d.setDate(15);
-        return { x: d.getTime(), y: i.total_amount };
+        return [d.getTime(), i.total_amount];
       });
   - entity: sensor.frank_energie_costs_total_this_year
     name: This year
@@ -924,13 +925,13 @@ series:
       const invoices = entity.attributes.invoices;
 
       if (!invoices || invoices.length === 0) {
-        return [{ x: Date.now(), y: 0 }];
+        return [[Date.now(), 0]];
       }
 
       return invoices.map((i) => {
         const d = new Date(i.start_date + 'T12:00:00');
         d.setDate(15);
-        return { x: d.getTime(), y: i.total_amount };
+        return [d.getTime(), i.total_amount];
       });
 apex_config:
   chart:
