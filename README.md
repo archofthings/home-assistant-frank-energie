@@ -30,6 +30,7 @@ A Home Assistant custom integration for [Frank Energie](https://www.frankenergie
 - [Documentation](#documentation)
 - [Development](#development)
 - [Project history](#project-history)
+- [Credits](#credits)
 
 ## Features
 
@@ -464,6 +465,11 @@ python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 ## Project history
 
-Created as [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie) by [@bajansen](https://github.com/bajansen) and contributors, and developed there until early 2025. When Frank Energie changed its API in 2026, development continued here, keeping the full commit history, the `frank_energie` domain and the entity unique IDs. API client: [python-frank-energie](https://pypi.org/project/python-frank-energie/).
+Created as [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie) by [@bajansen](https://github.com/bajansen) and contributors, and developed there until early 2025. When Frank Energie changed its API in 2026, development continued here, keeping the full commit history, the `frank_energie` domain and the entity unique IDs.
+
+## Credits
+
+- **[@HiDiHo01](https://github.com/HiDiHo01)** maintains [python-frank-energie](https://github.com/HiDiHo01/python-frank-energie), the API client this integration uses for all communication with Frank Energie ([PyPI](https://pypi.org/project/python-frank-energie/), Apache-2.0).
+- **[@bajansen](https://github.com/bajansen)** and the contributors of the original integration.
 
 Not affiliated with or endorsed by Frank Energie. The upstream project has no license file, so none has been added here.
