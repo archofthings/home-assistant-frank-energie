@@ -20,7 +20,7 @@ Everything is set up in the Home Assistant UI. The old `configuration.yaml` setu
 
 | Field | Meaning |
 |---|---|
-| **Use Frank Energie account credentials** | Ticked: continue to the login step. Not ticked: the integration is added right away with Frank Energie's public prices. |
+| **Use Frank Energie account credentials** | Ticked: continue to the login step. Not ticked: continue to the settings step; the integration uses Frank Energie's public prices. |
 
 Without an account you get all price sensors, the price analysis and the `get_prices` action. With an account you also get your contract prices, costs, invoices, usage and the Energy dashboard statistics. See the table on the [Home](Home) page.
 
@@ -44,6 +44,22 @@ You can add **one** entry without an account, and one entry per Frank Energie ac
 
 Only shown when your account has **more than one** address in delivery. With one address it is chosen for you. The entry gets the street and house number as its name.
 
+### Step 4: settings
+
+The last step asks for the same settings as the options, so the integration starts the way you want it:
+
+| Field | See |
+|---|---|
+| **Time zone for price times** | [Time zone for price times](#time-zone-for-price-times) |
+| **Price resolution** (only without an account) | [Price resolution](#price-resolution) |
+| **Sensor groups** | [Sensor groups](#sensor-groups) |
+
+The defaults are Home Assistant's time zone, prices per quarter-hour, and the groups **Daily statistics** and (with an account) **Costs and invoices**. Choose **Submit** to accept them.
+
+If you tick **Price analysis**, one more page follows with the [price analysis settings](#options-page-2-price-analysis-settings).
+
+Everything on these pages can be changed later with **Configure**.
+
 ### After setup
 
 Two devices appear:
@@ -53,7 +69,7 @@ Two devices appear:
 | **Frank Energie - Prices** | Price sensors, price analysis, *Tomorrow's prices available* |
 | **Frank Energie - Costs** | Costs, invoices, usage and the *Price resolution* sensor (only when logged in) |
 
-A new installation starts with the sensor groups **Daily statistics** and **Costs and invoices**. Turn on more under [Sensor groups](#sensor-groups).
+Want other sensors later? Turn groups on or off under [Sensor groups](#sensor-groups).
 
 ## Re-authenticate
 
@@ -69,7 +85,7 @@ Entities keep their entity IDs. From then on they show the data of the new addre
 
 ## Options page 1: general
 
-Choose **Configure** on the integration. Saving reloads the integration by itself; no restart is needed.
+Choose **Configure** (the gear icon) on the integration. These are the same settings as in the last step of the setup. Saving reloads the integration by itself; no restart is needed.
 
 ### Time zone for price times
 
@@ -154,6 +170,7 @@ Your price analysis settings are remembered when you untick the group, and come 
 | Where | Setting | Values | Default |
 |---|---|---|---|
 | Setup | Use Frank Energie account credentials | yes / no | no |
+| Setup | The settings of options page 1 and 2 | See below | See below |
 | Setup | Username, password | | |
 | Setup, Reconfigure | Address | Addresses in delivery | The only one |
 | Options 1 | Time zone for price times | Home Assistant's time zone / UTC | Home Assistant's time zone |
