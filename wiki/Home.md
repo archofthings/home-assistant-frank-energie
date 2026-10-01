@@ -53,4 +53,9 @@ Find your own IDs under **Settings → Devices & services → Frank Energie**.
 
 ---
 
-Not affiliated with or endorsed by Frank Energie. This project continues [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie).
+## Credits
+
+- **[@HiDiHo01](https://github.com/HiDiHo01)** maintains [python-frank-energie](https://github.com/HiDiHo01/python-frank-energie), the API client this integration uses for all communication with Frank Energie.
+- **[@bajansen](https://github.com/bajansen)** and the contributors of the original integration, [bajansen/home-assistant-frank_energie](https://github.com/bajansen/home-assistant-frank_energie), which this project continues.
+
+Not affiliated with or endorsed by Frank Energie.

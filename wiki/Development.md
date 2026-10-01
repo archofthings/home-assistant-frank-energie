@@ -44,7 +44,7 @@ Everything is in `custom_components/frank_energie/`.
 | `const.py` | Constants, option keys, defaults and the sensor groups |
 | `strings.json`, `translations/` | UI texts in English and Dutch (keep the three files in sync) |
 
-API client: [python-frank-energie](https://pypi.org/project/python-frank-energie/), version pinned in `manifest.json`.
+API client: [python-frank-energie](https://github.com/HiDiHo01/python-frank-energie) by [@HiDiHo01](https://github.com/HiDiHo01) ([PyPI](https://pypi.org/project/python-frank-energie/)), version pinned in `manifest.json`. Problems in the communication with Frank Energie itself are best reported there.
 
 ## Rules of the house
 
