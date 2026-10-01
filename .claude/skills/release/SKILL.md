@@ -22,16 +22,21 @@ Arguments: `$ARGUMENTS`. If empty, ask whether the user wants `pr` or `publish`.
    - `.venv/bin/flake8 . --count --max-complexity=10 --max-line-length=120 --statistics`
    - `.venv/bin/pytest -q -p no:cacheprovider`
    If `.venv` is missing, run the `setup-dev` skill first. If anything fails, stop and report; don't create the PR.
-3. **Collect the facts** from `git log origin/main..HEAD` (subjects and bodies) and
+3. **Check the documentation.** Every user-visible change (settings, sensors, attributes, actions, behaviour,
+   new log messages) must be described in `README.md` and in the matching page(s) in `wiki/`. Compare the
+   commits with `git diff --stat origin/main...HEAD -- README.md wiki/`. If the documentation is missing or
+   incomplete, write it first (docs commit on the same branch), then continue. Pure refactoring, tests and
+   tooling need no documentation.
+4. **Collect the facts** from `git log origin/main..HEAD` (subjects and bodies) and
    `git diff --stat origin/main...HEAD`. Read changed files only where the commit messages aren't enough.
-4. **Write the description** with `templates/pr.md`:
+5. **Write the description** with `templates/pr.md`:
    - Describe only what the commits actually change. No claims that weren't verified.
    - Mention user-visible behaviour changes and upgrade notes (defaults, entity IDs, attributes, options).
    - Testing: the real numbers from step 2. Write "Not tested against a live Home Assistant instance" unless
      the change was verified through the `home-assistant` MCP in this session; then say what was checked.
    - Leave out sections that don't apply.
-5. **Don't ask for confirmation of the text.** The user reviews and edits the PR on GitHub.
-6. **Publish right away:** if the branch isn't on `origin` yet, `git push -u origin <branch>`. Then
+6. **Don't ask for confirmation of the text.** The user reviews and edits the PR on GitHub.
+7. **Publish right away:** if the branch isn't on `origin` yet, `git push -u origin <branch>`. Then
    `gh pr create --base main --head <branch> --title "<title>" --body-file <file>`
    (write the body to a file in the scratchpad). Report the PR URL and a 2–3 line summary of what it contains.
 
@@ -45,16 +50,27 @@ Arguments: `$ARGUMENTS`. If empty, ask whether the user wants `pr` or `publish`.
    - minor: new features (entities, options, actions)
    - patch: only fixes and docs
    Ask the user to confirm the version and whether it should be a pre-release.
-3. **Check CI on main:** `gh run list --branch main --workflow ci.yaml --limit 1`. If the last run failed, stop and report.
-4. **Write the release notes** with `templates/release.md`: user-facing, based on the merged PRs.
+3. **Check the documentation.** `README.md` and `wiki/` on `origin/main` must cover everything in this
+   version, and the version table in `wiki/Upgrading.md` must list it. If something is missing, stop and
+   report; the fix goes through a PR first.
+4. **Check CI on main:** `gh run list --branch main --workflow ci.yaml --limit 1`. If the last run failed, stop and report.
+5. **Write the release notes** with `templates/release.md`: user-facing, based on the merged PRs.
    Internal refactoring, tests and tooling (`.claude/`, `CLAUDE.md`) are left out unless they matter to users.
    Always include upgrade notes (breaking changes or "No breaking changes").
-5. **Show the tag, title and notes to the user** and wait for confirmation or edits.
-6. **Publish:** `gh release create <tag> --target main --title "<title>" --notes-file <file> [--prerelease]`.
-7. **Verify:** the release workflow builds `frank_energie.zip` and attaches it, which HACS needs.
+6. **Show the tag, title and notes to the user** and wait for confirmation or edits.
+7. **Publish:** `gh release create <tag> --target main --title "<title>" --notes-file <file> [--prerelease]`.
+8. **Verify:** the release workflow builds `frank_energie.zip` and attaches it, which HACS needs.
    Check `gh run list --workflow release.yaml --limit 1` and, once it has finished,
    `gh release view <tag> --json assets`. Report whether `frank_energie.zip` is attached; if the run failed,
    show `gh run view <id> --log-failed` output (last lines only).
+9. **Update the live wiki.** The wiki is a separate git repository (`<origin URL without .git>.wiki.git`, branch
+   `master`); its source is the `wiki/` folder on `main`. Clone it into the scratchpad, copy `wiki/*.md` from
+   `origin/main` over it, and if `git status --short` shows changes, commit and `git push origin master`
+   (needs approval like every push). Report whether the wiki changed.
+
+## Documentation rule
+Every version updates the README and the wiki. The `wiki/` folder in the repository is the source; never edit
+the live wiki directly. Charts added to `wiki/Chart-gallery.md` are tested on a live dashboard first.
 
 ## Style
 - English, clear and specific; no marketing language.
