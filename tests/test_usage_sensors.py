@@ -8,6 +8,7 @@ from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from python_frank_energie.exceptions import FrankEnergieException
 
 from custom_components.frank_energie import const
 from tests.utils import (
@@ -61,6 +62,25 @@ def setup_authenticated_entry(hass, mock_frank_energie_class, groups: list[str])
 def _freeze_midday(freezer):
     """Freeze time at midday UTC on 2026-01-15, so "yesterday" is 2026-01-14 in both UTC and Amsterdam time."""
     freezer.move_to("2026-01-15 12:00:00+00:00")
+
+
+async def test_monthly_failure_keeps_daily_data(hass, enable_custom_integrations, mock_frank_energie_class):
+    """Regression: on the 1st month_insights fails; yesterday's daily usage is still reported (no UpdateFailed)."""
+    entry = setup_authenticated_entry(
+        hass, mock_frank_energie_class, [const.SENSOR_GROUP_DAILY_USAGE, const.SENSOR_GROUP_MONTHLY_USAGE]
+    )
+    item_start = datetime(2026, 1, 14, 10, 0, tzinfo=timezone.utc)
+    item = make_usage_item(item_start, item_start + timedelta(hours=1), usage=2.5, costs=0.6)
+    mock_frank_energie_class.period_usage_and_costs.return_value = make_period_usage_and_costs(
+        electricity=make_energy_category(10.0, 2.5, "kWh", items=[item]), gas=None, feed_in=None
+    )
+    mock_frank_energie_class.month_insights.side_effect = FrankEnergieException("no meter reading")
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert float(state_for_key(hass, entry, "elec_usage_yesterday").state) == 10.0
+    assert state_for_key(hass, entry, "elec_usage_month").state == "unavailable"
 
 
 # --------------------------------------------------------------------------

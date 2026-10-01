@@ -116,6 +116,7 @@ _OTHER_ERRORS = pytest.mark.parametrize(
 @_OTHER_ERRORS
 async def test_other_error_without_previous_data_raises_update_failed(coordinator, mock_api, make_exception):
     mock_api.period_usage_and_costs.side_effect = make_exception()
+    mock_api.month_insights.side_effect = make_exception()
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
@@ -126,10 +127,46 @@ async def test_other_error_with_previous_data_keeps_it(coordinator, mock_api, ma
     stale = UsageData(daily=make_period_usage_and_costs(), daily_date=date(2026, 1, 13), monthly=None)
     coordinator.data = stale
     mock_api.period_usage_and_costs.side_effect = make_exception()
+    mock_api.month_insights.side_effect = make_exception()
 
     data = await coordinator._async_update_data()
 
-    assert data is stale
+    assert data == stale
+
+
+async def test_daily_failure_keeps_previous_daily_with_its_date_and_fresh_monthly(coordinator, mock_api):
+    """One failing part uses its previous value (and daily_date) while the other part is still updated."""
+    stale = UsageData(daily=make_period_usage_and_costs(), daily_date=date(2026, 1, 13), monthly=None)
+    coordinator.data = stale
+    monthly = make_month_insights()
+    mock_api.period_usage_and_costs.side_effect = NetworkError("timeout")
+    mock_api.month_insights.return_value = monthly
+
+    data = await coordinator._async_update_data()
+
+    assert data == UsageData(daily=stale.daily, daily_date=date(2026, 1, 13), monthly=monthly)
+
+
+@pytest.mark.parametrize(
+    "failure_time, keeps_monthly",
+    [("2026-01-20 12:00:00+00:00", True), ("2026-02-01 12:00:00+00:00", False)],
+    ids=["same_month", "new_month"],
+)
+async def test_monthly_failure_keeps_previous_monthly_only_within_the_same_month(
+    coordinator, mock_api, freezer, failure_time, keeps_monthly
+):
+    """A failed monthly fetch keeps the previous monthly data, but never shows last month's data as this month's."""
+    monthly = make_month_insights()
+    mock_api.period_usage_and_costs.return_value = make_period_usage_and_costs()
+    mock_api.month_insights.return_value = monthly
+    coordinator.data = await coordinator._async_update_data()
+
+    freezer.move_to(failure_time)
+    mock_api.month_insights.side_effect = ValueError("Could not find a first or last meter reading")
+    data = await coordinator._async_update_data()
+
+    assert data.daily is not None
+    assert data.monthly == (monthly if keeps_monthly else None)
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,9 @@
 """Tests for the Energy dashboard statistics import (see energy_statistics.py)."""
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +15,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.components.recorder.common import async_wait_recording_done
 from python_frank_energie.exceptions import FrankEnergieException
 
-from custom_components.frank_energie import const
+from custom_components.frank_energie import const, energy_statistics
 from custom_components.frank_energie.energy_statistics import FrankEnergieStatisticsImporter
 from tests.utils import (
     FAKE_ACCESS_TOKEN,
@@ -51,6 +53,14 @@ def day_data(day: str, usage: float = 1.0, gas: bool = True):
     )
 
 
+@pytest.fixture(autouse=True)
+def sleep_mock():
+    """Replace the module's asyncio.sleep (the pacing between fetches) so tests don't wait."""
+    sleep = AsyncMock()
+    with patch.object(energy_statistics, "asyncio", SimpleNamespace(sleep=sleep, Lock=asyncio.Lock)):
+        yield sleep
+
+
 @pytest.fixture
 def importer(hass, mock_api):
     entry = MockConfigEntry(domain=const.DOMAIN, data={"site_reference": "site-1"}, title="Home")
@@ -77,10 +87,13 @@ async def read_stats(hass, statistic_id):
 
 
 async def test_first_run_imports_30_days_then_later_run_reimports_last_two_days(
-    recorder_mock, hass, importer, mock_api, freezer
+    recorder_mock, hass, importer, mock_api, freezer, sleep_mock
 ):
     """First run: 30 days, all statistics. Next day: only the last 2 days, corrections replace instead of adding."""
     await importer.async_import()
+    # Paced between the 30 calls (not before the first); the short run below (3 days) is not paced.
+    assert sleep_mock.await_count == 29
+    sleep_mock.assert_awaited_with(energy_statistics.FETCH_PAUSE_SECONDS)
 
     dates = [c.args[1] for c in mock_api.period_usage_and_costs.await_args_list]
     assert len(dates) == 30
@@ -99,6 +112,7 @@ async def test_first_run_imports_30_days_then_later_run_reimports_last_two_days(
 
     dates = [c.args[1] for c in mock_api.period_usage_and_costs.await_args_list]
     assert dates == ["2026-01-13", "2026-01-14", "2026-01-15"]
+    assert sleep_mock.await_count == 29
     rows = await read_stats(hass, ELEC_ID)
     assert len(rows) == 31 * 24
     # 28 old days (1 kWh/h) + corrected 01-13 (1) + 01-14 (2) + 01-15 (1)

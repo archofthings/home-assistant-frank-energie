@@ -839,6 +839,45 @@ async def test_renew_token_network_error_does_not_retry_fetch(coordinator, api):
     api.renew_token.assert_awaited_once()
 
 
+@pytest.mark.parametrize("failing", ["invoices", "month_summary"])
+async def test_optional_account_data_failure_does_not_fail_the_update(coordinator, api, failing):
+    """Regression: a failing invoices/month_summary query must not block loading; the other data is kept."""
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    api.month_summary.return_value = make_month_summary()
+    api.invoices.return_value = Invoices.empty()
+    getattr(api, failing).side_effect = NetworkError("timeout")
+
+    data = await coordinator._async_update_data()
+
+    assert data[const.DATA_ELECTRICITY].all
+    assert data[failing] is None
+    other = const.DATA_MONTH_SUMMARY if failing == "invoices" else const.DATA_INVOICES
+    assert data[other] is not None
+
+    # A later refresh that fails again keeps the previously fetched value.
+    getattr(api, failing).side_effect = None
+    previous = Invoices.empty() if failing == "invoices" else make_month_summary()
+    getattr(api, failing).return_value = previous
+    coordinator.data = await coordinator._async_update_data()
+    getattr(api, failing).side_effect = RequestException("Access Denied")
+    data = await coordinator._async_update_data()
+    assert data[failing] is previous
+
+
+async def test_invoices_user_error_still_raises_config_entry_auth_failed(coordinator, api):
+    """A 'user-error:' RequestException from invoices is not swallowed by the optional fetch."""
+    api.is_authenticated = True
+    api.user_country.return_value = make_me("NL")
+    api.user_prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    api.month_summary.return_value = make_month_summary()
+    api.invoices.side_effect = RequestException("user-error:other-account")
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
 async def test_auth_exception_from_month_summary_retry_succeeds_returns_fresh_data(coordinator, api):
     """An AuthException from month_summary() (prices already succeeded) triggers a renewal, then a retry.
 
