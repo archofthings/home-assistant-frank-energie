@@ -60,6 +60,7 @@ Or add it by hand: in HACS, open the menu (⋮) → **Custom repositories**, add
 1. **Settings → Devices & services → Add integration → Frank Energie.**
 2. Log in with your Frank Energie account, or continue without it for public prices only.
 3. If your account has more than one address in delivery, choose one. Change it later with **Reconfigure** in the integration menu (⋮).
+4. Choose your settings: the time zone for price times, the price resolution (without an account) and the sensor groups. With *Price analysis* ticked, a page with its settings follows. Everything can be changed later under [Options](#options).
 
 If your login expires and can't be renewed, Home Assistant asks you to re-authenticate. The old `configuration.yaml` setup is no longer supported.
 
