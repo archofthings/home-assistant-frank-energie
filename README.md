@@ -19,6 +19,7 @@ A Home Assistant custom integration for [Frank Energie](https://www.frankenergie
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Sensors](#sensors)
+- [Energy dashboard statistics](#energy-dashboard-statistics)
 - [Price analysis](#price-analysis)
 - [Charts](#charts)
 - [Price list and get_prices action](#price-list-and-get_prices-action)
@@ -29,10 +30,11 @@ A Home Assistant custom integration for [Frank Energie](https://www.frankenergie
 
 ## Features
 
-- **Prices every 15 minutes** for electricity and gas: all-in, market price, tax, VAT and markup. No account needed.
+- **Prices per quarter-hour or per hour** for electricity and gas: all-in, market price, tax, VAT and markup. No account needed.
 - **Statistics:** lowest, highest and average price today and tomorrow, the next price, and the lowest and highest price still to come.
 - **Price analysis:** every quarter hour labelled cheap, normal or expensive (optionally "cheap + solar"), plus the cheapest block of hours you choose. Chart-ready.
 - **With your Frank Energie login:** your contract prices, monthly costs, invoices, and yesterday's and this month's usage, costs and feed-in.
+- **Energy dashboard statistics:** Frank Energie's hourly usage and costs as long-term statistics.
 - **Choose your sensors** in groups, so you only get what you use.
 - **`frank_energie.get_prices` action** with all prices and components, for scripts and automations.
 - **Reliable:** the last prices stay available when the API has a hiccup, tokens renew automatically, and tomorrow's prices are picked up within 15 minutes of publication.
@@ -62,7 +64,7 @@ If your login expires and can't be renewed, Home Assistant asks you to re-authen
 
 Choose **Configure** on the integration.
 
-**Page 1:** the time zone for price times, the price resolution (per quarter-hour or per hour; only when not logged in, logged-in entries follow their contract) and the sensor groups:
+**Page 1:** the time zone for price times, the [price resolution](#price-resolution-quarter-hour-or-hourly-prices) and the sensor groups:
 
 | Group | Entities | Default |
 |---|---|---|
@@ -79,7 +81,20 @@ Choose **Configure** on the integration.
 
 **Page 2** (only with *Price analysis* ticked): the [price analysis](#price-analysis) settings.
 
-**Time zone:** the times in `prices`, `slots`, `from_time` and the action can be written in Home Assistant's time zone (default for new installations) or UTC (installations from before this option). The moments are the same, only the notation differs. Before switching, check automations and Node-RED flows that read these times as text, for example by adding a fixed offset or cutting the hour out of the string. Anything that parses the full time (`as_timestamp()`, `new Date()`, ApexCharts) keeps working.
+#### Price resolution: quarter-hour or hourly prices
+
+| Setup | Prices you get | How to change |
+|---|---|---|
+| Not logged in | Per quarter-hour (default) or per hour | **Configure** → **Price resolution** → *Per quarter-hour* or *Per hour* |
+| Logged in | The resolution of your contract | Not in Home Assistant: the option is hidden. Change your contract's price resolution with Frank Energie. |
+
+- The hourly prices come from Frank Energie itself; the integration does not calculate them. They equal the average of the four quarters of that hour.
+- With *Per hour*, all price sensors, the `prices` attributes, the price analysis and the `get_prices` action use 24 hourly prices per day.
+- When logged in, the **Price resolution** sensor (group *Costs and invoices*) shows your contract's resolution.
+
+#### Time zone
+
+The times in `prices`, `slots`, `from_time` and the action can be written in Home Assistant's time zone (default for new installations) or UTC (installations from before this option). The moments are the same, only the notation differs. Before switching, check automations and Node-RED flows that read these times as text, for example by adding a fixed offset or cutting the hour out of the string. Anything that parses the full time (`as_timestamp()`, `new Date()`, ApexCharts) keeps working.
 
 ## Sensors
 
@@ -110,7 +125,7 @@ Tick **Energy dashboard statistics** 🔑 under **Configure** to import Frank En
 - *Return to grid:* Frank feed-in, with Frank feed-in revenue as the compensation.
 - *Gas consumption:* Frank gas usage, with Frank gas costs.
 
-Frank Energie publishes yesterday's usage, so the data arrives a day later. The first time 30 days are imported; after that the last 2 days are imported again every 3 hours to pick up corrections. Unticking the group stops the import and keeps the statistics already imported.
+Frank Energie publishes yesterday's usage, so the data arrives a day later. The first time 30 days are imported, which takes a few minutes; after that the last 2 days are imported again every 3 hours to pick up corrections. Unticking the group stops the import and keeps the statistics already imported.
 
 ## Price analysis
 
@@ -127,7 +142,7 @@ Two independent calculations for electricity, set on page 2 of **Configure**:
 
 The solar forecast can come from any integration that provides one for the Energy dashboard, such as Forecast.Solar or Solcast.
 
-**2. Cheapest period (relative):** the consecutive block of the chosen length (15 minutes to 6 hours, default 2 hours) with the lowest average price, whatever the price. It's calculated for today, for tomorrow and from now on.
+**2. Cheapest period (relative):** the consecutive block of the chosen length (15 minutes to 6 hours, default 2 hours) with the lowest average price, whatever the price. It's calculated for today, for tomorrow and from now on. With **Only when cheap** ticked, *Cheapest electricity period now* only turns on when that period's average price is also at or below the cheap price.
 
 | Entity | State |
 |---|---|
@@ -394,6 +409,7 @@ Entity IDs and history are kept. What changes: Home Assistant 2026.9+ is require
 ## Troubleshooting
 
 - **Sensors unavailable:** tomorrow's sensors wait for publication (around 13:00); gas sensors stay unavailable without a gas contract.
+- **Cost, invoice or monthly usage sensors unavailable while prices work:** Frank Energie's service for that data is failing (the log has a "Could not fetch" or "Could not update" warning). Prices keep updating and the sensors come back by themselves. On the 1st of the month the monthly usage sensors can be unavailable until Frank Energie has data for the new month.
 - **Chart empty or stuck on "Loading":** see the chart [tips](#charts).
 - **Diagnostics:** integration menu (⋮) → **Download diagnostics**. Tokens, username, site reference and address are removed.
 - **Debug logging:**
