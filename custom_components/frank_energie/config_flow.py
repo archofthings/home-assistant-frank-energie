@@ -37,6 +37,7 @@ from .const import (
     CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
     CONF_EXPENSIVE_PRICE_THRESHOLD,
     CONF_PRICES_TIMEZONE,
+    CONF_PUBLIC_PRICE_RESOLUTION,
     CONF_SENSOR_GROUPS,
     CONF_SOLAR_FORECAST_ENTRY,
     CONF_SOLAR_THRESHOLD_KWH,
@@ -44,12 +45,15 @@ from .const import (
     DEFAULT_CHEAPEST_PERIOD_MINUTES,
     DEFAULT_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
     DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
+    DEFAULT_PUBLIC_PRICE_RESOLUTION,
     DEFAULT_SENSOR_GROUPS,
     DEFAULT_SOLAR_THRESHOLD_KWH,
     DOMAIN,
     LEGACY_SENSOR_GROUPS,
     PRICES_TIMEZONE_HOME_ASSISTANT,
     PRICES_TIMEZONE_UTC,
+    PUBLIC_PRICE_RESOLUTION_PT15M,
+    PUBLIC_PRICE_RESOLUTION_PT60M,
     SENSOR_GROUP_PRICE_ANALYSIS,
     SENSOR_GROUPS,
     SENSOR_GROUPS_REQUIRE_LOGIN,
@@ -149,27 +153,40 @@ def _init_schema(options: Mapping[str, Any], logged_in: bool) -> vol.Schema:
     # against stale/renamed values in current_groups.
     default_groups = [group for group in current_groups if group in group_options]
 
-    return vol.Schema(
-        {
+    schema: dict[Any, Any] = {
+        vol.Required(
+            CONF_PRICES_TIMEZONE, default=options.get(CONF_PRICES_TIMEZONE, PRICES_TIMEZONE_UTC)
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC],
+                mode=selector.SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_PRICES_TIMEZONE,
+            )
+        ),
+    }
+    if not logged_in:
+        # Only the public prices query has a resolution argument; logged-in entries follow their contract.
+        schema[
             vol.Required(
-                CONF_PRICES_TIMEZONE, default=options.get(CONF_PRICES_TIMEZONE, PRICES_TIMEZONE_UTC)
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[PRICES_TIMEZONE_HOME_ASSISTANT, PRICES_TIMEZONE_UTC],
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                    translation_key=CONF_PRICES_TIMEZONE,
-                )
-            ),
-            vol.Required(CONF_SENSOR_GROUPS, default=default_groups): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=group_options,
-                    mode=selector.SelectSelectorMode.LIST,
-                    multiple=True,
-                    translation_key=CONF_SENSOR_GROUPS,
-                )
-            ),
-        }
+                CONF_PUBLIC_PRICE_RESOLUTION,
+                default=options.get(CONF_PUBLIC_PRICE_RESOLUTION, DEFAULT_PUBLIC_PRICE_RESOLUTION),
+            )
+        ] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[PUBLIC_PRICE_RESOLUTION_PT15M, PUBLIC_PRICE_RESOLUTION_PT60M],
+                mode=selector.SelectSelectorMode.DROPDOWN,
+                translation_key=CONF_PUBLIC_PRICE_RESOLUTION,
+            )
+        )
+    schema[vol.Required(CONF_SENSOR_GROUPS, default=default_groups)] = selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=group_options,
+            mode=selector.SelectSelectorMode.LIST,
+            multiple=True,
+            translation_key=CONF_SENSOR_GROUPS,
+        )
     )
+    return vol.Schema(schema)
 
 
 SECTION_PRICE_LEVELS = "price_levels"
@@ -551,12 +568,17 @@ class OptionsFlowHandler(OptionsFlowWithReload):
         """Initialize the options flow."""
         self._prices_timezone: str | None = None
         self._sensor_groups: list[str] | None = None
+        self._public_price_resolution: str | None = None
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the "init" step: prices_timezone and sensor_groups."""
         if user_input is not None:
             self._prices_timezone = user_input[CONF_PRICES_TIMEZONE]
             self._sensor_groups = list(user_input[CONF_SENSOR_GROUPS])
+            # Not shown for a logged-in entry: keep a stored value as is (None = nothing to save).
+            self._public_price_resolution = user_input.get(
+                CONF_PUBLIC_PRICE_RESOLUTION, self.config_entry.options.get(CONF_PUBLIC_PRICE_RESOLUTION)
+            )
 
             # SENSOR_GROUPS_REQUIRE_LOGIN groups aren't offered as choices for
             # a public entry (see _init_schema), so they're never part of the
@@ -587,6 +609,8 @@ class OptionsFlowHandler(OptionsFlowWithReload):
         re-enabling the group later restores them.
         """
         data: dict[str, Any] = {CONF_PRICES_TIMEZONE: self._prices_timezone, CONF_SENSOR_GROUPS: self._sensor_groups}
+        if self._public_price_resolution is not None:
+            data[CONF_PUBLIC_PRICE_RESOLUTION] = self._public_price_resolution
         for key in (
             CONF_CHEAP_PRICE_THRESHOLD,
             CONF_EXPENSIVE_PRICE_THRESHOLD,
@@ -618,6 +642,8 @@ class OptionsFlowHandler(OptionsFlowWithReload):
             data[CONF_CHEAPEST_PERIOD_MINUTES] = int(data[CONF_CHEAPEST_PERIOD_MINUTES])
             data[CONF_PRICES_TIMEZONE] = self._prices_timezone
             data[CONF_SENSOR_GROUPS] = self._sensor_groups
+            if self._public_price_resolution is not None:
+                data[CONF_PUBLIC_PRICE_RESOLUTION] = self._public_price_resolution
             return self.async_create_entry(data=data)
 
         return self.async_show_form(

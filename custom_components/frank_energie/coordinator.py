@@ -23,12 +23,14 @@ from python_frank_energie.models import PriceData, MonthSummary, Invoices, Marke
 
 from .const import (
     CONF_PRICES_TIMEZONE,
+    CONF_PUBLIC_PRICE_RESOLUTION,
     DATA_ELECTRICITY,
     DATA_GAS,
     DATA_MONTH_SUMMARY,
     DATA_INVOICES,
     PRICES_TIMEZONE_HOME_ASSISTANT,
     PRICES_TIMEZONE_UTC,
+    PUBLIC_PRICE_RESOLUTION_PT60M,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -293,6 +295,8 @@ class FrankEnergieCoordinator(DataUpdateCoordinator):
         missing.
         """
         if not self.api.is_authenticated:
+            if self.entry.options.get(CONF_PUBLIC_PRICE_RESOLUTION) == PUBLIC_PRICE_RESOLUTION_PT60M:
+                return await self.api.prices(start_date, resolution="PT60M")
             return await self.api.prices(start_date)
 
         user_country = await self._get_user_country()

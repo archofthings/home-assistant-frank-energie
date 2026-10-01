@@ -119,6 +119,41 @@ async def test_unauthenticated_fetches_today_and_tomorrow(coordinator, api):
     api.invoices.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    "authenticated, option, expected_kwargs",
+    [
+        (False, None, {}),
+        (False, const.PUBLIC_PRICE_RESOLUTION_PT15M, {}),
+        (False, const.PUBLIC_PRICE_RESOLUTION_PT60M, {"resolution": "PT60M"}),
+        (True, const.PUBLIC_PRICE_RESOLUTION_PT60M, None),
+    ],
+    ids=["absent", "pt15m", "pt60m", "logged_in_ignores_option"],
+)
+async def test_public_price_resolution_option_selects_the_prices_resolution(
+    hass, entry, api, authenticated, option, expected_kwargs
+):
+    """A public entry fetches hourly prices with pt60m; logged-in entries ignore the option."""
+    if option is not None:
+        hass.config_entries.async_update_entry(entry, options={const.CONF_PUBLIC_PRICE_RESOLUTION: option})
+    api.is_authenticated = authenticated
+    market_prices = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    api.prices.return_value = market_prices
+    api.user_prices.return_value = market_prices
+    api.user_country.return_value = make_me("NL")
+    api.month_summary.return_value = None
+    api.invoices.return_value = None
+
+    await FrankEnergieCoordinator(hass, entry, api)._async_update_data()
+
+    if expected_kwargs is None:
+        assert api.user_prices.await_count == 2
+        api.prices.assert_not_awaited()
+    else:
+        assert api.prices.await_count == 2
+        for call in api.prices.await_args_list:
+            assert call.kwargs == expected_kwargs
+
+
 async def test_authenticated_uses_user_prices_and_caches_country(coordinator, api):
     """Authenticated coordinator uses user_prices and fetches user_country only once."""
     api.is_authenticated = True
