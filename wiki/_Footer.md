@@ -1,0 +1,1 @@
+[Repository](https://github.com/archofthings/home-assistant-frank-energie) · [Releases](https://github.com/archofthings/home-assistant-frank-energie/releases) · [Report a problem](https://github.com/archofthings/home-assistant-frank-energie/issues) · Not affiliated with Frank Energie
