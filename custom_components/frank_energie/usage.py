@@ -46,6 +46,9 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
         self.price_coordinator = price_coordinator
         self._daily_enabled = SENSOR_GROUP_DAILY_USAGE in groups
         self._monthly_enabled = SENSOR_GROUP_MONTHLY_USAGE in groups
+        # The month ("YYYY-MM") of the last successfully fetched monthly data, so a
+        # failed fetch never shows last month's data as this month's.
+        self._monthly_period: str | None = None
 
         super().__init__(
             hass,
@@ -91,10 +94,13 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
                         failures += 1
                         daily_date = previous.daily_date if previous else None
                 if self._monthly_enabled:
+                    period = today.strftime("%Y-%m")
                     monthly, ok = await self._fetch_part(
-                        "monthly", api.month_insights(site_reference, today.strftime("%Y-%m")),
-                        previous.monthly if previous else None,
+                        "monthly", api.month_insights(site_reference, period),
+                        previous.monthly if previous and self._monthly_period == period else None,
                     )
+                    if ok:
+                        self._monthly_period = period
                     failures += not ok
             except (AuthException, AuthRequiredException) as ex:
                 # The library wraps exceptions raised while querying (e.g. an

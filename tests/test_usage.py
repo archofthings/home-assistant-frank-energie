@@ -148,6 +148,28 @@ async def test_daily_failure_keeps_previous_daily_with_its_date_and_fresh_monthl
 
 
 @pytest.mark.parametrize(
+    "failure_time, keeps_monthly",
+    [("2026-01-20 12:00:00+00:00", True), ("2026-02-01 12:00:00+00:00", False)],
+    ids=["same_month", "new_month"],
+)
+async def test_monthly_failure_keeps_previous_monthly_only_within_the_same_month(
+    coordinator, mock_api, freezer, failure_time, keeps_monthly
+):
+    """A failed monthly fetch keeps the previous monthly data, but never shows last month's data as this month's."""
+    monthly = make_month_insights()
+    mock_api.period_usage_and_costs.return_value = make_period_usage_and_costs()
+    mock_api.month_insights.return_value = monthly
+    coordinator.data = await coordinator._async_update_data()
+
+    freezer.move_to(failure_time)
+    mock_api.month_insights.side_effect = ValueError("Could not find a first or last meter reading")
+    data = await coordinator._async_update_data()
+
+    assert data.daily is not None
+    assert data.monthly == (monthly if keeps_monthly else None)
+
+
+@pytest.mark.parametrize(
     "exc_cls", [AuthException, AuthRequiredException], ids=["auth_exception", "auth_required_exception"]
 )
 async def test_auth_error_raises_update_failed_not_config_entry_auth_failed(coordinator, mock_api, exc_cls):
