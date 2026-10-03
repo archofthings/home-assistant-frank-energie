@@ -26,12 +26,17 @@ Ready-to-use dashboard cards. Add a card with **Edit dashboard → Add card → 
 - [Usage per month](#usage-per-month)
 - [Invoices per month, this year and last year](#invoices-per-month-this-year-and-last-year)
 - [This month: actual and expected](#this-month-actual-and-expected)
+- [This month at a glance](#this-month-at-a-glance)
+- [Cost breakdown this month](#cost-breakdown-this-month)
+- [Month chart with navigation](#month-chart-with-navigation)
+- [Real and saved costs per month](#real-and-saved-costs-per-month)
 
 ## Before you start
 
 | Cards marked | Need |
 |---|---|
 | **ApexCharts** | The [ApexCharts Card](https://github.com/RomRider/apexcharts-card) from HACS |
+| **Mushroom** | The [Mushroom cards](https://github.com/piitaya/lovelace-mushroom) from HACS, version 5 or newer |
 | **Built-in** | Nothing extra |
 
 Each card says which [sensor group](Configuration#sensor-groups) it needs. Replace the entity IDs with yours if they differ, see [About entity IDs](Home#about-entity-ids-on-this-wiki).
@@ -44,6 +49,8 @@ Each card says which [sensor group](Configuration#sensor-groups) it needs. Repla
 - Don't return `null` values and don't use an `area` series; the card then stays on "Loading".
 - When you change a card: a series returns either `[time, value]` pairs, or `{ x, y, fillColor }` objects for coloured columns. Use the objects only on an axis with a fixed `min` and `max`; on an automatic axis the card stays on "Loading".
 - If a card shows nothing at all, check that the pasted `data_generator` code is complete. One cut-off line stops the whole card.
+- **Stacked columns:** leave out the card's own `yaxis:` list and set the axis under `apex_config`; with a `yaxis:` list the columns stand next to each other. Give every series one value per day or month (0 where there is no data), otherwise the columns become very thin.
+- A card with `update_interval` only reloads on that timer and ignores changes of its entity. Leave it out when a helper should switch the chart.
 - The tooltip uses Dutch date notation (`nl-NL`); change it to your own, for example `en-GB`.
 
 ---
@@ -990,6 +997,560 @@ needle: true
 ```
 
 Set `max` to roughly your expected costs for a whole month.
+
+## This month at a glance
+
+**Mushroom.** Needs: *Costs and invoices*. Three tiles like the overview in the Frank Energie app: the expected costs up to the last meter reading, the real costs, and the difference.
+
+![Expected, real and saved costs of this month as three tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_this_month.png)
+
+```yaml
+type: grid
+columns: 3
+square: false
+cards:
+  - type: custom:mushroom-template-card
+    primary: Expected
+    secondary: '€ {{ "%.2f" | format(states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0)) | replace(".", ",") }}'
+    icon: mdi:crystal-ball
+    color: orange
+    tap_action:
+      action: none
+  - type: custom:mushroom-template-card
+    primary: Cost
+    secondary: '€ {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0)) | replace(".", ",") }}'
+    icon: mdi:cash
+    color: red
+    tap_action:
+      action: none
+  - type: custom:mushroom-template-card
+    primary: Saved
+    secondary: '€ {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) - states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0)) | replace(".", ",") }}'
+    icon: mdi:cash-check
+    color: green
+    tap_action:
+      action: none
+```
+
+*Saved* is real minus expected, like *Verschil* in the app: a negative amount means you are below the expected costs. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
+
+## Cost breakdown this month
+
+**Mushroom.** Needs: *Costs and invoices* and *Monthly usage and costs*. Usage and costs of gas, electricity and feed-in this month, plus the fixed costs so far.
+
+![Usage and costs of gas, electricity and feed-in, and the fixed costs, as four tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_breakdown.png)
+
+<details>
+<summary>Show YAML</summary>
+
+```yaml
+type: grid
+columns: 4
+square: false
+cards:
+  - type: custom:mushroom-template-card
+    primary: Gas
+    secondary: |-
+      {{ "%.1f" | format((states("sensor.frank_energie_costs_gas_usage_this_month") | float(0))) | replace(".", ",") }} m³
+      € {{ "%.2f" | format((states("sensor.frank_energie_costs_gas_costs_this_month") | float(0))) | replace(".", ",") }}
+    multiline_secondary: true
+    icon: mdi:fire
+    color: light-blue
+    vertical: true
+    tap_action:
+      action: none
+  - type: custom:mushroom-template-card
+    primary: Electricity
+    secondary: |-
+      {{ "%.1f" | format((states("sensor.frank_energie_costs_electricity_usage_this_month") | float(0))) | replace(".", ",") }} kWh
+      € {{ "%.2f" | format((states("sensor.frank_energie_costs_electricity_costs_this_month") | float(0))) | replace(".", ",") }}
+    multiline_secondary: true
+    icon: mdi:lightning-bolt
+    color: amber
+    vertical: true
+    tap_action:
+      action: none
+  - type: custom:mushroom-template-card
+    primary: Feed-in
+    secondary: |-
+      {{ "%.1f" | format(-(states("sensor.frank_energie_costs_feed_in_this_month") | float(0))) | replace(".", ",") }} kWh
+      € {{ "%.2f" | format(-(states("sensor.frank_energie_costs_feed_in_revenue_this_month") | float(0))) | replace(".", ",") }}
+    multiline_secondary: true
+    icon: mdi:solar-panel
+    color: deep-orange
+    vertical: true
+    tap_action:
+      action: none
+  - type: custom:mushroom-template-card
+    primary: Fixed
+    secondary: |-
+      until now
+      € {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) - states("sensor.frank_energie_costs_gas_costs_this_month") | float(0) - states("sensor.frank_energie_costs_electricity_costs_this_month") | float(0) + states("sensor.frank_energie_costs_feed_in_revenue_this_month") | float(0)) | replace(".", ",") }}
+    multiline_secondary: true
+    icon: mdi:calendar-month
+    color: grey
+    vertical: true
+    tap_action:
+      action: none
+```
+
+</details>
+
+There is no sensor for the fixed costs so far, so the *Fixed* tile calculates them: the real costs minus gas and electricity, plus the feed-in revenue. No gas or no feed-in? Remove that tile and its part of the *Fixed* calculation, and lower `columns`.
+
+## Month chart with navigation
+
+**ApexCharts, Mushroom, statistics.** Costs or usage per day as stacked columns, for the current month or an earlier one, like the *Inzicht* page of the Frank Energie app. Two rows of buttons choose the month and switch between costs, gas and electricity.
+
+![Costs per day of one month as stacked columns, with month buttons above and chart buttons below](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_month_chart.png)
+
+The buttons need two helpers. Create them under **Settings → Devices & services → Helpers**:
+
+| Helper | Type | Settings |
+|---|---|---|
+| `input_number.frank_costs_month_offset` | Number | Minimum `-24`, maximum `0`, step `1`. Set its value to `0` after creating it |
+| `input_select.frank_costs_chart` | Dropdown | Options `Costs`, `Gas`, `Electricity` |
+
+`0` is the current month, `-1` the previous one. Then add the cards below in this order. They are separate cards, so the charts can be shown and hidden.
+
+**1. Month buttons.** The middle button shows the chosen month and jumps back to the current month.
+
+<details>
+<summary>Show YAML</summary>
+
+```yaml
+type: grid
+columns: 3
+square: false
+cards:
+  - type: custom:mushroom-template-card
+    primary: Previous
+    icon: mdi:chevron-left
+    color: blue
+    tap_action:
+      action: perform-action
+      perform_action: input_number.decrement
+      target:
+        entity_id: input_number.frank_costs_month_offset
+  - type: custom:mushroom-template-card
+    primary: >-
+      {% set off = states("input_number.frank_costs_month_offset") | int(0) %}{% set m = now().month - 1 + off %}{{ now().replace(day=1).replace(year=now().year + m // 12, month=m % 12 + 1).strftime("%B %Y") }}
+    icon: mdi:calendar-month
+    color: grey
+    tap_action:
+      action: perform-action
+      perform_action: input_number.set_value
+      target:
+        entity_id: input_number.frank_costs_month_offset
+      data:
+        value: 0
+  - type: custom:mushroom-template-card
+    primary: Next
+    icon: mdi:chevron-right
+    color: >-
+      {% if states("input_number.frank_costs_month_offset") | int(0) < 0 %}blue{% else %}grey{% endif %}
+    tap_action:
+      action: perform-action
+      perform_action: input_number.increment
+      target:
+        entity_id: input_number.frank_costs_month_offset
+```
+
+</details>
+
+**2. The three charts.** Only the chart that matches the chosen option is visible. Replace `YOUR_SITE` in every `const id` line.
+
+<details>
+<summary>Show YAML: costs</summary>
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: false
+graph_span: 31d
+span:
+  start: month
+stacked: true
+update_delay: 200ms
+series:
+  - entity: input_number.frank_costs_month_offset
+    name: Gas
+    type: column
+    color: '#5BB4D6'
+    unit: €
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const id = "frank_energie:gas_costs_YOUR_SITE";
+      const sign = 1;
+      const off = parseInt(entity.state) || 0;
+      const y = start.getFullYear();
+      const m = start.getMonth();
+      const from = new Date(y, m + off, 1);
+      const to = new Date(y, m + off + 1, 1);
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: from.toISOString(), end_time: to.toISOString(), statistic_ids: [id], period: "day", types: ["change"]});
+      const byDay = {};
+      (r[id] || []).forEach((s) => { byDay[new Date(s.start).getDate()] = sign * s.change; });
+      const days = new Date(y, m + off + 1, 0).getDate();
+      const out = [];
+      for (let k = 1; k <= days; k++) { out.push([new Date(y, m, k).getTime(), byDay[k] || 0]); }
+      return out;
+  - entity: input_number.frank_costs_month_offset
+    name: Electricity
+    type: column
+    color: '#F2C043'
+    unit: €
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const id = "frank_energie:electricity_costs_YOUR_SITE";
+      const sign = 1;
+      const off = parseInt(entity.state) || 0;
+      const y = start.getFullYear();
+      const m = start.getMonth();
+      const from = new Date(y, m + off, 1);
+      const to = new Date(y, m + off + 1, 1);
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: from.toISOString(), end_time: to.toISOString(), statistic_ids: [id], period: "day", types: ["change"]});
+      const byDay = {};
+      (r[id] || []).forEach((s) => { byDay[new Date(s.start).getDate()] = sign * s.change; });
+      const days = new Date(y, m + off + 1, 0).getDate();
+      const out = [];
+      for (let k = 1; k <= days; k++) { out.push([new Date(y, m, k).getTime(), byDay[k] || 0]); }
+      return out;
+  - entity: input_number.frank_costs_month_offset
+    name: Feed-in
+    type: column
+    color: '#E8894F'
+    unit: €
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const id = "frank_energie:feed_in_revenue_YOUR_SITE";
+      const sign = -1;
+      const off = parseInt(entity.state) || 0;
+      const y = start.getFullYear();
+      const m = start.getMonth();
+      const from = new Date(y, m + off, 1);
+      const to = new Date(y, m + off + 1, 1);
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: from.toISOString(), end_time: to.toISOString(), statistic_ids: [id], period: "day", types: ["change"]});
+      const byDay = {};
+      (r[id] || []).forEach((s) => { byDay[new Date(s.start).getDate()] = sign * s.change; });
+      const days = new Date(y, m + off + 1, 0).getDate();
+      const out = [];
+      for (let k = 1; k <= days; k++) { out.push([new Date(y, m, k).getTime(), byDay[k] || 0]); }
+      return out;
+apex_config:
+  chart:
+    height: 260
+    stacked: true
+  xaxis:
+    labels:
+      datetimeUTC: false
+      format: dd
+  yaxis:
+    decimalsInFloat: 2
+  plotOptions:
+    bar:
+      columnWidth: 80%
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function(val) { return "Day " + new Date(val).getDate(); }
+visibility:
+  - condition: state
+    entity: input_select.frank_costs_chart
+    state: Costs
+```
+
+</details>
+
+<details>
+<summary>Show YAML: gas</summary>
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: false
+graph_span: 31d
+span:
+  start: month
+stacked: true
+update_delay: 200ms
+series:
+  - entity: input_number.frank_costs_month_offset
+    name: Gas
+    type: column
+    color: '#5BB4D6'
+    unit: m³
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const id = "frank_energie:gas_usage_YOUR_SITE";
+      const sign = 1;
+      const off = parseInt(entity.state) || 0;
+      const y = start.getFullYear();
+      const m = start.getMonth();
+      const from = new Date(y, m + off, 1);
+      const to = new Date(y, m + off + 1, 1);
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: from.toISOString(), end_time: to.toISOString(), statistic_ids: [id], period: "day", types: ["change"]});
+      const byDay = {};
+      (r[id] || []).forEach((s) => { byDay[new Date(s.start).getDate()] = sign * s.change; });
+      const days = new Date(y, m + off + 1, 0).getDate();
+      const out = [];
+      for (let k = 1; k <= days; k++) { out.push([new Date(y, m, k).getTime(), byDay[k] || 0]); }
+      return out;
+apex_config:
+  chart:
+    height: 260
+    stacked: true
+  xaxis:
+    labels:
+      datetimeUTC: false
+      format: dd
+  yaxis:
+    decimalsInFloat: 2
+  plotOptions:
+    bar:
+      columnWidth: 80%
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function(val) { return "Day " + new Date(val).getDate(); }
+visibility:
+  - condition: state
+    entity: input_select.frank_costs_chart
+    state: Gas
+```
+
+</details>
+
+<details>
+<summary>Show YAML: electricity and feed-in</summary>
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: false
+graph_span: 31d
+span:
+  start: month
+stacked: true
+update_delay: 200ms
+series:
+  - entity: input_number.frank_costs_month_offset
+    name: Electricity
+    type: column
+    color: '#F2C043'
+    unit: kWh
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const id = "frank_energie:electricity_usage_YOUR_SITE";
+      const sign = 1;
+      const off = parseInt(entity.state) || 0;
+      const y = start.getFullYear();
+      const m = start.getMonth();
+      const from = new Date(y, m + off, 1);
+      const to = new Date(y, m + off + 1, 1);
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: from.toISOString(), end_time: to.toISOString(), statistic_ids: [id], period: "day", types: ["change"]});
+      const byDay = {};
+      (r[id] || []).forEach((s) => { byDay[new Date(s.start).getDate()] = sign * s.change; });
+      const days = new Date(y, m + off + 1, 0).getDate();
+      const out = [];
+      for (let k = 1; k <= days; k++) { out.push([new Date(y, m, k).getTime(), byDay[k] || 0]); }
+      return out;
+  - entity: input_number.frank_costs_month_offset
+    name: Feed-in
+    type: column
+    color: '#E8894F'
+    unit: kWh
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const id = "frank_energie:feed_in_YOUR_SITE";
+      const sign = -1;
+      const off = parseInt(entity.state) || 0;
+      const y = start.getFullYear();
+      const m = start.getMonth();
+      const from = new Date(y, m + off, 1);
+      const to = new Date(y, m + off + 1, 1);
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: from.toISOString(), end_time: to.toISOString(), statistic_ids: [id], period: "day", types: ["change"]});
+      const byDay = {};
+      (r[id] || []).forEach((s) => { byDay[new Date(s.start).getDate()] = sign * s.change; });
+      const days = new Date(y, m + off + 1, 0).getDate();
+      const out = [];
+      for (let k = 1; k <= days; k++) { out.push([new Date(y, m, k).getTime(), byDay[k] || 0]); }
+      return out;
+apex_config:
+  chart:
+    height: 260
+    stacked: true
+  xaxis:
+    labels:
+      datetimeUTC: false
+      format: dd
+  yaxis:
+    decimalsInFloat: 2
+  plotOptions:
+    bar:
+      columnWidth: 80%
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function(val) { return "Day " + new Date(val).getDate(); }
+visibility:
+  - condition: state
+    entity: input_select.frank_costs_chart
+    state: Electricity
+```
+
+</details>
+
+**3. Chart buttons.** The active one is green.
+
+<details>
+<summary>Show YAML</summary>
+
+```yaml
+type: grid
+columns: 3
+square: false
+cards:
+  - type: custom:mushroom-template-card
+    primary: Costs
+    icon: mdi:currency-eur
+    color: >-
+      {% if is_state("input_select.frank_costs_chart", "Costs") %}green{% else %}grey{% endif %}
+    tap_action:
+      action: perform-action
+      perform_action: input_select.select_option
+      target:
+        entity_id: input_select.frank_costs_chart
+      data:
+        option: Costs
+  - type: custom:mushroom-template-card
+    primary: Gas
+    icon: mdi:fire
+    color: >-
+      {% if is_state("input_select.frank_costs_chart", "Gas") %}green{% else %}grey{% endif %}
+    tap_action:
+      action: perform-action
+      perform_action: input_select.select_option
+      target:
+        entity_id: input_select.frank_costs_chart
+      data:
+        option: Gas
+  - type: custom:mushroom-template-card
+    primary: Electricity
+    icon: mdi:lightning-bolt
+    color: >-
+      {% if is_state("input_select.frank_costs_chart", "Electricity") %}green{% else %}grey{% endif %}
+    tap_action:
+      action: perform-action
+      perform_action: input_select.select_option
+      target:
+        entity_id: input_select.frank_costs_chart
+      data:
+        option: Electricity
+```
+
+</details>
+
+Good to know:
+
+- The x-axis shows day numbers. An earlier month is drawn on the days of the current month, so when the current month is shorter, the last days of the earlier month are not shown.
+- The history starts 30 days before you turned the statistics on; earlier months stay empty.
+- The option names appear in the dropdown helper, in the `visibility` of each chart and in the buttons. Keep them the same when you rename them.
+- The charts load their data when the page opens and when you press a button. Reload the page to see new days.
+
+## Real and saved costs per month
+
+**ApexCharts.** Needs: *Costs and invoices*. One stacked column per month of this year: the real costs, and on top what you saved compared to the expected costs. The whole column is the expected amount; when a month costs more than expected, the saved part goes below zero.
+
+![Real and saved costs per month as stacked columns](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_real_vs_saved.png)
+
+<details>
+<summary>Show YAML</summary>
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Real vs saved costs per month
+graph_span: 1y
+span:
+  start: year
+stacked: true
+update_interval: 1h
+series:
+  - entity: sensor.frank_energie_costs_actual_monthly_cost
+    name: Real
+    type: column
+    color: red
+    unit: €
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const a = "sensor.frank_energie_costs_actual_monthly_cost";
+      const e = "sensor.frank_energie_costs_expected_monthly_cost_until_now";
+      const y = start.getFullYear();
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: new Date(y, 0, 1).toISOString(), end_time: new Date(y + 1, 0, 1).toISOString(), statistic_ids: [a, e], period: "month", types: ["state"]});
+      const act = {};
+      const exp = {};
+      (r[a] || []).forEach((s) => { act[new Date(s.start).getMonth()] = s.state; });
+      (r[e] || []).forEach((s) => { exp[new Date(s.start).getMonth()] = s.state; });
+      const out = [];
+      for (let m = 0; m < 12; m++) { const real = act[m] || 0; const saved = (exp[m] || 0) - real; out.push([new Date(y, m, 1).getTime(), real]); }
+      return out;
+  - entity: sensor.frank_energie_costs_actual_monthly_cost
+    name: Saved
+    type: column
+    color: green
+    unit: €
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const a = "sensor.frank_energie_costs_actual_monthly_cost";
+      const e = "sensor.frank_energie_costs_expected_monthly_cost_until_now";
+      const y = start.getFullYear();
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: new Date(y, 0, 1).toISOString(), end_time: new Date(y + 1, 0, 1).toISOString(), statistic_ids: [a, e], period: "month", types: ["state"]});
+      const act = {};
+      const exp = {};
+      (r[a] || []).forEach((s) => { act[new Date(s.start).getMonth()] = s.state; });
+      (r[e] || []).forEach((s) => { exp[new Date(s.start).getMonth()] = s.state; });
+      const out = [];
+      for (let m = 0; m < 12; m++) { const real = act[m] || 0; const saved = (exp[m] || 0) - real; out.push([new Date(y, m, 1).getTime(), saved]); }
+      return out;
+apex_config:
+  chart:
+    height: 260
+    stacked: true
+  xaxis:
+    labels:
+      datetimeUTC: false
+      format: MMM
+  yaxis:
+    decimalsInFloat: 0
+  plotOptions:
+    bar:
+      columnWidth: 70%
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function(val) { return new Date(val).toLocaleString("en-GB", { month: "long", year: "numeric" }); }
+```
+
+</details>
+
+The chart reads the history that Home Assistant keeps of the two monthly sensors, so it starts in the month you installed the integration and grows from there. A finished month shows the last value of that month, which can miss its final day because Frank Energie's data arrives a day later. These are total costs including the fixed costs.
 
 ## Something missing?
 
