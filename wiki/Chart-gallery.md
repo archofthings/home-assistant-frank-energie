@@ -48,6 +48,7 @@ Each card says which [sensor group](Configuration#sensor-groups) it needs. Repla
 - Use **one** column series with colours per column; a separate series per colour makes the columns very narrow.
 - Don't return `null` values and don't use an `area` series; the card then stays on "Loading".
 - When you change a card: a series returns either `[time, value]` pairs, or `{ x, y, fillColor }` objects for coloured columns. Use the objects only on an axis with a fixed `min` and `max`; on an automatic axis the card stays on "Loading".
+- With `show_states: true`, a series that returns `{ x, y, fillColor }` objects shows "N/A" in the header. Add `show:` → `in_header: raw` to that series; the header then shows the state of the entity, here the current price.
 - If a card shows nothing at all, check that the pasted `data_generator` code is complete. One cut-off line stops the whole card.
 - **Stacked columns:** leave out the card's own `yaxis:` list and set the axis under `apex_config`; with a `yaxis:` list the columns stand next to each other. Give every series one value per day or month (0 where there is no data), otherwise the columns become very thin.
 - A card with `update_interval` only reloads on that timer and ignores changes of its entity. Leave it out when a helper should switch the chart.
@@ -60,6 +61,8 @@ Each card says which [sensor group](Configuration#sensor-groups) it needs. Repla
 ## Today's prices
 
 **ApexCharts.** Needs: nothing extra (works without the price analysis). Columns are coloured with two prices you set in the card itself.
+
+![Today's electricity prices as columns coloured by two price limits](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/prices_simple_today.png)
 
 <details>
 <summary>Show YAML</summary>
@@ -89,6 +92,8 @@ series:
     yaxis_id: price
     float_precision: 3
     unit: €/kWh
+    show:
+      in_header: raw
     data_generator: >
       const cheap = 0.25;
 
@@ -128,6 +133,8 @@ apex_config:
 ## Today and tomorrow
 
 **ApexCharts.** Needs: nothing extra. Shows 48 hours; the second half fills in when tomorrow's prices are published.
+
+![Electricity prices of today and tomorrow in one chart](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/prices_today_tomorrow.png)
 
 <details>
 <summary>Show YAML</summary>
@@ -195,6 +202,8 @@ apex_config:
 
 **ApexCharts.** Needs: nothing extra. A compact chart that always starts at the current hour.
 
+![Electricity prices of the next 12 hours](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/prices_next_12_hours.png)
+
 <details>
 <summary>Show YAML</summary>
 
@@ -259,6 +268,8 @@ apex_config:
 
 **ApexCharts.** Needs: nothing extra. The gas price changes once a day, so a stepped line fits best.
 
+![Gas price of today and tomorrow as a stepped line](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/gas_price.png)
+
 <details>
 <summary>Show YAML</summary>
 
@@ -310,6 +321,8 @@ apex_config:
 
 **Built-in.** Needs: nothing extra. Set the two `severity` prices to your own cheap and expensive price.
 
+![Gauge with the current electricity price](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/price_gauge.png)
+
 ```yaml
 type: gauge
 entity: sensor.frank_energie_prices_current_electricity_price_all_in
@@ -326,6 +339,8 @@ severity:
 ## Price overview
 
 **Built-in.** Needs: *Daily statistics* and *Upcoming and tomorrow prices*. Remove the rows of a group you don't use.
+
+![Entities card with the current, next, lowest, highest and average prices](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/price_overview.png)
 
 ```yaml
 type: entities
@@ -375,6 +390,8 @@ content: |
 ## Price history
 
 **Built-in.** Needs: nothing extra. The average, lowest and highest all-in price per day over the last 30 days, from Home Assistant's long-term statistics.
+
+![History of the electricity price](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/price_history.png)
 
 ```yaml
 type: statistics-graph
@@ -592,6 +609,8 @@ grid_options:
 
 **ApexCharts.** One 48-hour chart with the levels of both days. The card reads the *tomorrow* sensor through `hass.states`.
 
+![Price analysis of today and tomorrow in one chart](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/analysis_today_tomorrow.png)
+
 <details>
 <summary>Show YAML</summary>
 
@@ -661,6 +680,8 @@ apex_config:
 ## Cheapest period card
 
 **Built-in.** The level now, the two on/off signals and when the next cheapest period starts and ends.
+
+![Entities card with the price level and the cheapest period](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/cheapest_period.png)
 
 ```yaml
 type: entities
@@ -789,6 +810,8 @@ No feed-in? Remove the *Feed-in* series. For gas, use `sensor.frank_energie_cost
 
 **Built-in, statistics.** Electricity costs, gas costs and feed-in revenue per day over the last 30 days.
 
+![Electricity costs, gas costs and feed-in revenue per day](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_per_day.png)
+
 ```yaml
 type: statistics-graph
 title: Costs per day
@@ -810,6 +833,8 @@ stat_types:
 
 **Built-in, statistics.** Electricity taken from the grid and fed back, per day.
 
+![Electricity usage and feed-in per day](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/usage_per_day.png)
+
 ```yaml
 type: statistics-graph
 title: Electricity per day
@@ -827,6 +852,8 @@ stat_types:
 
 Gas per day (a separate card, because the unit differs):
 
+![Gas usage per day](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/gas_per_day.png)
+
 ```yaml
 type: statistics-graph
 title: Gas per day
@@ -843,6 +870,8 @@ stat_types:
 ## Costs per month
 
 **Built-in, statistics.** The last 12 months. The history starts 30 days before you turned the statistics on and grows from there.
+
+![Electricity costs, gas costs and feed-in revenue per month](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_per_month.png)
 
 ```yaml
 type: statistics-graph
@@ -865,6 +894,8 @@ stat_types:
 
 **Built-in, statistics.**
 
+![Electricity usage and feed-in per month](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/usage_per_month.png)
+
 ```yaml
 type: statistics-graph
 title: Electricity per month
@@ -883,6 +914,8 @@ stat_types:
 ## Invoices per month, this year and last year
 
 **ApexCharts.** Needs: *Costs and invoices*. Every invoice of this year next to the same month of last year, from the `invoices` attribute. This works right away, also for the months before you installed the integration.
+
+![Invoices per month, this year next to last year](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/invoices_per_month.png)
 
 <details>
 <summary>Show YAML</summary>
@@ -960,6 +993,8 @@ The header shows the totals of both years. Last year's invoices are moved one ye
 
 **Built-in.** Needs: *Costs and invoices*, and *Monthly usage and costs* for the usage rows.
 
+![Entities card with this month's costs, expected costs and usage](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/this_month_entities.png)
+
 ```yaml
 type: entities
 title: This month
@@ -986,6 +1021,8 @@ entities:
 ```
 
 A gauge that shows whether you are above or below the expected costs:
+
+![Gauge with the costs of this month](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/this_month_gauge.png)
 
 ```yaml
 type: gauge
