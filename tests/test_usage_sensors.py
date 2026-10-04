@@ -247,6 +247,24 @@ async def test_monthly_feed_in_is_reported_positive(hass, enable_custom_integrat
     assert revenue_state.attributes["average_price"] == 0.157
 
 
+async def test_monthly_fixed_costs_until_now_adds_feed_in_revenue_back(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """Fixed costs until now = actual total - gas - electricity - raw feed-in (negative revenue)."""
+    entry = setup_authenticated_entry(hass, mock_frank_energie_class, [const.SENSOR_GROUP_MONTHLY_USAGE])
+    mock_frank_energie_class.month_insights.return_value = make_month_insights(
+        actualCostsUntilLastMeterReading=12.58,
+        gasDifference=make_difference(actualCosts=0.50),
+        electricityDifference=make_difference(actualCosts=4.05),
+        feedInDifference=make_difference(actualCosts=-0.58),
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert float(state_for_key(hass, entry, "fixed_costs_month_until_now").state) == 8.61
+
+
 async def test_monthly_last_reset_is_month_start_and_fixed_costs_has_no_state_class(
     hass, enable_custom_integrations, mock_frank_energie_class
 ):

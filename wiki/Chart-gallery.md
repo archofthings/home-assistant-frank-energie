@@ -1037,9 +1037,9 @@ Set `max` to roughly your expected costs for a whole month.
 
 ## This month at a glance
 
-**Mushroom.** Needs: *Costs and invoices*. Three tiles like the overview in the Frank Energie app: the expected costs up to the last meter reading, the real costs, and the difference.
+**Mushroom.** Needs: *Costs and invoices*. Three tiles like the overview in the Frank Energie app: the expected costs up to the last meter reading, the real costs, and the difference, with percentages that show how far the real costs are from the expected costs.
 
-![Expected, real and saved costs of this month as three tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_this_month.png)
+![Expected costs, real costs and the difference of this month as three tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_this_month.png)
 
 ```yaml
 type: grid
@@ -1054,26 +1054,34 @@ cards:
     tap_action:
       action: none
   - type: custom:mushroom-template-card
-    primary: Cost
-    secondary: '€ {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0)) | replace(".", ",") }}'
+    primary: Real costs
+    secondary: |-
+      {% set e = states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}
+      {% set a = states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) %}
+      € {{ "%.2f" | format(a) | replace(".", ",") }}{% if e > 0 %} ({{ (a / e * 100) | round(0) | int }}%){% endif %}
+    multiline_secondary: true
     icon: mdi:cash
     color: red
     tap_action:
       action: none
   - type: custom:mushroom-template-card
-    primary: Saved
-    secondary: '€ {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) - states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0)) | replace(".", ",") }}'
-    icon: mdi:cash-check
-    color: green
+    primary: Difference
+    secondary: |-
+      {% set e = states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}
+      {% set d = states("sensor.frank_energie_costs_monthly_cost_difference_until_now") | float(0) %}
+      € {{ "%+.2f" | format(d) | replace(".", ",") }}{% if e > 0 %} ({{ "%+d" | format((d / e * 100) | round(0) | int) }}%){% endif %}
+    multiline_secondary: true
+    icon: mdi:swap-vertical
+    color: blue
     tap_action:
       action: none
 ```
 
-*Saved* is real minus expected, like *Verschil* in the app: a negative amount means you are below the expected costs. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
+The percentages compare with the expected costs: *Real costs* shows the real costs as a share of the expected costs, *Difference* shows how far they are above (`+`) or below (`-`) them. *Difference* is the *Monthly cost difference until now* sensor (real minus expected, like *Verschil* in the app, version 1.8.3 or newer): a negative amount means you are below the expected costs. The percentages are left out while there are no expected costs yet. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
 
 ## Cost breakdown this month
 
-**Mushroom.** Needs: *Costs and invoices* and *Monthly usage and costs*. Usage and costs of gas, electricity and feed-in this month, plus the fixed costs so far.
+**Mushroom.** Needs: *Monthly usage and costs*. Usage and costs of gas, electricity and feed-in this month, plus the fixed costs so far.
 
 ![Usage and costs of gas, electricity and feed-in, and the fixed costs, as four tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_breakdown.png)
 
@@ -1122,7 +1130,7 @@ cards:
     primary: Fixed
     secondary: |-
       until now
-      € {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) - states("sensor.frank_energie_costs_gas_costs_this_month") | float(0) - states("sensor.frank_energie_costs_electricity_costs_this_month") | float(0) + states("sensor.frank_energie_costs_feed_in_revenue_this_month") | float(0)) | replace(".", ",") }}
+      € {{ "%.2f" | format(states("sensor.frank_energie_costs_fixed_costs_this_month_until_now") | float(0)) | replace(".", ",") }}
     multiline_secondary: true
     icon: mdi:calendar-month
     color: grey
@@ -1133,7 +1141,7 @@ cards:
 
 </details>
 
-There is no sensor for the fixed costs so far, so the *Fixed* tile calculates them: the real costs minus gas and electricity, plus the feed-in revenue. No gas or no feed-in? Remove that tile and its part of the *Fixed* calculation, and lower `columns`.
+The *Fixed* tile shows the *Fixed costs this month until now* sensor (version 1.8.3 or newer): the real costs minus gas and electricity, plus the feed-in revenue. No gas or no feed-in? Remove that tile and lower `columns`.
 
 ## Month chart with navigation
 
@@ -1588,6 +1596,89 @@ apex_config:
 </details>
 
 The chart reads the history that Home Assistant keeps of the two monthly sensors, so it starts in the month you installed the integration and grows from there. A finished month shows the last value of that month, which can miss its final day because Frank Energie's data arrives a day later. These are total costs including the fixed costs.
+
+**The last 12 months instead of this year.** The chart above starts empty every January. This variant always shows the current month and the 11 months before it.
+
+<details>
+<summary>Show YAML</summary>
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Real vs saved costs, last 12 months
+graph_span: 1y
+span:
+  end: month
+stacked: true
+update_interval: 1h
+series:
+  - entity: sensor.frank_energie_costs_actual_monthly_cost
+    name: Real
+    type: column
+    color: red
+    unit: €
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const a = "sensor.frank_energie_costs_actual_monthly_cost";
+      const e = "sensor.frank_energie_costs_expected_monthly_cost_until_now";
+      const last = new Date(end.getTime() - 1);
+      const y = last.getFullYear();
+      const m0 = last.getMonth() - 11;
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: new Date(y, m0, 1).toISOString(), end_time: new Date(y, m0 + 12, 1).toISOString(), statistic_ids: [a, e], period: "month", types: ["state"]});
+      const key = (d) => d.getFullYear() + "-" + d.getMonth();
+      const act = {};
+      const exp = {};
+      (r[a] || []).forEach((s) => { act[key(new Date(s.start))] = s.state; });
+      (r[e] || []).forEach((s) => { exp[key(new Date(s.start))] = s.state; });
+      const out = [];
+      for (let k = 0; k < 12; k++) { const d = new Date(y, m0 + k, 15); const real = act[key(d)] || 0; const saved = (exp[key(d)] || 0) - real; out.push([d.getTime(), real]); }
+      return out;
+  - entity: sensor.frank_energie_costs_actual_monthly_cost
+    name: Saved
+    type: column
+    color: green
+    unit: €
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const a = "sensor.frank_energie_costs_actual_monthly_cost";
+      const e = "sensor.frank_energie_costs_expected_monthly_cost_until_now";
+      const last = new Date(end.getTime() - 1);
+      const y = last.getFullYear();
+      const m0 = last.getMonth() - 11;
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: new Date(y, m0, 1).toISOString(), end_time: new Date(y, m0 + 12, 1).toISOString(), statistic_ids: [a, e], period: "month", types: ["state"]});
+      const key = (d) => d.getFullYear() + "-" + d.getMonth();
+      const act = {};
+      const exp = {};
+      (r[a] || []).forEach((s) => { act[key(new Date(s.start))] = s.state; });
+      (r[e] || []).forEach((s) => { exp[key(new Date(s.start))] = s.state; });
+      const out = [];
+      for (let k = 0; k < 12; k++) { const d = new Date(y, m0 + k, 15); const real = act[key(d)] || 0; const saved = (exp[key(d)] || 0) - real; out.push([d.getTime(), saved]); }
+      return out;
+apex_config:
+  chart:
+    height: 260
+    stacked: true
+  xaxis:
+    labels:
+      datetimeUTC: false
+      format: MMM
+  yaxis:
+    decimalsInFloat: 0
+  plotOptions:
+    bar:
+      columnWidth: 70%
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function(val) { return new Date(val).toLocaleString("en-GB", { month: "long", year: "numeric" }); }
+```
+
+</details>
 
 ## Something missing?
 

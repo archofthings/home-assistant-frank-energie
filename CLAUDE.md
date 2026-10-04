@@ -19,10 +19,13 @@ and `tests/conftest.py`. Library sources: `.venv/lib/python3.14/site-packages/py
 
 | File | What it does | Tests | Depends on (library / HA) |
 |---|---|---|---|
-| `__init__.py` | Entry setup/unload, site discovery for legacy entries, removes entities of disabled sensor groups, creates coordinators (analysis only when enabled), registers the action | `test_init.py`, `test_sensor_groups.py` | `FrankEnergie.UserSites` |
+| `__init__.py` | Entry setup/unload, site discovery for legacy entries, removes entities of disabled sensor groups, creates coordinators (analysis, usage, contract and statistics import only when enabled), keeps the cost data sources in sync (`_async_setup_cost_data_sync`), registers the action | `test_init.py`, `test_sensor_groups.py` | `FrankEnergie.UserSites` |
 | `config_flow.py` | Login, site choice, reauth (`wrong_account`), reconfigure, options flow (page 1: time zone + sensor groups; page 2 `analysis` with two sections, flattened before saving) | `test_config_flow.py` | `FrankEnergie.login/UserSites`, `OptionsFlowWithReload` |
 | `coordinator.py` | Fetches prices/costs/invoices hourly, public fallback, token renewal + persistence, stale data, Amsterdam market day, `prices_tzinfo` | `test_coordinator.py` | `prices`, `user_prices`, `country_prices`, `user_country`, `month_summary`, `invoices`, `PriceData.__add__` |
-| `sensor.py` | All sensor descriptions (current/daily/upcoming/costs) and the analysis sensors; quarter-hour refresh | `test_sensor.py` | `PriceData.current_hour/today_*/tomorrow_*/upcoming_*/asdict` |
+| `usage.py` | Usage coordinator: yesterday's usage/costs and this month's insights every 3 hours, per enabled group; keeps previous data on failure | `test_usage.py`, `test_usage_sensors.py` | `period_usage_and_costs`, `month_insights` |
+| `contract.py` | Contract coordinator: contract price resolution state every 6 hours | `test_contract.py` | `user`, `contract_price_resolution_state` |
+| `energy_statistics.py` | Imports hourly usage and costs as external Energy dashboard statistics (first run 30 days, then every 3 hours) | `test_energy_statistics.py` | `period_usage_and_costs`, recorder statistics |
+| `sensor.py` | All sensor descriptions (current/daily/upcoming/costs, daily/monthly usage) and the analysis sensors; quarter-hour refresh | `test_sensor.py`, `test_usage_sensors.py` | `PriceData.current_hour/today_*/tomorrow_*/upcoming_*/asdict` |
 | `binary_sensor.py` | Analysis binary sensors (cheap price now, cheapest period now) | `test_price_analysis.py` | — |
 | `analysis.py` | Pure calculations: levels, cheapest period, windows, solar per slot | `test_analysis.py` | — (no HA, no library) |
 | `price_analysis.py` | Analysis coordinator: reads prices + solar, computes and caches results, debounced refresh | `test_price_analysis.py` | `DataUpdateCoordinator` |
