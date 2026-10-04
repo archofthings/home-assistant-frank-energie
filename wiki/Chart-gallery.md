@@ -1039,7 +1039,7 @@ Set `max` to roughly your expected costs for a whole month.
 
 **Mushroom.** Needs: *Costs and invoices*. Three tiles like the overview in the Frank Energie app: the expected costs up to the last meter reading, the real costs, and the difference, with percentages that show how far the real costs are from the expected costs.
 
-![Expected, real and saved costs of this month as three tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_this_month.png)
+![Expected costs, real costs and the difference of this month as three tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_this_month.png)
 
 ```yaml
 type: grid
@@ -1072,13 +1072,12 @@ cards:
       € {{ "%+.2f" | format(a - e) | replace(".", ",") }}{% if e > 0 %} ({{ "%+d" | format(((a - e) / e * 100) | round(0) | int) }}%){% endif %}
     multiline_secondary: true
     icon: mdi:swap-vertical
-    color: >-
-      {% if states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) > states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}red{% else %}green{% endif %}
+    color: blue
     tap_action:
       action: none
 ```
 
-The percentages compare with the expected costs: *Real costs* shows the real costs as a share of the expected costs, *Difference* shows how far they are above (`+`) or below (`-`) them. *Difference* is real minus expected, like *Verschil* in the app, and its icon is green when you are below the expected costs and red when you are above. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
+The percentages compare with the expected costs: *Real costs* shows the real costs as a share of the expected costs, *Difference* shows how far they are above (`+`) or below (`-`) them. *Difference* is real minus expected, like *Verschil* in the app: a negative amount means you are below the expected costs. The percentages are left out while there are no expected costs yet. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
 
 ## Cost breakdown this month
 
