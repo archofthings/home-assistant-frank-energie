@@ -381,7 +381,7 @@ grid_options:
 
 ### Costs this month
 
-Two rows of [Mushroom](https://github.com/piitaya/lovelace-mushroom) tiles (version 5 or newer) for a logged-in account, like the overview in the Frank Energie app. The first row shows the expected costs up to the last meter reading, the real costs and the difference, with percentages compared to the expected costs; a negative difference means you are below the expected costs. The difference is the *Monthly cost difference until now* sensor (version 1.9 or newer).
+Two rows of [Mushroom](https://github.com/piitaya/lovelace-mushroom) tiles (version 5 or newer) for a logged-in account, like the overview in the Frank Energie app. The first row shows the expected costs up to the last meter reading, the real costs and the difference, with percentages compared to the expected costs; a negative difference means you are below the expected costs. The difference is the *Monthly cost difference until now* sensor (version 1.8.3 or newer).
 
 ![Expected costs, real costs and the difference of this month as three tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_this_month.png)
 
@@ -426,7 +426,7 @@ cards:
 
 </details>
 
-The second row shows the usage and costs of gas, electricity and feed-in this month, and the fixed costs so far (the *Fixed costs this month until now* sensor, version 1.9 or newer).
+The second row shows the usage and costs of gas, electricity and feed-in this month, and the fixed costs so far (the *Fixed costs this month until now* sensor, version 1.8.3 or newer).
 
 ![Usage and costs of gas, electricity and feed-in, and the fixed costs, as four tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_breakdown.png)
 

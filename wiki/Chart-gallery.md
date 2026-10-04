@@ -1077,7 +1077,7 @@ cards:
       action: none
 ```
 
-The percentages compare with the expected costs: *Real costs* shows the real costs as a share of the expected costs, *Difference* shows how far they are above (`+`) or below (`-`) them. *Difference* is the *Monthly cost difference until now* sensor (real minus expected, like *Verschil* in the app, version 1.9 or newer): a negative amount means you are below the expected costs. The percentages are left out while there are no expected costs yet. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
+The percentages compare with the expected costs: *Real costs* shows the real costs as a share of the expected costs, *Difference* shows how far they are above (`+`) or below (`-`) them. *Difference* is the *Monthly cost difference until now* sensor (real minus expected, like *Verschil* in the app, version 1.8.3 or newer): a negative amount means you are below the expected costs. The percentages are left out while there are no expected costs yet. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
 
 ## Cost breakdown this month
 
@@ -1141,7 +1141,7 @@ cards:
 
 </details>
 
-The *Fixed* tile shows the *Fixed costs this month until now* sensor (version 1.9 or newer): the real costs minus gas and electricity, plus the feed-in revenue. No gas or no feed-in? Remove that tile and lower `columns`.
+The *Fixed* tile shows the *Fixed costs this month until now* sensor (version 1.8.3 or newer): the real costs minus gas and electricity, plus the feed-in revenue. No gas or no feed-in? Remove that tile and lower `columns`.
 
 ## Month chart with navigation
 
