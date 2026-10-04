@@ -1589,6 +1589,89 @@ apex_config:
 
 The chart reads the history that Home Assistant keeps of the two monthly sensors, so it starts in the month you installed the integration and grows from there. A finished month shows the last value of that month, which can miss its final day because Frank Energie's data arrives a day later. These are total costs including the fixed costs.
 
+**The last 12 months instead of this year.** The chart above starts empty every January. This variant always shows the current month and the 11 months before it.
+
+<details>
+<summary>Show YAML</summary>
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Real vs saved costs, last 12 months
+graph_span: 1y
+span:
+  end: month
+stacked: true
+update_interval: 1h
+series:
+  - entity: sensor.frank_energie_costs_actual_monthly_cost
+    name: Real
+    type: column
+    color: red
+    unit: €
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const a = "sensor.frank_energie_costs_actual_monthly_cost";
+      const e = "sensor.frank_energie_costs_expected_monthly_cost_until_now";
+      const last = new Date(end.getTime() - 1);
+      const y = last.getFullYear();
+      const m0 = last.getMonth() - 11;
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: new Date(y, m0, 1).toISOString(), end_time: new Date(y, m0 + 12, 1).toISOString(), statistic_ids: [a, e], period: "month", types: ["state"]});
+      const key = (d) => d.getFullYear() + "-" + d.getMonth();
+      const act = {};
+      const exp = {};
+      (r[a] || []).forEach((s) => { act[key(new Date(s.start))] = s.state; });
+      (r[e] || []).forEach((s) => { exp[key(new Date(s.start))] = s.state; });
+      const out = [];
+      for (let k = 0; k < 12; k++) { const d = new Date(y, m0 + k, 15); const real = act[key(d)] || 0; const saved = (exp[key(d)] || 0) - real; out.push([d.getTime(), real]); }
+      return out;
+  - entity: sensor.frank_energie_costs_actual_monthly_cost
+    name: Saved
+    type: column
+    color: green
+    unit: €
+    float_precision: 2
+    show:
+      legend_value: false
+    data_generator: |
+      const a = "sensor.frank_energie_costs_actual_monthly_cost";
+      const e = "sensor.frank_energie_costs_expected_monthly_cost_until_now";
+      const last = new Date(end.getTime() - 1);
+      const y = last.getFullYear();
+      const m0 = last.getMonth() - 11;
+      const r = await hass.callWS({type: "recorder/statistics_during_period", start_time: new Date(y, m0, 1).toISOString(), end_time: new Date(y, m0 + 12, 1).toISOString(), statistic_ids: [a, e], period: "month", types: ["state"]});
+      const key = (d) => d.getFullYear() + "-" + d.getMonth();
+      const act = {};
+      const exp = {};
+      (r[a] || []).forEach((s) => { act[key(new Date(s.start))] = s.state; });
+      (r[e] || []).forEach((s) => { exp[key(new Date(s.start))] = s.state; });
+      const out = [];
+      for (let k = 0; k < 12; k++) { const d = new Date(y, m0 + k, 15); const real = act[key(d)] || 0; const saved = (exp[key(d)] || 0) - real; out.push([d.getTime(), saved]); }
+      return out;
+apex_config:
+  chart:
+    height: 260
+    stacked: true
+  xaxis:
+    labels:
+      datetimeUTC: false
+      format: MMM
+  yaxis:
+    decimalsInFloat: 0
+  plotOptions:
+    bar:
+      columnWidth: 70%
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function(val) { return new Date(val).toLocaleString("en-GB", { month: "long", year: "numeric" }); }
+```
+
+</details>
+
 ## Something missing?
 
 Made a nice chart with this integration? Share it in a [GitHub issue](https://github.com/archofthings/home-assistant-frank-energie/issues) and it can be added here.
