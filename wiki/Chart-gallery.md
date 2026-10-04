@@ -1058,8 +1058,7 @@ cards:
     secondary: |-
       {% set e = states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}
       {% set a = states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) %}
-      € {{ "%.2f" | format(a) | replace(".", ",") }}
-      {% if e > 0 %}{{ (a / e * 100) | round(0) | int }}%{% endif %}
+      € {{ "%.2f" | format(a) | replace(".", ",") }}{% if e > 0 %} ({{ (a / e * 100) | round(0) | int }}%){% endif %}
     multiline_secondary: true
     icon: mdi:cash
     color: red
@@ -1070,8 +1069,7 @@ cards:
     secondary: |-
       {% set e = states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}
       {% set a = states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) %}
-      € {{ "%+.2f" | format(a - e) | replace(".", ",") }}
-      {% if e > 0 %}{{ "%+d" | format(((a - e) / e * 100) | round(0) | int) }}%{% endif %}
+      € {{ "%+.2f" | format(a - e) | replace(".", ",") }}{% if e > 0 %} ({{ "%+d" | format(((a - e) / e * 100) | round(0) | int) }}%){% endif %}
     multiline_secondary: true
     icon: mdi:swap-vertical
     color: >-
