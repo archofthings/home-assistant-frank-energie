@@ -5,6 +5,7 @@
 - [Options](#options)
 - [Price analysis](#price-analysis)
 - [Usage, costs and statistics](#usage-costs-and-statistics)
+- [Known issues](#known-issues)
 - [Charts](#charts)
 - [Log messages](#log-messages)
 - [Diagnostics](#diagnostics)
@@ -74,6 +75,15 @@
 | Days are missing in the statistics | Frank Energie has no data for those days. |
 | Numbers differ from my own meter | The statistics are Frank Energie's numbers. Small differences with a P1 reader are normal. |
 | An invoice sensor is unavailable | There is no invoice for that period (yet). |
+
+## Known issues
+
+These are caused by Frank Energie's service, not by the integration, and can't be solved in Home Assistant.
+
+| Issue | Explanation |
+|---|---|
+| Expected and actual monthly costs are a day behind the daily and monthly usage and costs (or the other way around) | Frank Energie publishes these numbers separately, sometimes hours apart. The integration refreshes all cost data as soon as one of them has a new day (see [Update schedule](How-it-works#update-schedule)), but it can only show what Frank Energie has published. They match again once Frank Energie has published everything, usually the same day. |
+| The costs chart from the statistics is a day behind the cost sensors | Same cause: the hourly usage and costs for that day are not published yet. The next import adds them. |
 
 ## Charts
 
