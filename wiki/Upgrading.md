@@ -43,7 +43,8 @@ The [release notes](https://github.com/archofthings/home-assistant-frank-energie
 
 | Version | Main additions |
 |---|---|
-| 1.8 | Hourly prices for entries without a login; prices keep working when costs or invoices fail; settings are asked during setup (1.8.2); cost data refreshes together when one part has a new day (1.8.3) |
+| 1.9 | *Monthly cost difference until now* and *Fixed costs this month until now* sensors; cost data refreshes together when one part has a new day |
+| 1.8 | Hourly prices for entries without a login; prices keep working when costs or invoices fail; settings are asked during setup (1.8.2) |
 | 1.7 | Energy dashboard statistics; *Only when cheap*; correction invoices added up per period |
 | 1.6 | *Tomorrow's prices available*; total this year and last year; *Price resolution* sensor; Dutch and English entity names |
 | 1.5 and earlier | `get_prices` action, extra price sensors, diagnostics, address choice, time zone option, price analysis, sensor groups, usage and costs |

@@ -121,6 +121,7 @@ Group **Costs and invoices** 🔑. Device: *Frank Energie - Costs*. Amounts in �
 |---|---|---|---|
 | Actual monthly cost | `actual_monthly_cost` | Your actual costs this month, up to the last meter reading | `Last update` (date of the last meter reading) |
 | Expected monthly cost until now | `expected_monthly_cost_until_now` | What Frank Energie expected you to have spent up to the last meter reading | `Last update` |
+| Monthly cost difference until now | `monthly_cost_difference_until_now` | Actual minus expected costs up to the last meter reading; negative when you pay less than expected | `Last update` |
 | Expected cost this month | `expected_cost_this_month` | Expected costs for the whole month | |
 | Invoice previous period | `invoice_previous_period` | Total of the previous invoice | `Start date`, `Description` |
 | Invoice current period | `invoice_current_period` | Total of the current invoice | `Start date`, `Description` |
@@ -211,6 +212,7 @@ Group **Monthly usage and costs** 🔑. Device: *Frank Energie - Costs*.
 | Feed-in this month | `feed_in_this_month` | kWh | `expected_usage`, `last_meter_reading` |
 | Feed-in revenue this month | `feed_in_revenue_this_month` | € | `expected_costs`, `average_price`, `last_meter_reading` |
 | Fixed costs this month (expected) | `fixed_costs_this_month_expected` | € | `last_meter_reading` |
+| Fixed costs this month until now | `fixed_costs_this_month_until_now` | € | `last_meter_reading` |
 
 | Attribute | Meaning |
 |---|---|
