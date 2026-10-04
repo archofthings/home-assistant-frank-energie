@@ -1068,8 +1068,8 @@ cards:
     primary: Difference
     secondary: |-
       {% set e = states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}
-      {% set a = states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) %}
-      € {{ "%+.2f" | format(a - e) | replace(".", ",") }}{% if e > 0 %} ({{ "%+d" | format(((a - e) / e * 100) | round(0) | int) }}%){% endif %}
+      {% set d = states("sensor.frank_energie_costs_monthly_cost_difference_until_now") | float(0) %}
+      € {{ "%+.2f" | format(d) | replace(".", ",") }}{% if e > 0 %} ({{ "%+d" | format((d / e * 100) | round(0) | int) }}%){% endif %}
     multiline_secondary: true
     icon: mdi:swap-vertical
     color: blue
@@ -1077,11 +1077,11 @@ cards:
       action: none
 ```
 
-The percentages compare with the expected costs: *Real costs* shows the real costs as a share of the expected costs, *Difference* shows how far they are above (`+`) or below (`-`) them. *Difference* is real minus expected, like *Verschil* in the app: a negative amount means you are below the expected costs. The percentages are left out while there are no expected costs yet. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
+The percentages compare with the expected costs: *Real costs* shows the real costs as a share of the expected costs, *Difference* shows how far they are above (`+`) or below (`-`) them. *Difference* is the *Monthly cost difference until now* sensor (real minus expected, like *Verschil* in the app, version 1.9 or newer): a negative amount means you are below the expected costs. The percentages are left out while there are no expected costs yet. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
 
 ## Cost breakdown this month
 
-**Mushroom.** Needs: *Costs and invoices* and *Monthly usage and costs*. Usage and costs of gas, electricity and feed-in this month, plus the fixed costs so far.
+**Mushroom.** Needs: *Monthly usage and costs*. Usage and costs of gas, electricity and feed-in this month, plus the fixed costs so far.
 
 ![Usage and costs of gas, electricity and feed-in, and the fixed costs, as four tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_breakdown.png)
 
@@ -1130,7 +1130,7 @@ cards:
     primary: Fixed
     secondary: |-
       until now
-      € {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) - states("sensor.frank_energie_costs_gas_costs_this_month") | float(0) - states("sensor.frank_energie_costs_electricity_costs_this_month") | float(0) + states("sensor.frank_energie_costs_feed_in_revenue_this_month") | float(0)) | replace(".", ",") }}
+      € {{ "%.2f" | format(states("sensor.frank_energie_costs_fixed_costs_this_month_until_now") | float(0)) | replace(".", ",") }}
     multiline_secondary: true
     icon: mdi:calendar-month
     color: grey
@@ -1141,7 +1141,7 @@ cards:
 
 </details>
 
-There is no sensor for the fixed costs so far, so the *Fixed* tile calculates them: the real costs minus gas and electricity, plus the feed-in revenue. No gas or no feed-in? Remove that tile and its part of the *Fixed* calculation, and lower `columns`.
+The *Fixed* tile shows the *Fixed costs this month until now* sensor (version 1.9 or newer): the real costs minus gas and electricity, plus the feed-in revenue. No gas or no feed-in? Remove that tile and lower `columns`.
 
 ## Month chart with navigation
 

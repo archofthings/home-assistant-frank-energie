@@ -381,7 +381,7 @@ grid_options:
 
 ### Costs this month
 
-Two rows of [Mushroom](https://github.com/piitaya/lovelace-mushroom) tiles (version 5 or newer) for a logged-in account, like the overview in the Frank Energie app. The first row shows the expected costs up to the last meter reading, the real costs and the difference, with percentages compared to the expected costs; a negative difference means you are below the expected costs.
+Two rows of [Mushroom](https://github.com/piitaya/lovelace-mushroom) tiles (version 5 or newer) for a logged-in account, like the overview in the Frank Energie app. The first row shows the expected costs up to the last meter reading, the real costs and the difference, with percentages compared to the expected costs; a negative difference means you are below the expected costs. The difference is the *Monthly cost difference until now* sensor (version 1.9 or newer).
 
 ![Expected costs, real costs and the difference of this month as three tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_this_month.png)
 
@@ -415,8 +415,8 @@ cards:
     primary: Difference
     secondary: |-
       {% set e = states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}
-      {% set a = states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) %}
-      € {{ "%+.2f" | format(a - e) | replace(".", ",") }}{% if e > 0 %} ({{ "%+d" | format(((a - e) / e * 100) | round(0) | int) }}%){% endif %}
+      {% set d = states("sensor.frank_energie_costs_monthly_cost_difference_until_now") | float(0) %}
+      € {{ "%+.2f" | format(d) | replace(".", ",") }}{% if e > 0 %} ({{ "%+d" | format((d / e * 100) | round(0) | int) }}%){% endif %}
     multiline_secondary: true
     icon: mdi:swap-vertical
     color: blue
@@ -426,7 +426,7 @@ cards:
 
 </details>
 
-The second row shows the usage and costs of gas, electricity and feed-in this month, and the fixed costs so far (calculated: the real costs minus gas and electricity, plus the feed-in revenue).
+The second row shows the usage and costs of gas, electricity and feed-in this month, and the fixed costs so far (the *Fixed costs this month until now* sensor, version 1.9 or newer).
 
 ![Usage and costs of gas, electricity and feed-in, and the fixed costs, as four tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_breakdown.png)
 
@@ -475,7 +475,7 @@ cards:
     primary: Fixed
     secondary: |-
       until now
-      € {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) - states("sensor.frank_energie_costs_gas_costs_this_month") | float(0) - states("sensor.frank_energie_costs_electricity_costs_this_month") | float(0) + states("sensor.frank_energie_costs_feed_in_revenue_this_month") | float(0)) | replace(".", ",") }}
+      € {{ "%.2f" | format(states("sensor.frank_energie_costs_fixed_costs_this_month_until_now") | float(0)) | replace(".", ",") }}
     multiline_secondary: true
     icon: mdi:calendar-month
     color: grey
