@@ -1037,7 +1037,7 @@ Set `max` to roughly your expected costs for a whole month.
 
 ## This month at a glance
 
-**Mushroom.** Needs: *Costs and invoices*. Three tiles like the overview in the Frank Energie app: the expected costs up to the last meter reading, the real costs, and the difference.
+**Mushroom.** Needs: *Costs and invoices*. Three tiles like the overview in the Frank Energie app: the expected costs up to the last meter reading, the real costs, and the difference, with percentages that show how far the real costs are from the expected costs.
 
 ![Expected, real and saved costs of this month as three tiles](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/costs_this_month.png)
 
@@ -1054,22 +1054,33 @@ cards:
     tap_action:
       action: none
   - type: custom:mushroom-template-card
-    primary: Cost
-    secondary: '€ {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0)) | replace(".", ",") }}'
+    primary: Real costs
+    secondary: |-
+      {% set e = states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}
+      {% set a = states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) %}
+      € {{ "%.2f" | format(a) | replace(".", ",") }}
+      {% if e > 0 %}{{ (a / e * 100) | round(0) | int }}%{% endif %}
+    multiline_secondary: true
     icon: mdi:cash
     color: red
     tap_action:
       action: none
   - type: custom:mushroom-template-card
-    primary: Saved
-    secondary: '€ {{ "%.2f" | format(states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) - states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0)) | replace(".", ",") }}'
-    icon: mdi:cash-check
-    color: green
+    primary: Difference
+    secondary: |-
+      {% set e = states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}
+      {% set a = states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) %}
+      € {{ "%+.2f" | format(a - e) | replace(".", ",") }}
+      {% if e > 0 %}{{ "%+d" | format(((a - e) / e * 100) | round(0) | int) }}%{% endif %}
+    multiline_secondary: true
+    icon: mdi:swap-vertical
+    color: >-
+      {% if states("sensor.frank_energie_costs_actual_monthly_cost") | float(0) > states("sensor.frank_energie_costs_expected_monthly_cost_until_now") | float(0) %}red{% else %}green{% endif %}
     tap_action:
       action: none
 ```
 
-*Saved* is real minus expected, like *Verschil* in the app: a negative amount means you are below the expected costs. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
+The percentages compare with the expected costs: *Real costs* shows the real costs as a share of the expected costs, *Difference* shows how far they are above (`+`) or below (`-`) them. *Difference* is real minus expected, like *Verschil* in the app, and its icon is green when you are below the expected costs and red when you are above. The amounts use a decimal comma; remove `| replace(".", ",")` for a decimal point.
 
 ## Cost breakdown this month
 
