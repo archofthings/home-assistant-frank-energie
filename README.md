@@ -519,6 +519,7 @@ Entity IDs and history are kept. What changes: Home Assistant 2026.9+ is require
 
 - **Sensors unavailable:** tomorrow's sensors wait for publication (around 13:00); gas sensors stay unavailable without a gas contract.
 - **Cost, invoice or monthly usage sensors unavailable while prices work:** Frank Energie's service for that data is failing (the log has a "Could not fetch" or "Could not update" warning). Prices keep updating and the sensors come back by themselves. On the 1st of the month the monthly usage sensors can be unavailable until Frank Energie has data for the new month.
+- **Known issue, cost numbers show different days:** the expected and actual monthly costs, the daily and monthly usage and costs, and the statistics come from separate Frank Energie services. The integration refreshes all of them as soon as one has a new day, but Frank Energie sometimes publishes them hours apart. Until then they can differ by a day; this is on Frank Energie's side and resolves by itself.
 - **Chart empty or stuck on "Loading":** see the chart [tips](#charts).
 - **Diagnostics:** integration menu (⋮) → **Download diagnostics**. Tokens, username, site reference and address are removed.
 - **Debug logging:**

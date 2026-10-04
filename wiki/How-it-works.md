@@ -13,6 +13,8 @@ When data is fetched, where it comes from and what happens when Frank Energie's 
 | Energy dashboard statistics 🔑 | Every 3 hours | Group *Energy dashboard statistics* |
 | Price analysis | Every quarter hour, and when new prices arrive | Calculated locally; only the solar forecast is read from another integration |
 
+**Cost data stays together.** Monthly costs, daily and monthly usage and costs, and the statistics are fetched on their own schedules. As soon as one of them receives data for a new day, the integration refreshes the others right away, so they don't show different days because of the schedule. If Frank Energie itself has not published one of them yet, they can still differ for a while; see [Known issues](Troubleshooting#known-issues).
+
 Between fetches the **sensor states still change**: at every quarter hour (:00, :15, :30, :45) the price sensors move to the current slot, using the prices already fetched.
 
 Frank Energie usually publishes tomorrow's prices around 13:00. Because of the faster checks after 12:00 they appear in Home Assistant within 15 minutes of publication.

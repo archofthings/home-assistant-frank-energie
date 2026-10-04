@@ -1,8 +1,9 @@
 """The Frank Energie component."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, Platform, CONF_TOKEN
@@ -12,11 +13,13 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from python_frank_energie import FrankEnergie
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, FrankEnergieException
 from python_frank_energie.models import DeliverySite
 
 from .const import (
+    DATA_MONTH_SUMMARY,
     DOMAIN,
     SENSOR_GROUP_COSTS,
     SENSOR_GROUP_DAILY_USAGE,
@@ -93,6 +96,79 @@ def _async_remove_disabled_group_entities(hass: HomeAssistant, entry: ConfigEntr
             registry.async_remove(entity.entity_id)
 
 
+def _async_setup_cost_data_sync(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    frank_coordinator: FrankEnergieCoordinator,
+    usage_coordinator: UsageCoordinator | None,
+    start_import: Callable[[], None] | None,
+) -> None:
+    """Refresh the other cost data sources as soon as one of them receives a new value.
+
+    The month summary (hourly), the usage data (every 3 hours) and the statistics import (every 3 hours) are
+    polled independently, so the dashboard could show a mix of days. A marker only counts as new when it is
+    not None and differs from the last non-None value seen; the initial data never triggers anything.
+    """
+
+    def _trigger(coordinator: DataUpdateCoordinator | None) -> None:
+        if coordinator is not None:
+            entry.async_create_background_task(hass, coordinator.async_request_refresh(), "frank_energie_cost_sync")
+        if start_import is not None:
+            start_import()
+
+    def _summary_date() -> str | None:
+        data = frank_coordinator.data
+        summary = data.get(DATA_MONTH_SUMMARY) if data is not None else None
+        return summary.lastMeterReadingDate if summary is not None else None
+
+    last_summary_date = _summary_date()
+
+    @callback
+    def _on_frank_update() -> None:
+        nonlocal last_summary_date
+        new_date = _summary_date()
+        if new_date is None or new_date == last_summary_date:
+            return
+        last_summary_date = new_date
+        _trigger(usage_coordinator)
+
+    entry.async_on_unload(frank_coordinator.async_add_listener(_on_frank_update))
+
+    if usage_coordinator is not None:
+        entry.async_on_unload(
+            usage_coordinator.async_add_listener(_usage_update_listener(usage_coordinator, frank_coordinator, _trigger))
+        )
+
+
+def _usage_update_listener(
+    usage_coordinator: UsageCoordinator,
+    frank_coordinator: FrankEnergieCoordinator,
+    trigger: Callable[[DataUpdateCoordinator], None],
+) -> Callable[[], None]:
+    """Build the usage coordinator listener: trigger a main refresh on a new daily or monthly value."""
+
+    def _markers() -> tuple[date | None, datetime | None]:
+        data = usage_coordinator.data
+        if data is None:
+            return None, None
+        daily_date = data.daily_date if data.daily is not None else None
+        monthly_date = data.monthly.lastMeterReadingDate if data.monthly is not None else None
+        return daily_date, monthly_date
+
+    last = _markers()
+
+    @callback
+    def _on_usage_update() -> None:
+        nonlocal last
+        new = _markers()
+        changed = any(n is not None and n != old for n, old in zip(new, last))
+        last = tuple(n if n is not None else old for n, old in zip(new, last))
+        if changed:
+            trigger(frank_coordinator)
+
+    return _on_usage_update
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up the Frank Energie component from a config entry."""
 
@@ -165,6 +241,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Imports hourly usage and costs as Energy dashboard statistics. The first
     # import runs in the background so setup isn't delayed; API errors are logged, not raised.
+    start_import = None
     if frank_coordinator.api.is_authenticated and SENSOR_GROUP_ENERGY_STATISTICS in groups:
         importer = FrankEnergieStatisticsImporter(hass, entry, frank_coordinator)
 
@@ -174,6 +251,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _start_import()
         entry.async_on_unload(async_track_time_interval(hass, _start_import, timedelta(hours=3)))
+        start_import = _start_import
+
+    _async_setup_cost_data_sync(hass, entry, frank_coordinator, usage_coordinator, start_import)
 
     entry.runtime_data = FrankEnergieRuntimeData(
         coordinator=frank_coordinator,

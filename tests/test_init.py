@@ -1,4 +1,7 @@
 """Tests for the Frank Energie integration setup (site discovery)."""
+from datetime import UTC, date, datetime
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_TOKEN
@@ -7,13 +10,17 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from python_frank_energie.exceptions import AuthException, AuthRequiredException, NetworkError, RequestException
 from python_frank_energie.models import DeliverySite
 
-from custom_components.frank_energie import const
+from custom_components.frank_energie import _async_setup_cost_data_sync, const
+from custom_components.frank_energie.usage import UsageData
 from tests.utils import (
     FAKE_ACCESS_TOKEN,
     FAKE_REFRESH_TOKEN,
     build_market_prices,
     configure_authenticated_api as _configure_authenticated_api,
     make_delivery_site,
+    make_month_insights,
+    make_month_summary,
+    make_period_usage_and_costs,
     make_user_sites,
 )
 
@@ -177,3 +184,75 @@ async def test_delivery_sites_skips_none_entries(hass, entry_with_token, mock_fr
     assert entry_with_token.state is ConfigEntryState.LOADED
     assert entry_with_token.data["site_reference"] == "active-site"
     assert entry_with_token.title == "Vondelstraat 7"
+
+M1 = datetime(2024, 1, 1, tzinfo=UTC)
+M2 = datetime(2024, 1, 2, tzinfo=UTC)
+
+
+def _sync_setup(frank_data, usage_data):
+    """Run _async_setup_cost_data_sync with stub coordinators; return the listeners and mocks."""
+    frank = MagicMock(data=frank_data)
+    usage = MagicMock(data=usage_data)
+    entry = MagicMock()
+    entry.async_create_background_task.side_effect = lambda _hass, coro, _name: coro.close()
+    start_import = MagicMock()
+    frank.async_request_refresh = AsyncMock()
+    usage.async_request_refresh = AsyncMock()
+    _async_setup_cost_data_sync(MagicMock(), entry, frank, usage, start_import)
+    on_frank = frank.async_add_listener.call_args[0][0]
+    return frank, usage, on_frank, usage.async_add_listener.call_args[0][0], start_import
+
+
+def _summary_data(day):
+    return {const.DATA_MONTH_SUMMARY: make_month_summary(lastMeterReadingDate=day)}
+
+
+def _usage_data(daily_date=None, monthly_date=None):
+    return UsageData(
+        daily=make_period_usage_and_costs() if daily_date else None,
+        daily_date=daily_date,
+        monthly=make_month_insights(lastMeterReadingDate=monthly_date) if monthly_date else None,
+    )
+
+
+@pytest.mark.parametrize(
+    "new_usage",
+    [_usage_data(date(2024, 1, 2), M1), _usage_data(date(2024, 1, 1), M2)],
+    ids=["new_daily", "new_monthly"],
+)
+async def test_cost_data_sync_new_value_refreshes_other_sources(new_usage):
+    """A new month summary date refreshes usage; a new daily/monthly value refreshes the main coordinator."""
+    frank, usage, on_frank, on_usage, start_import = _sync_setup(
+        _summary_data("2024-01-01"), _usage_data(date(2024, 1, 1), M1)
+    )
+
+    frank.data = _summary_data("2024-01-02")
+    on_frank()
+    usage.async_request_refresh.assert_called_once()
+    start_import.assert_called_once()
+
+    usage.data = new_usage
+    on_usage()
+    frank.async_request_refresh.assert_called_once()
+    assert start_import.call_count == 2
+
+
+async def test_cost_data_sync_ignores_unchanged_and_none_markers():
+    """Unchanged markers, markers turning None and returning to the old value trigger nothing."""
+    frank, usage, on_frank, on_usage, start_import = _sync_setup(
+        _summary_data("2024-01-01"), _usage_data(date(2024, 1, 1), M1)
+    )
+
+    for new_frank, new_usage in [
+        (_summary_data("2024-01-01"), _usage_data(date(2024, 1, 1), M1)),
+        ({const.DATA_MONTH_SUMMARY: None}, _usage_data()),
+        (None, None),
+        (_summary_data("2024-01-01"), _usage_data(date(2024, 1, 1), M1)),
+    ]:
+        frank.data, usage.data = new_frank, new_usage
+        on_frank()
+        on_usage()
+
+    usage.async_request_refresh.assert_not_called()
+    frank.async_request_refresh.assert_not_called()
+    start_import.assert_not_called()
