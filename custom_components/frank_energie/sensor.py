@@ -400,6 +400,24 @@ SENSOR_TYPES: tuple[FrankEnergieEntityDescription, ...] = (
         ),
     ),
     FrankEnergieEntityDescription(
+        key="costs_difference_until_last_meter_reading_date",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        authenticated=True,
+        service_name=SERVICE_NAME_COSTS,
+        value_fn=lambda data: (
+            _costs_difference(data[DATA_MONTH_SUMMARY])
+            if data[DATA_MONTH_SUMMARY] is not None
+            else None
+        ),
+        attr_fn=lambda data, tz: (
+            {"Last update": data[DATA_MONTH_SUMMARY].lastMeterReadingDate}
+            if data[DATA_MONTH_SUMMARY] is not None
+            else {}
+        ),
+    ),
+    FrankEnergieEntityDescription(
         key="expected_costs_this_month",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
@@ -662,6 +680,27 @@ def _monthly_value(data: UsageData | None, name: str, field: str) -> StateType:
     return value
 
 
+def _costs_difference(summary: Any) -> float | None:
+    """Return actual minus expected costs until the last meter reading, or None when either is missing."""
+    actual = summary.actualCostsUntilLastMeterReadingDate
+    expected = summary.expectedCostsUntilLastMeterReadingDate
+    if actual is None or expected is None:
+        return None
+    return round(actual - expected, 2)
+
+
+def _monthly_fixed_costs_until_now(data: UsageData | None) -> float | None:
+    """Return the actual monthly costs until now minus gas, electricity and feed-in (raw, negative revenue)."""
+    if data is None or data.monthly is None or data.monthly.actualCostsUntilLastMeterReading is None:
+        return None
+    total = data.monthly.actualCostsUntilLastMeterReading
+    for name in ("gasDifference", "electricityDifference", "feedInDifference"):
+        difference = getattr(data.monthly, name)
+        if difference is not None and difference.actualCosts is not None:
+            total -= difference.actualCosts
+    return round(total, 2)
+
+
 def _monthly_attrs(data: UsageData | None, extra: dict[str, Any]) -> dict[str, Any]:
     """Build the shared "last_meter_reading" attribute for a monthly_usage sensor, plus `extra`."""
     if data is None or data.monthly is None:
@@ -769,6 +808,16 @@ MONTHLY_USAGE_SENSOR_TYPES: tuple[UsageEntityDescription, ...] = (
         suggested_display_precision=2,
         value_fn=lambda data: data.monthly.expectedCostsFixed if data is not None and data.monthly else None,
         attr_fn=lambda data, tz: _monthly_attrs(data, {}),
+    ),
+    UsageEntityDescription(
+        key="fixed_costs_month_until_now",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=CURRENCY_EURO,
+        suggested_display_precision=2,
+        value_fn=_monthly_fixed_costs_until_now,
+        attr_fn=lambda data, tz: _monthly_attrs(data, {}),
+        last_reset_fn=_monthly_last_reset,
     ),
 )
 

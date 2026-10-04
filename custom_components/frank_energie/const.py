@@ -119,6 +119,7 @@ SENSOR_GROUP_BY_KEY: dict[str, str] = {
     "cheapest_period_now": SENSOR_GROUP_PRICE_ANALYSIS,
     "actual_costs_until_last_meter_reading_date": SENSOR_GROUP_COSTS,
     "expected_costs_until_last_meter_reading_date": SENSOR_GROUP_COSTS,
+    "costs_difference_until_last_meter_reading_date": SENSOR_GROUP_COSTS,
     "expected_costs_this_month": SENSOR_GROUP_COSTS,
     "invoice_previous_period": SENSOR_GROUP_COSTS,
     "invoice_current_period": SENSOR_GROUP_COSTS,
@@ -139,6 +140,7 @@ SENSOR_GROUP_BY_KEY: dict[str, str] = {
     "feed_in_month": SENSOR_GROUP_MONTHLY_USAGE,
     "feed_in_revenue_month": SENSOR_GROUP_MONTHLY_USAGE,
     "fixed_costs_month": SENSOR_GROUP_MONTHLY_USAGE,
+    "fixed_costs_month_until_now": SENSOR_GROUP_MONTHLY_USAGE,
 }
 
 

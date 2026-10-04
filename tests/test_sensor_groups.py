@@ -28,6 +28,7 @@ PRICE_ANALYSIS_ENTITIES = {
 COST_KEYS = [
     "actual_costs_until_last_meter_reading_date",
     "expected_costs_until_last_meter_reading_date",
+    "costs_difference_until_last_meter_reading_date",
     "expected_costs_this_month",
     "invoice_previous_period",
     "invoice_current_period",

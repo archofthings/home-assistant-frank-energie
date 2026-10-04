@@ -258,6 +258,9 @@
             "expected_costs_until_last_meter_reading_date": {
                 "name": "Verwachte kosten tot nu"
             },
+            "costs_difference_until_last_meter_reading_date": {
+                "name": "Verschil kosten tot nu"
+            },
             "expected_costs_this_month": {
                 "name": "Verwachte kosten deze maand"
             },
@@ -308,6 +311,9 @@
             },
             "fixed_costs_month": {
                 "name": "Vaste kosten deze maand (verwacht)"
+            },
+            "fixed_costs_month_until_now": {
+                "name": "Vaste kosten deze maand tot nu"
             },
             "price_analysis_today": {
                 "name": "Elektriciteitsprijsanalyse vandaag"

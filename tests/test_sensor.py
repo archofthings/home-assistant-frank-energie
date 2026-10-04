@@ -236,6 +236,24 @@ async def test_invoice_sensors_report_values(hass, mock_frank_energie_class, aut
     assert actual_costs_state.state == "10.0"
 
 
+async def test_costs_difference_is_actual_minus_expected(
+    hass, mock_frank_energie_class, authenticated_config_entry, freezer
+):
+    """The difference sensor is actual minus expected costs, negative when cheaper than expected."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:00:00+01:00")
+    summary = make_month_summary(
+        actualCostsUntilLastMeterReadingDate=10.1, expectedCostsUntilLastMeterReadingDate=12.35
+    )
+    setup_authenticated_api(mock_frank_energie_class, Invoices.empty(), month_summary=summary)
+
+    assert await hass.config_entries.async_setup(authenticated_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, authenticated_config_entry, "costs_difference_until_last_meter_reading_date")
+    assert float(state.state) == -2.25
+
+
 async def test_invoice_sensor_missing_invoice_is_unavailable(
     hass, mock_frank_energie_class, authenticated_config_entry, freezer
 ):
@@ -460,6 +478,7 @@ async def test_month_summary_none_leaves_cost_sensors_unavailable(
     for key in (
         "actual_costs_until_last_meter_reading_date",
         "expected_costs_until_last_meter_reading_date",
+        "costs_difference_until_last_meter_reading_date",
         "expected_costs_this_month",
     ):
         state = state_for_key(hass, authenticated_config_entry, key)

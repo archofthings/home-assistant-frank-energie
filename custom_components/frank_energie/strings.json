@@ -258,6 +258,9 @@
       "expected_costs_until_last_meter_reading_date": {
         "name": "Expected monthly cost until now"
       },
+      "costs_difference_until_last_meter_reading_date": {
+        "name": "Monthly cost difference until now"
+      },
       "expected_costs_this_month": {
         "name": "Expected cost this month"
       },
@@ -308,6 +311,9 @@
       },
       "fixed_costs_month": {
         "name": "Fixed costs this month (expected)"
+      },
+      "fixed_costs_month_until_now": {
+        "name": "Fixed costs this month until now"
       },
       "price_analysis_today": {
         "name": "Electricity price analysis today"
