@@ -84,6 +84,7 @@ These are caused by Frank Energie's service, not by the integration, and can't b
 |---|---|
 | Expected and actual monthly costs are a day behind the daily and monthly usage and costs (or the other way around) | Frank Energie publishes these numbers separately, sometimes hours apart. The integration refreshes all cost data as soon as one of them has a new day (see [Update schedule](How-it-works#update-schedule)), but it can only show what Frank Energie has published. They match again once Frank Energie has published everything, usually the same day. |
 | The costs chart from the statistics is a day behind the cost sensors | Same cause: the hourly usage and costs for that day are not published yet. The next import adds them. |
+| Yesterday's gas usage and costs are missing in the sensors, the month totals and the charts while electricity is there (or the other way around) | Frank Energie sometimes publishes yesterday's gas hours after the electricity. From version 1.8.4 the integration checks again every hour (instead of every 3 hours) while one of the two is missing and your contract has both, for the daily sensors and the statistics. The missing part appears within an hour after Frank Energie publishes it. |
 
 ## Charts
 

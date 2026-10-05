@@ -8,9 +8,9 @@ When data is fetched, where it comes from and what happens when Frank Energie's 
 |---|---|---|
 | Prices of today and tomorrow | Every 60 minutes | Every **15 minutes** from 12:00 (Dutch time) until tomorrow's electricity prices are there |
 | Monthly costs and invoices 🔑 | Together with the prices | When logged in |
-| Daily and monthly usage and costs 🔑 | Every 3 hours | Groups *Daily usage and costs*, *Monthly usage and costs* |
+| Daily and monthly usage and costs 🔑 | Every 3 hours, every hour while yesterday's gas or electricity is not complete yet (1.8.4) | Groups *Daily usage and costs*, *Monthly usage and costs* |
 | Contract price resolution 🔑 | Every 6 hours | Group *Costs and invoices* |
-| Energy dashboard statistics 🔑 | Every 3 hours | Group *Energy dashboard statistics* |
+| Energy dashboard statistics 🔑 | Every 3 hours, every hour while yesterday's gas or electricity is not complete yet (1.8.4) | Group *Energy dashboard statistics* |
 | Price analysis | Every quarter hour, and when new prices arrive | Calculated locally; only the solar forecast is read from another integration |
 
 **Cost data stays together.** Monthly costs, daily and monthly usage and costs, and the statistics are fetched on their own schedules. As soon as one of them receives data for a new day, the integration refreshes the others right away, so they don't show different days because of the schedule. If Frank Energie itself has not published one of them yet, they can still differ for a while; see [Known issues](Troubleshooting#known-issues).

@@ -113,7 +113,7 @@ Prices are fetched every hour, and every 15 minutes from 12:00 until tomorrow's 
 
 **Costs and invoices** 🔑: actual and expected monthly costs; the previous, current and upcoming invoice; the total of this year and last year (with an `invoices` attribute per period); and the price resolution of your contract.
 
-**Usage and costs** 🔑 (fetched every 3 hours):
+**Usage and costs** 🔑 (fetched every 3 hours, or every hour while yesterday's gas or electricity is not complete yet; version 1.8.4 or newer):
 
 | | Daily (yesterday) | Monthly (this month) |
 |---|---|---|
@@ -528,6 +528,7 @@ Entity IDs and history are kept. What changes: Home Assistant 2026.9+ is require
 - **Sensors unavailable:** tomorrow's sensors wait for publication (around 13:00); gas sensors stay unavailable without a gas contract.
 - **Cost, invoice or monthly usage sensors unavailable while prices work:** Frank Energie's service for that data is failing (the log has a "Could not fetch" or "Could not update" warning). Prices keep updating and the sensors come back by themselves. On the 1st of the month the monthly usage sensors can be unavailable until Frank Energie has data for the new month.
 - **Known issue, cost numbers show different days:** the expected and actual monthly costs, the daily and monthly usage and costs, and the statistics come from separate Frank Energie services. The integration refreshes all of them as soon as one has a new day, but Frank Energie sometimes publishes them hours apart. Until then they can differ by a day; this is on Frank Energie's side and resolves by itself.
+- **Known issue, yesterday's gas (or electricity) is missing:** Frank Energie sometimes publishes yesterday's gas hours after the electricity, or the other way around. Until then the daily sensors, the month totals and the statistics charts show only the part that is there. From version 1.8.4 the integration checks again every hour (instead of every 3 hours) while one of the two is missing and your contract has both, so the missing part appears within an hour after Frank Energie publishes it.
 - **Chart empty or stuck on "Loading":** see the chart [tips](#charts).
 - **Diagnostics:** integration menu (⋮) → **Download diagnostics**. Tokens, username, site reference and address are removed.
 - **Debug logging:**

@@ -145,13 +145,22 @@ def _usage_update_listener(
     frank_coordinator: FrankEnergieCoordinator,
     trigger: Callable[[DataUpdateCoordinator], None],
 ) -> Callable[[], None]:
-    """Build the usage coordinator listener: trigger a main refresh on a new daily or monthly value."""
+    """Build the usage coordinator listener: trigger a main refresh on a new daily or monthly value.
 
-    def _markers() -> tuple[date | None, datetime | None]:
+    The daily marker is the date plus the categories with items, so late gas data on the same day counts as new.
+    """
+
+    def _markers() -> tuple[tuple[date, tuple[str, ...]] | None, datetime | None]:
         data = usage_coordinator.data
         if data is None:
             return None, None
-        daily_date = data.daily_date if data.daily is not None else None
+        daily_date = None
+        if data.daily is not None:
+            filled = tuple(
+                name for name in ("electricity", "gas", "feed_in")
+                if getattr(data.daily, name) is not None and getattr(data.daily, name).items
+            )
+            daily_date = (data.daily_date, filled)
         monthly_date = data.monthly.lastMeterReadingDate if data.monthly is not None else None
         return daily_date, monthly_date
 
@@ -167,6 +176,27 @@ def _usage_update_listener(
             trigger(frank_coordinator)
 
     return _on_usage_update
+
+
+def _async_setup_statistics_import(
+    hass: HomeAssistant, entry: ConfigEntry, frank_coordinator: FrankEnergieCoordinator
+) -> Callable[[], None]:
+    """Start the statistics import now, every 3 hours and (while yesterday is incomplete) every hour."""
+    importer = FrankEnergieStatisticsImporter(hass, entry, frank_coordinator)
+
+    @callback
+    def _start_import(_now=None) -> None:
+        entry.async_create_background_task(hass, importer.async_import(), "frank_energie_statistics_import")
+
+    @callback
+    def _retry_import(_now=None) -> None:
+        if importer.incomplete:
+            _start_import()
+
+    _start_import()
+    entry.async_on_unload(async_track_time_interval(hass, _start_import, timedelta(hours=3)))
+    entry.async_on_unload(async_track_time_interval(hass, _retry_import, timedelta(hours=1)))
+    return _start_import
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -243,15 +273,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # import runs in the background so setup isn't delayed; API errors are logged, not raised.
     start_import = None
     if frank_coordinator.api.is_authenticated and SENSOR_GROUP_ENERGY_STATISTICS in groups:
-        importer = FrankEnergieStatisticsImporter(hass, entry, frank_coordinator)
-
-        @callback
-        def _start_import(_now=None) -> None:
-            entry.async_create_background_task(hass, importer.async_import(), "frank_energie_statistics_import")
-
-        _start_import()
-        entry.async_on_unload(async_track_time_interval(hass, _start_import, timedelta(hours=3)))
-        start_import = _start_import
+        start_import = _async_setup_statistics_import(hass, entry, frank_coordinator)
 
     _async_setup_cost_data_sync(hass, entry, frank_coordinator, usage_coordinator, start_import)
 

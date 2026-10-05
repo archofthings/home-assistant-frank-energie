@@ -1,7 +1,7 @@
 """Tests for UsageCoordinator (see usage.py)."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,8 +13,13 @@ from python_frank_energie.exceptions import AuthException, AuthRequiredException
 
 from custom_components.frank_energie import const
 from custom_components.frank_energie.coordinator import FrankEnergieCoordinator
-from custom_components.frank_energie.usage import UsageCoordinator, UsageData
-from tests.utils import make_month_insights, make_period_usage_and_costs
+from custom_components.frank_energie.usage import UsageCoordinator, UsageData, usage_day_incomplete
+from tests.utils import (
+    make_energy_category,
+    make_month_insights,
+    make_period_usage_and_costs,
+    make_usage_item,
+)
 
 # --------------------------------------------------------------------------
 # UsageCoordinator: fetches yesterday (Amsterdam market day - 1) and the
@@ -136,7 +141,8 @@ async def test_other_error_with_previous_data_keeps_it(coordinator, mock_api, ma
 
 async def test_daily_failure_keeps_previous_daily_with_its_date_and_fresh_monthly(coordinator, mock_api):
     """One failing part uses its previous value (and daily_date) while the other part is still updated."""
-    stale = UsageData(daily=make_period_usage_and_costs(), daily_date=date(2026, 1, 13), monthly=None)
+    daily = make_period_usage_and_costs(electricity=_category(), gas=_category())
+    stale = UsageData(daily=daily, daily_date=date(2026, 1, 13), monthly=None)
     coordinator.data = stale
     monthly = make_month_insights()
     mock_api.period_usage_and_costs.side_effect = NetworkError("timeout")
@@ -145,6 +151,8 @@ async def test_daily_failure_keeps_previous_daily_with_its_date_and_fresh_monthl
     data = await coordinator._async_update_data()
 
     assert data == UsageData(daily=stale.daily, daily_date=date(2026, 1, 13), monthly=monthly)
+    # The stale day is not yesterday, so the hourly retry applies even though the monthly part succeeded.
+    assert coordinator.update_interval == timedelta(hours=1)
 
 
 @pytest.mark.parametrize(
@@ -207,3 +215,41 @@ async def test_tokens_renewed_during_refresh_are_persisted(hass, entry, mock_api
 
     assert entry.data[CONF_ACCESS_TOKEN] == "new-access-token"
     assert entry.data[CONF_TOKEN] == "new-refresh-token"
+
+
+def _category(filled: bool = True, costs_total: float | None = 1.0):
+    items = [make_usage_item(datetime(2026, 1, 14, tzinfo=timezone.utc), datetime(2026, 1, 14, 1, tzinfo=timezone.utc),
+                             1.0, 1.0)] if filled else []
+    return make_energy_category(1.0 if filled else 0.0, costs_total if filled else None, "kWh", items)
+
+
+@pytest.mark.parametrize(
+    ("data", "incomplete"),
+    [
+        (None, True),
+        (make_period_usage_and_costs(electricity=_category(), gas=_category()), False),
+        (make_period_usage_and_costs(electricity=_category(), gas=_category(False)), True),
+        (make_period_usage_and_costs(electricity=_category(), gas=None), False),
+        (make_period_usage_and_costs(electricity=_category(False), gas=_category()), True),
+        (make_period_usage_and_costs(electricity=_category(), gas=_category(costs_total=None)), True),
+    ],
+    ids=["none", "complete", "gas_empty", "no_gas", "electricity_empty", "gas_costs_missing"],
+)
+def test_usage_day_incomplete(data, incomplete):
+    assert usage_day_incomplete(data) is incomplete
+
+
+async def test_update_interval_retries_hourly_while_gas_is_empty(coordinator, mock_api):
+    """An incomplete day shortens the interval to 1 hour; a complete day restores 3 hours."""
+    mock_api.month_insights.return_value = make_month_insights()
+    mock_api.period_usage_and_costs.return_value = make_period_usage_and_costs(
+        electricity=_category(), gas=_category(False)
+    )
+    await coordinator._async_update_data()
+    assert coordinator.update_interval == timedelta(hours=1)
+
+    mock_api.period_usage_and_costs.return_value = make_period_usage_and_costs(
+        electricity=_category(), gas=_category()
+    )
+    await coordinator._async_update_data()
+    assert coordinator.update_interval == timedelta(hours=3)
