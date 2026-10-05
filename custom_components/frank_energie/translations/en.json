@@ -44,15 +44,11 @@
                 "data": {
                     "prices_timezone": "Time zone for price times",
                     "public_price_resolution": "Price resolution",
-                    "sensor_groups": "Sensor groups",
-                    "feed_in_markup": "Feed-in markup (€/kWh)",
-                    "smart_feed_in": "Smart feed-in"
+                    "sensor_groups": "Sensor groups"
                 },
                 "data_description": {
                     "prices_timezone": "Only changes how the 'from'/'till' times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting.",
-                    "public_price_resolution": "Whether Frank Energie's public prices are fetched per quarter-hour or per hour. The hourly prices come from Frank Energie and equal the average of the four quarters. Not available when logged in: then the prices follow your contract.",
-                    "feed_in_markup": "The 'Inkoopvergoeding teruglevering' per kWh from your contract letter, including VAT. Usually negative. Only used by the Feed-in price sensor group.",
-                    "smart_feed_in": "Adds Frank Energie's 15% Smart feed-in bonus to positive prices. Only used by the Feed-in price sensor group."
+                    "public_price_resolution": "Whether Frank Energie's public prices are fetched per quarter-hour or per hour. The hourly prices come from Frank Energie and equal the average of the four quarters. Not available when logged in: then the prices follow your contract."
                 },
                 "description": "Choose which sensor groups to show. Current prices are always available. You can change these settings later with Configure.",
                 "title": "Frank Energie settings"
@@ -90,6 +86,18 @@
                     }
                 },
                 "title": "Price analysis settings"
+            },
+            "feed_in": {
+                "title": "Feed-in price settings",
+                "description": "The feed-in price is calculated, because Frank Energie does not provide it: the market price including VAT, plus 15% with Smart feed-in when the price is positive, plus your feed-in markup. The netted energy tax is not included. Used by 'Current electricity feed-in price'.",
+                "data": {
+                    "feed_in_markup": "Feed-in markup (€/kWh)",
+                    "smart_feed_in": "Smart feed-in"
+                },
+                "data_description": {
+                    "feed_in_markup": "The 'Inkoopvergoeding teruglevering' per kWh from your contract letter, including VAT. It is usually negative, for example -0.01271, which lowers the feed-in price.",
+                    "smart_feed_in": "Turn on if you use Frank Energie's Smart feed-in ('Slim terugleveren'). Adds the announced 15% bonus to positive prices."
+                }
             }
         }
     },
@@ -101,15 +109,11 @@
                 "data": {
                     "prices_timezone": "Time zone for price times",
                     "public_price_resolution": "Price resolution",
-                    "sensor_groups": "Sensor groups",
-                    "feed_in_markup": "Feed-in markup (€/kWh)",
-                    "smart_feed_in": "Smart feed-in"
+                    "sensor_groups": "Sensor groups"
                 },
                 "data_description": {
                     "prices_timezone": "Only changes how the 'from'/'till' times are displayed, not the actual moments they represent. If you have automations (e.g. in Node-RED) that parse this text, you may need to update them after changing this setting.",
-                    "public_price_resolution": "Whether Frank Energie's public prices are fetched per quarter-hour or per hour. The hourly prices come from Frank Energie and equal the average of the four quarters. Not available when logged in: then the prices follow your contract.",
-                    "feed_in_markup": "The 'Inkoopvergoeding teruglevering' per kWh from your contract letter, including VAT. Usually negative. Only used by the Feed-in price sensor group.",
-                    "smart_feed_in": "Adds Frank Energie's 15% Smart feed-in bonus to positive prices. Only used by the Feed-in price sensor group."
+                    "public_price_resolution": "Whether Frank Energie's public prices are fetched per quarter-hour or per hour. The hourly prices come from Frank Energie and equal the average of the four quarters. Not available when logged in: then the prices follow your contract."
                 }
             },
             "analysis": {
@@ -144,6 +148,18 @@
                             "cheapest_period_only_when_cheap": "Only turn on the cheapest period now sensor when the period's average price is at or below the cheap price threshold."
                         }
                     }
+                }
+            },
+            "feed_in": {
+                "title": "Feed-in price settings",
+                "description": "The feed-in price is calculated, because Frank Energie does not provide it: the market price including VAT, plus 15% with Smart feed-in when the price is positive, plus your feed-in markup. The netted energy tax is not included. Used by 'Current electricity feed-in price'.",
+                "data": {
+                    "feed_in_markup": "Feed-in markup (€/kWh)",
+                    "smart_feed_in": "Smart feed-in"
+                },
+                "data_description": {
+                    "feed_in_markup": "The 'Inkoopvergoeding teruglevering' per kWh from your contract letter, including VAT. It is usually negative, for example -0.01271, which lowers the feed-in price.",
+                    "smart_feed_in": "Turn on if you use Frank Energie's Smart feed-in ('Slim terugleveren'). Adds the announced 15% bonus to positive prices."
                 }
             }
         },

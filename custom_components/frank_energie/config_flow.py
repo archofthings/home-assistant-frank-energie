@@ -58,6 +58,7 @@ from .const import (
     PRICES_TIMEZONE_UTC,
     PUBLIC_PRICE_RESOLUTION_PT15M,
     PUBLIC_PRICE_RESOLUTION_PT60M,
+    SENSOR_GROUP_FEED_IN_PRICE,
     SENSOR_GROUP_PRICE_ANALYSIS,
     SENSOR_GROUPS,
     SENSOR_GROUPS_REQUIRE_LOGIN,
@@ -192,17 +193,33 @@ def _init_schema(options: Mapping[str, Any], logged_in: bool) -> vol.Schema:
             translation_key=CONF_SENSOR_GROUPS,
         )
     )
-    # The number selector only accepts steps >= 0.001, so "any" lets the markup have 5 decimals.
-    schema[
-        vol.Required(CONF_FEED_IN_MARKUP, default=options.get(CONF_FEED_IN_MARKUP, DEFAULT_FEED_IN_MARKUP))
-    ] = _price_number_selector(
-        "any", f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}", min=-1, max=1
-    )
-    schema[
-        vol.Required(CONF_SMART_FEED_IN, default=options.get(CONF_SMART_FEED_IN, DEFAULT_SMART_FEED_IN))
-    ] = selector.BooleanSelector()
     return vol.Schema(schema)
 
+
+def _feed_in_schema(options: Mapping[str, Any]) -> vol.Schema:
+    """Build the "feed_in" step schema: feed_in_markup and smart_feed_in."""
+    return vol.Schema(
+        {
+            # The number selector only accepts steps >= 0.001, so "any" lets the markup have 5 decimals.
+            vol.Required(
+                CONF_FEED_IN_MARKUP, default=options.get(CONF_FEED_IN_MARKUP, DEFAULT_FEED_IN_MARKUP)
+            ): _price_number_selector("any", f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}", min=-1, max=1),
+            vol.Required(
+                CONF_SMART_FEED_IN, default=options.get(CONF_SMART_FEED_IN, DEFAULT_SMART_FEED_IN)
+            ): selector.BooleanSelector(),
+        }
+    )
+
+
+ANALYSIS_KEYS = (
+    CONF_CHEAP_PRICE_THRESHOLD,
+    CONF_EXPENSIVE_PRICE_THRESHOLD,
+    CONF_CHEAPEST_PERIOD_MINUTES,
+    CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
+    CONF_SOLAR_FORECAST_ENTRY,
+    CONF_SOLAR_THRESHOLD_KWH,
+)
+FEED_IN_KEYS = (CONF_FEED_IN_MARKUP, CONF_SMART_FEED_IN)
 
 SECTION_PRICE_LEVELS = "price_levels"
 SECTION_CHEAPEST_PERIOD = "cheapest_period"
@@ -574,8 +591,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._entry_options = {
                 CONF_PRICES_TIMEZONE: user_input[CONF_PRICES_TIMEZONE],
                 CONF_SENSOR_GROUPS: list(user_input[CONF_SENSOR_GROUPS]),
-                CONF_FEED_IN_MARKUP: user_input[CONF_FEED_IN_MARKUP],
-                CONF_SMART_FEED_IN: user_input[CONF_SMART_FEED_IN],
             }
             if CONF_PUBLIC_PRICE_RESOLUTION in user_input:
                 self._entry_options[CONF_PUBLIC_PRICE_RESOLUTION] = user_input[CONF_PUBLIC_PRICE_RESOLUTION]
@@ -583,7 +598,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if SENSOR_GROUP_PRICE_ANALYSIS in self._entry_options[CONF_SENSOR_GROUPS]:
                 return await self.async_step_analysis()
 
-            return self._async_create_entry()
+            return await self._async_after_analysis()
 
         defaults = {
             CONF_PRICES_TIMEZONE: PRICES_TIMEZONE_HOME_ASSISTANT,
@@ -605,9 +620,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors={"base": "thresholds_invalid"},
                 )
             self._entry_options.update(flat_input)
-            return self._async_create_entry()
+            return await self._async_after_analysis()
 
         return self.async_show_form(step_id="analysis", data_schema=_analysis_schema({}, solar_entry_options))
+
+    async def _async_after_analysis(self) -> ConfigFlowResult:
+        """Continue to the "feed_in" step when feed_in_price is selected, else create the entry."""
+        if SENSOR_GROUP_FEED_IN_PRICE in self._entry_options[CONF_SENSOR_GROUPS]:
+            return await self.async_step_feed_in()
+        return self._async_create_entry()
+
+    async def async_step_feed_in(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Ask the feed-in price settings (only reached when feed_in_price is selected)."""
+        if user_input is not None:
+            self._entry_options.update(user_input)
+            return self._async_create_entry()
+
+        return self.async_show_form(step_id="feed_in", data_schema=_feed_in_schema({}))
 
     def _async_create_entry(self) -> ConfigFlowResult:
         return self.async_create_entry(
@@ -642,17 +671,13 @@ class OptionsFlowHandler(OptionsFlowWithReload):
         self._prices_timezone: str | None = None
         self._sensor_groups: list[str] | None = None
         self._public_price_resolution: str | None = None
-        self._feed_in: dict[str, Any] = {}
+        self._step_data: dict[str, Any] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the "init" step: prices_timezone and sensor_groups."""
         if user_input is not None:
             self._prices_timezone = user_input[CONF_PRICES_TIMEZONE]
             self._sensor_groups = list(user_input[CONF_SENSOR_GROUPS])
-            self._feed_in = {
-                CONF_FEED_IN_MARKUP: user_input[CONF_FEED_IN_MARKUP],
-                CONF_SMART_FEED_IN: user_input[CONF_SMART_FEED_IN],
-            }
             # Not shown for a logged-in entry: keep a stored value as is (None = nothing to save).
             self._public_price_resolution = user_input.get(
                 CONF_PUBLIC_PRICE_RESOLUTION, self.config_entry.options.get(CONF_PUBLIC_PRICE_RESOLUTION)
@@ -673,34 +698,38 @@ class OptionsFlowHandler(OptionsFlowWithReload):
             if SENSOR_GROUP_PRICE_ANALYSIS in self._sensor_groups:
                 return await self.async_step_analysis()
 
-            return self.async_create_entry(data=self._data_without_analysis())
+            return await self._async_after_analysis()
 
         logged_in = self.config_entry.data.get(CONF_ACCESS_TOKEN) is not None
         return self.async_show_form(
             step_id="init", data_schema=_init_schema(self.config_entry.options, logged_in)
         )
 
-    def _data_without_analysis(self) -> dict[str, Any]:
-        """Build the options entry when price_analysis wasn't selected.
+    def _build_data(self) -> dict[str, Any]:
+        """Build the options entry from the submitted pages.
 
-        Any previously stored price analysis options are kept as is, so
-        re-enabling the group later restores them.
+        The analysis / feed-in options of a page that was skipped (its group
+        isn't selected) are kept as is, so re-enabling the group later
+        restores them.
         """
         data: dict[str, Any] = {CONF_PRICES_TIMEZONE: self._prices_timezone, CONF_SENSOR_GROUPS: self._sensor_groups}
-        data.update(self._feed_in)
         if self._public_price_resolution is not None:
             data[CONF_PUBLIC_PRICE_RESOLUTION] = self._public_price_resolution
-        for key in (
-            CONF_CHEAP_PRICE_THRESHOLD,
-            CONF_EXPENSIVE_PRICE_THRESHOLD,
-            CONF_CHEAPEST_PERIOD_MINUTES,
-            CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
-            CONF_SOLAR_FORECAST_ENTRY,
-            CONF_SOLAR_THRESHOLD_KWH,
-        ):
-            if key in self.config_entry.options:
-                data[key] = self.config_entry.options[key]
+        skipped = {
+            SENSOR_GROUP_PRICE_ANALYSIS: ANALYSIS_KEYS,
+            SENSOR_GROUP_FEED_IN_PRICE: FEED_IN_KEYS,
+        }
+        for group, keys in skipped.items():
+            if group not in self._sensor_groups:
+                data.update({key: self.config_entry.options[key] for key in keys if key in self.config_entry.options})
+        data.update(self._step_data)
         return data
+
+    async def _async_after_analysis(self) -> ConfigFlowResult:
+        """Continue to the "feed_in" step when feed_in_price is selected, else create the entry."""
+        if SENSOR_GROUP_FEED_IN_PRICE in self._sensor_groups:
+            return await self.async_step_feed_in()
+        return self.async_create_entry(data=self._build_data())
 
     async def async_step_analysis(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the "analysis" step: the price analysis fields (only reached when price_analysis is selected)."""
@@ -714,14 +743,17 @@ class OptionsFlowHandler(OptionsFlowWithReload):
                     data_schema=_analysis_schema(flat_input, solar_entry_options),
                     errors={"base": "thresholds_invalid"},
                 )
-            data = dict(flat_input)
-            data[CONF_PRICES_TIMEZONE] = self._prices_timezone
-            data[CONF_SENSOR_GROUPS] = self._sensor_groups
-            data.update(self._feed_in)
-            if self._public_price_resolution is not None:
-                data[CONF_PUBLIC_PRICE_RESOLUTION] = self._public_price_resolution
-            return self.async_create_entry(data=data)
+            self._step_data.update(flat_input)
+            return await self._async_after_analysis()
 
         return self.async_show_form(
             step_id="analysis", data_schema=_analysis_schema(self.config_entry.options, solar_entry_options)
         )
+
+    async def async_step_feed_in(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Manage the "feed_in" step: the feed-in price fields (only reached when feed_in_price is selected)."""
+        if user_input is not None:
+            self._step_data.update(user_input)
+            return self.async_create_entry(data=self._build_data())
+
+        return self.async_show_form(step_id="feed_in", data_schema=_feed_in_schema(self.config_entry.options))

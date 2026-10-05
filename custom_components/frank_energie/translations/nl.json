@@ -45,15 +45,11 @@
                 "data": {
                     "prices_timezone": "Tijdzone voor prijstijden",
                     "public_price_resolution": "Prijsresolutie",
-                    "sensor_groups": "Sensorgroepen",
-                    "feed_in_markup": "Terugleververgoeding (€/kWh)",
-                    "smart_feed_in": "Slim terugleveren"
+                    "sensor_groups": "Sensorgroepen"
                 },
                 "data_description": {
                     "prices_timezone": "Dit verandert alleen hoe de 'van'/'tot'-tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt.",
-                    "public_price_resolution": "Of de openbare prijzen van Frank Energie per kwartier of per uur worden opgehaald. De uurprijzen komen van Frank Energie en zijn gelijk aan het gemiddelde van de vier kwartieren. Niet beschikbaar als je bent ingelogd: dan volgen de prijzen je contract.",
-                    "feed_in_markup": "De 'Inkoopvergoeding teruglevering' per kWh uit je contractbrief, inclusief btw. Meestal negatief. Wordt alleen gebruikt door de sensorgroep Terugleverprijs.",
-                    "smart_feed_in": "Telt de 15% Slim terugleveren-bonus van Frank Energie op bij positieve prijzen. Wordt alleen gebruikt door de sensorgroep Terugleverprijs."
+                    "public_price_resolution": "Of de openbare prijzen van Frank Energie per kwartier of per uur worden opgehaald. De uurprijzen komen van Frank Energie en zijn gelijk aan het gemiddelde van de vier kwartieren. Niet beschikbaar als je bent ingelogd: dan volgen de prijzen je contract."
                 },
                 "description": "Kies welke sensorgroepen worden getoond. Actuele prijzen zijn altijd beschikbaar. Je kunt deze instellingen later wijzigen via Configureren.",
                 "title": "Frank Energie-instellingen"
@@ -91,6 +87,18 @@
                     }
                 },
                 "title": "Prijsanalyse-instellingen"
+            },
+            "feed_in": {
+                "title": "Instellingen terugleverprijs",
+                "description": "De terugleverprijs wordt berekend, omdat Frank Energie hem niet levert: de marktprijs inclusief btw, plus 15% met Slim terugleveren als de prijs positief is, plus je terugleververgoeding. De gesaldeerde energiebelasting zit er niet in. Gebruikt door 'Huidige terugleverprijs elektriciteit'.",
+                "data": {
+                    "feed_in_markup": "Terugleververgoeding (€/kWh)",
+                    "smart_feed_in": "Slim terugleveren"
+                },
+                "data_description": {
+                    "feed_in_markup": "De 'Inkoopvergoeding teruglevering' per kWh uit je contractbrief, inclusief btw. Meestal negatief, bijvoorbeeld -0.01271, waardoor de terugleverprijs lager wordt.",
+                    "smart_feed_in": "Zet aan als je Slim terugleveren van Frank Energie gebruikt. Telt de aangekondigde 15% bonus op bij positieve prijzen."
+                }
             }
         }
     },
@@ -102,15 +110,11 @@
                 "data": {
                     "prices_timezone": "Tijdzone voor prijstijden",
                     "public_price_resolution": "Prijsresolutie",
-                    "sensor_groups": "Sensorgroepen",
-                    "feed_in_markup": "Terugleververgoeding (€/kWh)",
-                    "smart_feed_in": "Slim terugleveren"
+                    "sensor_groups": "Sensorgroepen"
                 },
                 "data_description": {
                     "prices_timezone": "Dit verandert alleen hoe de 'van'/'tot'-tijden worden weergegeven, niet de momenten die ze aanduiden. Heb je automatiseringen (bijvoorbeeld in Node-RED) die deze tekst uitlezen, dan moet je die mogelijk aanpassen nadat je deze instelling wijzigt.",
-                    "public_price_resolution": "Of de openbare prijzen van Frank Energie per kwartier of per uur worden opgehaald. De uurprijzen komen van Frank Energie en zijn gelijk aan het gemiddelde van de vier kwartieren. Niet beschikbaar als je bent ingelogd: dan volgen de prijzen je contract.",
-                    "feed_in_markup": "De 'Inkoopvergoeding teruglevering' per kWh uit je contractbrief, inclusief btw. Meestal negatief. Wordt alleen gebruikt door de sensorgroep Terugleverprijs.",
-                    "smart_feed_in": "Telt de 15% Slim terugleveren-bonus van Frank Energie op bij positieve prijzen. Wordt alleen gebruikt door de sensorgroep Terugleverprijs."
+                    "public_price_resolution": "Of de openbare prijzen van Frank Energie per kwartier of per uur worden opgehaald. De uurprijzen komen van Frank Energie en zijn gelijk aan het gemiddelde van de vier kwartieren. Niet beschikbaar als je bent ingelogd: dan volgen de prijzen je contract."
                 }
             },
             "analysis": {
@@ -145,6 +149,18 @@
                             "cheapest_period_only_when_cheap": "Zet 'Goedkoopste elektriciteitsperiode nu' alleen aan als de gemiddelde prijs van de periode op of onder de drempel voor een goedkope prijs ligt."
                         }
                     }
+                }
+            },
+            "feed_in": {
+                "title": "Instellingen terugleverprijs",
+                "description": "De terugleverprijs wordt berekend, omdat Frank Energie hem niet levert: de marktprijs inclusief btw, plus 15% met Slim terugleveren als de prijs positief is, plus je terugleververgoeding. De gesaldeerde energiebelasting zit er niet in. Gebruikt door 'Huidige terugleverprijs elektriciteit'.",
+                "data": {
+                    "feed_in_markup": "Terugleververgoeding (€/kWh)",
+                    "smart_feed_in": "Slim terugleveren"
+                },
+                "data_description": {
+                    "feed_in_markup": "De 'Inkoopvergoeding teruglevering' per kWh uit je contractbrief, inclusief btw. Meestal negatief, bijvoorbeeld -0.01271, waardoor de terugleverprijs lager wordt.",
+                    "smart_feed_in": "Zet aan als je Slim terugleveren van Frank Energie gebruikt. Telt de aangekondigde 15% bonus op bij positieve prijzen."
                 }
             }
         },

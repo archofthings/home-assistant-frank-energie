@@ -826,12 +826,6 @@ async def test_reconfigure_no_sites_aborts_no_sites(
 # --------------------------------------------------------------------------
 
 
-FEED_IN_DEFAULTS = {
-    const.CONF_FEED_IN_MARKUP: const.DEFAULT_FEED_IN_MARKUP,
-    const.CONF_SMART_FEED_IN: const.DEFAULT_SMART_FEED_IN,
-}
-
-
 async def test_unauthenticated_flow_creates_entry_with_no_data_and_home_assistant_prices_timezone_option(
     hass, enable_custom_integrations
 ):
@@ -849,7 +843,6 @@ async def test_unauthenticated_flow_creates_entry_with_no_data_and_home_assistan
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
         const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT15M,
         const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS],
-        **FEED_IN_DEFAULTS,
     }
     assert result2["type"] == "create_entry"
     assert result2["data"] == {}
@@ -879,7 +872,6 @@ async def test_login_single_site_creates_entry_with_home_assistant_prices_timezo
     expected_options = {
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
         const.CONF_SENSOR_GROUPS: const.DEFAULT_SENSOR_GROUPS,
-        **FEED_IN_DEFAULTS,
     }
     assert result2["type"] == "create_entry"
     assert result2["options"] == expected_options
@@ -898,7 +890,7 @@ async def _start_public_settings(hass):
 
 
 async def test_public_flow_stores_chosen_resolution_and_groups(hass, enable_custom_integrations):
-    """The settings step stores the chosen time zone, price resolution, sensor groups and feed-in settings."""
+    """The settings step stores the chosen time zone, price resolution and sensor groups; feed_in follows its group."""
     result = await _start_public_settings(hass)
     result2 = await _submit_settings(
         hass,
@@ -906,17 +898,20 @@ async def test_public_flow_stores_chosen_resolution_and_groups(hass, enable_cust
         {
             const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC,
             const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
-            const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING, const.SENSOR_GROUP_DAILY_STATISTICS],
-            const.CONF_FEED_IN_MARKUP: -0.02,
-            const.CONF_SMART_FEED_IN: True,
+            const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING, const.SENSOR_GROUP_FEED_IN_PRICE],
         },
+    )
+    assert result2["type"] == "form"
+    assert result2["step_id"] == "feed_in"
+    result2 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"], {const.CONF_FEED_IN_MARKUP: -0.02, const.CONF_SMART_FEED_IN: True}
     )
 
     assert result2["type"] == "create_entry"
     assert result2["options"] == {
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC,
         const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
-        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING, const.SENSOR_GROUP_DAILY_STATISTICS],
+        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING, const.SENSOR_GROUP_FEED_IN_PRICE],
         const.CONF_FEED_IN_MARKUP: -0.02,
         const.CONF_SMART_FEED_IN: True,
     }
@@ -992,7 +987,6 @@ async def test_settings_step_with_price_analysis_continues_to_analysis_step(hass
         const.CONF_SOLAR_THRESHOLD_KWH: 1.5,
         const.CONF_CHEAPEST_PERIOD_MINUTES: 120,
         const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: True,
-        **FEED_IN_DEFAULTS,
     }
     assert isinstance(result4["options"][const.CONF_CHEAPEST_PERIOD_MINUTES], int)
 
@@ -1063,9 +1057,7 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
         {
             const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
             const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
-            const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS],
-            const.CONF_FEED_IN_MARKUP: -0.02,
-            const.CONF_SMART_FEED_IN: True,
+            const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS, const.SENSOR_GROUP_FEED_IN_PRICE],
         },
     )
     assert result2["type"] == "form"
@@ -1085,6 +1077,12 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
             },
         },
     )
+    # feed_in comes after analysis when both groups are ticked.
+    assert result3["type"] == "form"
+    assert result3["step_id"] == "feed_in"
+    result3 = await hass.config_entries.options.async_configure(
+        result3["flow_id"], {const.CONF_FEED_IN_MARKUP: -0.02, const.CONF_SMART_FEED_IN: True}
+    )
     await hass.async_block_till_done()
 
     assert result3["type"] == "create_entry"
@@ -1094,13 +1092,16 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
         # "costs" is kept: this entry is public (no access token) and had it
         # enabled by default (legacy entry, no options), so it's added back
         # even though it wasn't offered as a choice (see config_flow.py).
-        const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS, const.SENSOR_GROUP_COSTS],
+        const.CONF_SENSOR_GROUPS: [
+            const.SENSOR_GROUP_PRICE_ANALYSIS,
+            const.SENSOR_GROUP_FEED_IN_PRICE,
+            const.SENSOR_GROUP_COSTS,
+        ],
         const.CONF_CHEAP_PRICE_THRESHOLD: const.DEFAULT_CHEAP_PRICE_THRESHOLD,
         const.CONF_EXPENSIVE_PRICE_THRESHOLD: const.DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
         const.CONF_CHEAPEST_PERIOD_MINUTES: const.DEFAULT_CHEAPEST_PERIOD_MINUTES,
         const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: True,
         const.CONF_SOLAR_THRESHOLD_KWH: const.DEFAULT_SOLAR_THRESHOLD_KWH,
-        # Feed-in settings survive the analysis page.
         const.CONF_FEED_IN_MARKUP: -0.02,
         const.CONF_SMART_FEED_IN: True,
     }
@@ -1157,6 +1158,69 @@ async def test_options_flow_without_price_analysis_creates_entry_directly_and_ke
         const.CONF_SMART_FEED_IN: True,
     }
     assert entry.state is ConfigEntryState.LOADED
+
+
+@pytest.mark.parametrize(
+    ("groups", "steps"),
+    [
+        ([], []),
+        ([const.SENSOR_GROUP_PRICE_ANALYSIS], ["analysis"]),
+        ([const.SENSOR_GROUP_FEED_IN_PRICE], ["feed_in"]),
+        ([const.SENSOR_GROUP_PRICE_ANALYSIS, const.SENSOR_GROUP_FEED_IN_PRICE], ["analysis", "feed_in"]),
+    ],
+    ids=["neither", "analysis", "feed_in", "both"],
+)
+async def test_options_flow_shows_analysis_and_feed_in_pages_only_for_their_groups(
+    hass, enable_custom_integrations, mock_frank_energie_class, groups, steps
+):
+    """The pages follow page 1 in the order analysis, feed_in; stored values of a skipped page are kept."""
+    stored = {
+        const.CONF_CHEAP_PRICE_THRESHOLD: 0.30,
+        const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.45,
+        const.CONF_FEED_IN_MARKUP: -0.03,
+        const.CONF_SMART_FEED_IN: True,
+    }
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS], **stored},
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(dt_util.now(), [0.2] * 24, [1.0] * 24)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC, const.CONF_SENSOR_GROUPS: groups}
+    )
+    seen = []
+    new_values = {
+        "analysis": {
+            SECTION_PRICE_LEVELS: {
+                const.CONF_CHEAP_PRICE_THRESHOLD: 0.2,
+                const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.5,
+                const.CONF_SOLAR_THRESHOLD_KWH: 1.5,
+            },
+            SECTION_CHEAPEST_PERIOD: {
+                const.CONF_CHEAPEST_PERIOD_MINUTES: 120,
+                const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: False,
+            },
+        },
+        "feed_in": {const.CONF_FEED_IN_MARKUP: -0.05, const.CONF_SMART_FEED_IN: False},
+    }
+    while result["type"] == "form":
+        seen.append(result["step_id"])
+        result = await hass.config_entries.options.async_configure(result["flow_id"], new_values[result["step_id"]])
+    await hass.async_block_till_done()
+
+    assert seen == steps
+    assert result["type"] == "create_entry"
+    assert entry.options[const.CONF_SENSOR_GROUPS] == groups
+    assert entry.options[const.CONF_CHEAP_PRICE_THRESHOLD] == (0.2 if "analysis" in steps else 0.30)
+    assert entry.options[const.CONF_FEED_IN_MARKUP] == (-0.05 if "feed_in" in steps else -0.03)
+    assert entry.options[const.CONF_SMART_FEED_IN] is ("feed_in" not in steps)
 
 
 async def test_options_flow_rejects_cheap_threshold_not_below_expensive(
