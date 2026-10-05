@@ -134,7 +134,7 @@ All entities per group are listed on the [Sensors](Sensors) page.
 
 ### Feed-in price settings
 
-Below the sensor groups on page 1, two settings for the **Feed-in price** group (version 1.8.4 or newer). They are only used by that group.
+When **Feed-in price** is ticked, a separate page follows page 1 (after the price analysis page, if that is ticked too) with two settings (version 1.8.4 or newer). Without the group the page is skipped and earlier values are kept.
 
 | Setting | Meaning | Default |
 |---|---|---|

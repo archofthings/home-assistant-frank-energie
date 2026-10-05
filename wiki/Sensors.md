@@ -245,7 +245,7 @@ Use it in the Energy dashboard under *Return to grid* → **Use an entity with c
 
 ### Settings
 
-On page 1 of **Configure**, see [Configuration](Configuration#feed-in-price-settings):
+On the *Feed-in price settings* page of **Configure** (shown when the group is ticked), see [Configuration](Configuration#feed-in-price-settings):
 
 | Setting | Meaning | Default |
 |---|---|---|

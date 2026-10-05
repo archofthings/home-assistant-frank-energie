@@ -62,7 +62,7 @@ Or add it by hand: in HACS, open the menu (⋮) → **Custom repositories**, add
 1. **Settings → Devices & services → Add integration → Frank Energie.**
 2. Log in with your Frank Energie account, or continue without it for public prices only.
 3. If your account has more than one address in delivery, choose one. Change it later with **Reconfigure** in the integration menu (⋮).
-4. Choose your settings: the time zone for price times, the price resolution (without an account), the sensor groups and the [feed-in settings](#feed-in-price). With *Price analysis* ticked, a page with its settings follows. Everything can be changed later under [Options](#options).
+4. Choose your settings: the time zone for price times, the price resolution (without an account), and the sensor groups. With *Price analysis* ticked, a page with its settings follows; with *Feed-in price* ticked, a page with the [feed-in settings](#feed-in-price) follows. Everything can be changed later under [Options](#options).
 
 If your login expires and can't be renewed, Home Assistant asks you to re-authenticate. The old `configuration.yaml` setup is no longer supported.
 
@@ -70,7 +70,7 @@ If your login expires and can't be renewed, Home Assistant asks you to re-authen
 
 Choose **Configure** on the integration.
 
-**Page 1:** the time zone for price times, the [price resolution](#price-resolution-quarter-hour-or-hourly-prices), the sensor groups and the two [feed-in settings](#feed-in-price) (*Feed-in markup* and *Smart feed-in*):
+**Page 1:** the time zone for price times, the [price resolution](#price-resolution-quarter-hour-or-hourly-prices), and the sensor groups:
 
 | Group | Entities | Default |
 |---|---|---|
@@ -87,6 +87,8 @@ Choose **Configure** on the integration.
 🔑 = only when logged in. Installations set up before groups existed keep all their sensors. Unticking a group removes its entities; ticking it again brings them back with the same entity IDs and history.
 
 **Page 2** (only with *Price analysis* ticked): the [price analysis](#price-analysis) settings.
+
+**Last page** (only with *Feed-in price* ticked): the two [feed-in settings](#feed-in-price), *Feed-in markup* and *Smart feed-in*.
 
 #### Price resolution: quarter-hour or hourly prices
 
@@ -140,7 +142,7 @@ Frank Energie publishes yesterday's usage, so the data arrives a day later. The 
 
 Tick **Feed-in price** under **Configure** (version 1.8.4 or newer) to get *Current electricity feed-in price* (€/kWh): the price you receive for electricity you return to the grid. In the Energy dashboard pick it under *Return to grid* → **Use an entity with current price**, as the live alternative to the day-late *Feed-in revenue* statistic. No login needed. The sensor has the same `prices` attribute as the other price sensors, with the feed-in price of every slot.
 
-Two settings on page 1 of **Configure**:
+Two settings on their own page that follows page 1 (and the price analysis page) of **Configure** when *Feed-in price* is ticked:
 
 - **Feed-in markup (€/kWh):** the *Inkoopvergoeding teruglevering* on your contract letter, including VAT. Usually negative; default -0.01271.
 - **Smart feed-in:** tick this if you have Frank Energie's Smart feed-in (*Slim terugleveren*). Off by default.
