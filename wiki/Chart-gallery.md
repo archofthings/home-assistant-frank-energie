@@ -416,7 +416,7 @@ These cards need the **Price analysis** group. Colours: yellowgreen = cheap + so
 
 ## Analysis today
 
-**ApexCharts.** Columns coloured by [level](Price-analysis#1-price-levels), the solar forecast on the right axis, and an optional *Sell* line: the price minus a fixed amount (here €0.11085) to show what feed-in earns. Remove the *Sell* or *Solar forecast* series if you don't use them.
+**ApexCharts.** Columns coloured by [level](Price-analysis#1-price-levels), the solar forecast on the right axis, and an optional *Sell* line: the [feed-in price](Sensors#feed-in-price) of every slot, read from the `prices` attribute of *Current electricity feed-in price* (needs the *Feed-in price* sensor group, version 1.8.4 or newer). The same series works in the tomorrow card. Remove the *Sell* or *Solar forecast* series if you don't use them.
 
 ![Today's prices coloured by level, with the Sell line and the solar forecast](https://raw.githubusercontent.com/archofthings/home-assistant-frank-energie/main/images/prices_today.png)
 
@@ -465,7 +465,7 @@ series:
         const centeredX = new Date(p.from).getTime() + 30 * 60 * 1000;
         return { x: centeredX, y: p.price, fillColor: colorMap[p.level] };
       });
-  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
+  - entity: sensor.frank_energie_prices_current_electricity_feed_in_price
     name: Sell
     type: line
     color: green
@@ -473,13 +473,15 @@ series:
     float_precision: 3
     stroke_width: 3
     data_generator: >
-      if (!entity.attributes.slots || entity.attributes.slots.length === 0) {
+      const prices = entity.attributes.prices;
+
+      if (!prices || prices.length === 0) {
         return [{ x: Date.now(), y: 0 }];
       }
 
-      return entity.attributes.slots.map((p) => {
+      return prices.map((p) => {
         const centeredX = new Date(p.from).getTime() + 30 * 60 * 1000;
-        return { x: centeredX, y: p.price - 0.11085 };
+        return { x: centeredX, y: p.price };
       });
   - entity: sensor.frank_energie_prices_electricity_price_analysis_today
     name: Solar forecast
