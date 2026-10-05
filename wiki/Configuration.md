@@ -128,8 +128,20 @@ Tick the groups you want. The current price sensors are always there.
 | **Daily usage and costs** | Yesterday's electricity, gas and feed-in usage and costs | Off | 🔑 |
 | **Monthly usage and costs** | This month's usage and costs, with expected values and fixed costs | Off | 🔑 |
 | **Energy dashboard statistics** | No entities: hourly usage and costs as long-term statistics | Off | 🔑 |
+| **Feed-in price** | *Current electricity feed-in price*, see [Sensors](Sensors#feed-in-price) (version 1.8.4) | Off | |
 
 All entities per group are listed on the [Sensors](Sensors) page.
+
+### Feed-in price settings
+
+Below the sensor groups on page 1, two settings for the **Feed-in price** group (version 1.8.4 or newer). They are only used by that group.
+
+| Setting | Meaning | Default |
+|---|---|---|
+| **Feed-in markup (€/kWh)** | The *Inkoopvergoeding teruglevering* per kWh from your contract letter, including VAT. Usually negative. Between -1 and 1. | -0.01271 |
+| **Smart feed-in** | Adds Frank Energie's 15% Smart feed-in bonus to positive prices | Off |
+
+How the price is calculated and what it does not include: see [Feed-in price](Sensors#feed-in-price).
 
 Good to know:
 

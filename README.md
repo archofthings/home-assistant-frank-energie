@@ -22,6 +22,7 @@ A Home Assistant custom integration for [Frank Energie](https://www.frankenergie
 - [Configuration](#configuration)
 - [Sensors](#sensors)
 - [Energy dashboard statistics](#energy-dashboard-statistics)
+- [Feed-in price](#feed-in-price)
 - [Price analysis](#price-analysis)
 - [Charts](#charts)
 - [Price list and get_prices action](#price-list-and-get_prices-action)
@@ -61,7 +62,7 @@ Or add it by hand: in HACS, open the menu (⋮) → **Custom repositories**, add
 1. **Settings → Devices & services → Add integration → Frank Energie.**
 2. Log in with your Frank Energie account, or continue without it for public prices only.
 3. If your account has more than one address in delivery, choose one. Change it later with **Reconfigure** in the integration menu (⋮).
-4. Choose your settings: the time zone for price times, the price resolution (without an account) and the sensor groups. With *Price analysis* ticked, a page with its settings follows. Everything can be changed later under [Options](#options).
+4. Choose your settings: the time zone for price times, the price resolution (without an account), the sensor groups and the [feed-in settings](#feed-in-price). With *Price analysis* ticked, a page with its settings follows. Everything can be changed later under [Options](#options).
 
 If your login expires and can't be renewed, Home Assistant asks you to re-authenticate. The old `configuration.yaml` setup is no longer supported.
 
@@ -69,7 +70,7 @@ If your login expires and can't be renewed, Home Assistant asks you to re-authen
 
 Choose **Configure** on the integration.
 
-**Page 1:** the time zone for price times, the [price resolution](#price-resolution-quarter-hour-or-hourly-prices) and the sensor groups:
+**Page 1:** the time zone for price times, the [price resolution](#price-resolution-quarter-hour-or-hourly-prices), the sensor groups and the two [feed-in settings](#feed-in-price) (*Feed-in markup* and *Smart feed-in*):
 
 | Group | Entities | Default |
 |---|---|---|
@@ -81,6 +82,7 @@ Choose **Configure** on the integration.
 | **Daily usage and costs** 🔑 | Yesterday's electricity, gas and feed-in usage and costs | Off |
 | **Monthly usage and costs** 🔑 | This month's usage and costs, with expected values | Off |
 | **Energy dashboard statistics** 🔑 | Hourly usage and costs as long-term statistics, see [Energy dashboard statistics](#energy-dashboard-statistics) | Off |
+| **Feed-in price** | *Current electricity feed-in price*, see [Feed-in price](#feed-in-price) (no login needed; version 1.8.4 or newer) | Off |
 
 🔑 = only when logged in. Installations set up before groups existed keep all their sensors. Unticking a group removes its entities; ticking it again brings them back with the same entity IDs and history.
 
@@ -107,6 +109,7 @@ Prices are fetched every hour, and every 15 minutes from 12:00 until tomorrow's 
 
 **Prices** (electricity €/kWh, gas €/m³):
 - *Current:* all-in, market price, including tax; VAT, sourcing markup and tax only are disabled by default.
+- *Feed-in price* (group *Feed-in price*, version 1.8.4 or newer): the current price you receive for electricity you return to the grid, see [Feed-in price](#feed-in-price).
 - *Statistics:* lowest, highest and average price today; next price; tomorrow's average, lowest and highest; lowest and highest upcoming price. Lowest/highest/next have a `from_time` attribute.
 - The current all-in, market and including-tax sensors have the [`prices` attribute](#price-list-and-get_prices-action).
 - *Tomorrow's prices available* (binary sensor) turns on when tomorrow's electricity prices arrive, and off again after midnight.
@@ -128,10 +131,27 @@ Prices are fetched every hour, and every 15 minutes from 12:00 until tomorrow's 
 Tick **Energy dashboard statistics** 🔑 under **Configure** to import Frank Energie's hourly usage and costs as long-term statistics. This creates no entities; six statistics appear in the pickers of the Energy dashboard: electricity usage, electricity costs, feed-in, feed-in revenue, gas usage and gas costs. For example:
 
 - *Grid consumption:* Frank electricity usage, with **Use an entity tracking the total costs** set to Frank electricity costs.
-- *Return to grid:* Frank feed-in, with Frank feed-in revenue as the compensation.
+- *Return to grid:* Frank feed-in, with Frank feed-in revenue as the compensation. Want the price live instead of a day late? Use **Use an entity with current price** and pick *Current electricity feed-in price* (see [Feed-in price](#feed-in-price)).
 - *Gas consumption:* Frank gas usage, with Frank gas costs.
 
 Frank Energie publishes yesterday's usage, so the data arrives a day later. The first time 30 days are imported, which takes a few minutes; after that the last 2 days are imported again every 3 hours to pick up corrections. Unticking the group stops the import and keeps the statistics already imported.
+
+## Feed-in price
+
+Tick **Feed-in price** under **Configure** (version 1.8.4 or newer) to get *Current electricity feed-in price* (€/kWh): the price you receive for electricity you return to the grid. In the Energy dashboard pick it under *Return to grid* → **Use an entity with current price**, as the live alternative to the day-late *Feed-in revenue* statistic. No login needed. The sensor has the same `prices` attribute as the other price sensors, with the feed-in price of every slot.
+
+Two settings on page 1 of **Configure**:
+
+- **Feed-in markup (€/kWh):** the *Inkoopvergoeding teruglevering* on your contract letter, including VAT. Usually negative; default -0.01271.
+- **Smart feed-in:** tick this if you have Frank Energie's Smart feed-in (*Slim terugleveren*). Off by default.
+
+How the price is calculated, and its limits:
+
+- Feed-in price = market price including VAT (+15% when *Smart feed-in* is on and the price is positive) + feed-in markup.
+- Frank Energie does not provide this price. The markup comes from your own contract letter and can differ per contract.
+- The netted energy tax (*salderen*, until 1 January 2027) is not included, so the sensor matches the feed-in revenue Frank Energie reports per hour.
+- The Smart feed-in bonus follows Frank Energie's announced 15%. How it is applied has not been checked against real invoices.
+- From 1 January 2027 Frank Energie's feed-in tariff changes, so the calculation may need an update.
 
 ## Price analysis
 

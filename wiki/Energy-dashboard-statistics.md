@@ -34,6 +34,10 @@ Gas and feed-in statistics only appear when your account has gas or feed-in.
 > [!NOTE]
 > Frank Energie's data arrives **a day later**. With these statistics, today stays empty in the Energy dashboard until tomorrow. If you want to see today live, keep your own meter (for example a P1 reader) for consumption and use only Frank Energie's **costs**, or keep your own meter in the dashboard and use the Frank statistics in separate [charts](Chart-gallery#usage-and-costs).
 
+## Live feed-in price
+
+The *Feed-in revenue* statistic arrives a day late. For a live price under **Return to grid**, tick the **Feed-in price** sensor group (version 1.8.4 or newer) and choose **Use an entity with current price** → *Current electricity feed-in price*. How this price is calculated, and its limits, is explained under [Feed-in price](Sensors#feed-in-price).
+
 ## How the import works
 
 | | |

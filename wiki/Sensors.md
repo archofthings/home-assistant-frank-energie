@@ -11,6 +11,7 @@ Every entity of the integration, per [sensor group](Configuration#sensor-groups)
 - [Daily usage and costs](#daily-usage-and-costs) 🔑
 - [Monthly usage and costs](#monthly-usage-and-costs) 🔑
 - [Energy dashboard statistics](#energy-dashboard-statistics) 🔑
+- [Feed-in price](#feed-in-price)
 
 🔑 = only when logged in.
 
@@ -231,3 +232,34 @@ Good to know:
 ## Energy dashboard statistics
 
 Group **Energy dashboard statistics** 🔑. This group creates **no entities**. It imports six long-term statistics that you can pick in the Energy dashboard and in statistics cards. See [Energy dashboard statistics](Energy-dashboard-statistics).
+
+## Feed-in price
+
+Group **Feed-in price** (version 1.8.4 or newer). No login needed. Off by default. Device: *Frank Energie - Prices*.
+
+| Name | Entity ID ends with | State | Attributes |
+|---|---|---|---|
+| Current electricity feed-in price | `current_electricity_feed_in_price` | The price you receive per kWh for electricity returned to the grid, in the current slot | `prices`: every slot with `from`, `till` and `price`, like the other price sensors |
+
+Use it in the Energy dashboard under *Return to grid* → **Use an entity with current price**, see [Energy dashboard statistics](Energy-dashboard-statistics#live-feed-in-price).
+
+### Settings
+
+On page 1 of **Configure**, see [Configuration](Configuration#feed-in-price-settings):
+
+| Setting | Meaning | Default |
+|---|---|---|
+| **Feed-in markup (€/kWh)** | The *Inkoopvergoeding teruglevering* on your contract letter, including VAT. Usually negative. | -0.01271 |
+| **Smart feed-in** | Adds Frank Energie's 15% Smart feed-in bonus to positive prices | Off |
+
+### How the price is calculated
+
+- Feed-in price = market price including VAT (+15% when *Smart feed-in* is on and the price is positive) + feed-in markup.
+- Example with a market price including VAT of 0.10 and a markup of -0.01271: 0.08729 without and 0.10229 with Smart feed-in. A negative price gets no bonus: -0.05 becomes -0.06271.
+
+### Limits
+
+- Frank Energie does not provide this price. The markup comes from your own contract letter and can differ per contract.
+- The netted energy tax (*salderen*, until 1 January 2027) is not included, so the sensor matches the feed-in revenue Frank Energie reports per hour.
+- The Smart feed-in bonus follows Frank Energie's announced 15%. How it is applied has not been checked against real invoices.
+- From 1 January 2027 Frank Energie's feed-in tariff changes, so the calculation may need an update.

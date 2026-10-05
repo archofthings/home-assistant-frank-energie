@@ -21,6 +21,7 @@ On these sensors (see [Sensors](Sensors#current-prices)):
 | Current electricity price (All-in) | All-in price |
 | Current electricity market price | Market price |
 | Current electricity price including tax | Market price + VAT |
+| Current electricity feed-in price | [Feed-in price](Sensors#feed-in-price) of that slot |
 | Current gas price (All-in), market price, including tax | The same for gas |
 
 Every entry has `from`, `till` and `price` (3 decimals). With quarter-hour prices the list has up to 200 entries, so it is **not stored in history**; it is always on the live state.
