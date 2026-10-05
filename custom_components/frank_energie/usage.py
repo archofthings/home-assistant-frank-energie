@@ -139,5 +139,7 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
                 self.price_coordinator._async_persist_tokens()
 
         if self._daily_enabled:
-            self.update_interval = RETRY_INTERVAL if not ok or usage_day_incomplete(daily) else UPDATE_INTERVAL
+            # A failed daily fetch keeps the previous day's date, so it counts as incomplete too.
+            incomplete = daily_date != yesterday or usage_day_incomplete(daily)
+            self.update_interval = RETRY_INTERVAL if incomplete else UPDATE_INTERVAL
         return UsageData(daily=daily, daily_date=daily_date, monthly=monthly)
