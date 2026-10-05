@@ -141,7 +141,8 @@ async def test_other_error_with_previous_data_keeps_it(coordinator, mock_api, ma
 
 async def test_daily_failure_keeps_previous_daily_with_its_date_and_fresh_monthly(coordinator, mock_api):
     """One failing part uses its previous value (and daily_date) while the other part is still updated."""
-    stale = UsageData(daily=make_period_usage_and_costs(electricity=_category(), gas=_category()), daily_date=date(2026, 1, 13), monthly=None)
+    daily = make_period_usage_and_costs(electricity=_category(), gas=_category())
+    stale = UsageData(daily=daily, daily_date=date(2026, 1, 13), monthly=None)
     coordinator.data = stale
     monthly = make_month_insights()
     mock_api.period_usage_and_costs.side_effect = NetworkError("timeout")
