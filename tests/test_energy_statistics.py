@@ -177,6 +177,25 @@ async def test_setup_starts_import_only_when_group_enabled(
     mock_frank_energie_class.period_usage_and_costs.assert_not_awaited()
 
 
+async def test_incomplete_until_late_gas_arrives(recorder_mock, hass, importer, mock_api):
+    """Yesterday with electricity but an empty gas category is incomplete; once gas is filled it is imported."""
+    def fetch(site, day, gas_filled):
+        data = day_data(day)
+        if day == "2026-01-14" and not gas_filled:
+            data.gas = make_energy_category(0.0, None, "m3")
+        return data
+
+    mock_api.period_usage_and_costs.side_effect = lambda site, day: fetch(site, day, False)
+    await importer.async_import()
+    assert importer.incomplete is True
+    assert len(await read_stats(hass, "frank_energie:gas_usage_site_1")) == 29 * 24
+
+    mock_api.period_usage_and_costs.side_effect = lambda site, day: fetch(site, day, True)
+    await importer.async_import()
+    assert importer.incomplete is False
+    assert len(await read_stats(hass, "frank_energie:gas_usage_site_1")) == 30 * 24
+
+
 async def test_leading_empty_days_are_skipped_and_empty_yesterday_stops_without_error(
     recorder_mock, hass, importer, mock_api
 ):

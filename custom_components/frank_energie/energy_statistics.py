@@ -24,6 +24,7 @@ from python_frank_energie.models import PeriodUsageAndCosts
 
 from .const import DOMAIN
 from .coordinator import FrankEnergieCoordinator
+from .usage import usage_day_incomplete
 
 LOGGER = logging.getLogger(__name__)
 
@@ -54,6 +55,8 @@ class FrankEnergieStatisticsImporter:
         self.price_coordinator = price_coordinator
         self._lock = asyncio.Lock()
         self._warned_no_recorder = False
+        # True while yesterday's electricity or gas data was not (completely) fetched in the last run.
+        self.incomplete = False
 
     def _statistic_id(self, kind: str) -> str:
         return f"{DOMAIN}:{kind}_{slugify(self.price_coordinator.site_reference)}"
@@ -74,11 +77,12 @@ class FrankEnergieStatisticsImporter:
                 return
             api = self.price_coordinator.api
             try:
-                days = await self._fetch_days(await self._days_to_import())
+                days, yesterday_data = await self._fetch_days(await self._days_to_import())
             finally:
                 # Tokens may be renewed during any call above; see FrankEnergieCoordinator._async_persist_tokens().
                 if api.is_authenticated:
                     self.price_coordinator._async_persist_tokens()
+            self.incomplete = usage_day_incomplete(yesterday_data)
             if days:
                 for statistic in STATISTICS:
                     await self._import_statistic(days, *statistic)
@@ -99,12 +103,16 @@ class FrankEnergieStatisticsImporter:
             start = min(last_date, yesterday) - timedelta(days=1)
         return [start + timedelta(days=i) for i in range((yesterday - start).days + 1)]
 
-    async def _fetch_days(self, days: list[date]) -> list[PeriodUsageAndCosts]:
+    async def _fetch_days(
+        self, days: list[date]
+    ) -> tuple[list[PeriodUsageAndCosts], PeriodUsageAndCosts | None]:
         """Fetch the days in order; stop at an API error or at an empty day within the last 2 days.
 
         Older empty days (e.g. before the customer started) are skipped; the last day is yesterday.
+        Returns the days with data and yesterday's data as fetched (None when it was not fetched).
         """
         fetched = []
+        yesterday_data = None
         for index, day in enumerate(days):
             if index and len(days) > 3:
                 await asyncio.sleep(FETCH_PAUSE_SECONDS)
@@ -115,6 +123,8 @@ class FrankEnergieStatisticsImporter:
             except (FrankEnergieException, ValueError, AuthException, AuthRequiredException) as ex:
                 LOGGER.warning("Could not fetch usage and costs for %s, stopping the import: %s", day, ex)
                 break
+            if day == days[-1]:
+                yesterday_data = data
             if data is None or data.electricity is None or not data.electricity.items:
                 if day < days[-1] - timedelta(days=1):
                     LOGGER.debug("No usage data for %s, skipping", day)
@@ -122,7 +132,7 @@ class FrankEnergieStatisticsImporter:
                 LOGGER.debug("No usage data for %s yet, stopping", day)
                 break
             fetched.append(data)
-        return fetched
+        return fetched, yesterday_data
 
     @staticmethod
     def _hourly_values(days: list[PeriodUsageAndCosts], category_name: str, field: str) -> dict[datetime, float]:

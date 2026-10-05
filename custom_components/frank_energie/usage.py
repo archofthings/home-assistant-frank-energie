@@ -19,6 +19,22 @@ from .coordinator import FrankEnergieCoordinator
 
 LOGGER = logging.getLogger(__name__)
 
+UPDATE_INTERVAL = timedelta(hours=3)
+RETRY_INTERVAL = timedelta(hours=1)
+
+
+def usage_day_incomplete(data: PeriodUsageAndCosts | None) -> bool:
+    """Return True when a day's electricity or gas data is not (completely) published yet.
+
+    A category that is None means the site does not have it and is ignored; feed-in is not considered.
+    """
+    if data is None:
+        return True
+    categories = [category for category in (data.electricity, data.gas) if category is not None]
+    if not any(category.items for category in categories):
+        return True
+    return any(not category.items or category.costs_total is None for category in categories)
+
 
 @dataclass(frozen=True)
 class UsageData:
@@ -55,7 +71,7 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
             LOGGER,
             config_entry=entry,
             name="Frank Energie usage",
-            update_interval=timedelta(hours=3),
+            update_interval=UPDATE_INTERVAL,
         )
 
     @staticmethod
@@ -122,4 +138,6 @@ class UsageCoordinator(DataUpdateCoordinator[UsageData]):
             if api.is_authenticated:
                 self.price_coordinator._async_persist_tokens()
 
+        if self._daily_enabled:
+            self.update_interval = RETRY_INTERVAL if not ok or usage_day_incomplete(daily) else UPDATE_INTERVAL
         return UsageData(daily=daily, daily_date=daily_date, monthly=monthly)

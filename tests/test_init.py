@@ -18,9 +18,11 @@ from tests.utils import (
     build_market_prices,
     configure_authenticated_api as _configure_authenticated_api,
     make_delivery_site,
+    make_energy_category,
     make_month_insights,
     make_month_summary,
     make_period_usage_and_costs,
+    make_usage_item,
     make_user_sites,
 )
 
@@ -207,9 +209,10 @@ def _summary_data(day):
     return {const.DATA_MONTH_SUMMARY: make_month_summary(lastMeterReadingDate=day)}
 
 
-def _usage_data(daily_date=None, monthly_date=None):
+def _usage_data(daily_date=None, monthly_date=None, gas_filled=False):
+    gas = make_energy_category(1.0, 1.0, "m3", [make_usage_item(M1, M2, 1.0, 1.0, "m3")]) if gas_filled else None
     return UsageData(
-        daily=make_period_usage_and_costs() if daily_date else None,
+        daily=make_period_usage_and_costs(gas=gas) if daily_date else None,
         daily_date=daily_date,
         monthly=make_month_insights(lastMeterReadingDate=monthly_date) if monthly_date else None,
     )
@@ -217,8 +220,12 @@ def _usage_data(daily_date=None, monthly_date=None):
 
 @pytest.mark.parametrize(
     "new_usage",
-    [_usage_data(date(2024, 1, 2), M1), _usage_data(date(2024, 1, 1), M2)],
-    ids=["new_daily", "new_monthly"],
+    [
+        _usage_data(date(2024, 1, 2), M1),
+        _usage_data(date(2024, 1, 1), M2),
+        _usage_data(date(2024, 1, 1), M1, gas_filled=True),
+    ],
+    ids=["new_daily", "new_monthly", "gas_filled_same_day"],
 )
 async def test_cost_data_sync_new_value_refreshes_other_sources(new_usage):
     """A new month summary date refreshes usage; a new daily/monthly value refreshes the main coordinator."""
