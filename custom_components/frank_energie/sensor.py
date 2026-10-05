@@ -1070,13 +1070,16 @@ class FrankEnergieFeedInSensor(FrankEnergieSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the feed-in price of every slot."""
         try:
-            slots = self.coordinator.data[DATA_ELECTRICITY].asdict(
-                "market_price_with_tax", timezone=_tz_name(self.coordinator.prices_tzinfo)
-            )
+            # Built from the unrounded prices (asdict() rounds to 3 decimals), so the list matches the state.
+            tz = self.coordinator.prices_tzinfo
             return {
                 "prices": [
-                    {**slot, "price": feed_in_price(slot["price"], self._markup, self._smart_feed_in)}
-                    for slot in slots
+                    {
+                        "from": price.date_from.astimezone(tz),
+                        "till": price.date_till.astimezone(tz),
+                        "price": feed_in_price(price.market_price_with_tax, self._markup, self._smart_feed_in),
+                    }
+                    for price in self.coordinator.data[DATA_ELECTRICITY].price_data
                 ]
             }
         except _NO_DATA_ERRORS:
