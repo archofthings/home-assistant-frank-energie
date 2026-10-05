@@ -42,7 +42,7 @@ Gas and feed-in statistics only appear when your account has gas or feed-in.
 | After that | Every 3 hours the last stored day and the day before it are imported again, plus any newer days. This picks up corrections by Frank Energie. |
 | Newest data | Yesterday. |
 | Resolution | Per hour. Quarter-hour data is added up to hours. |
-| Days without data | Old days without data are skipped. If yesterday has no data yet, the import stops and tries again 3 hours later. |
+| Days without data | Old days without data are skipped. If yesterday has no data yet, the import stops and tries again 3 hours later. If yesterday's gas or electricity is not complete yet, it tries again every hour until Frank Energie has published it (version 1.8.4 or newer). |
 | Errors | A failed call is logged as a warning ("Could not fetch usage and costs for …, stopping the import"). The next run continues where it stopped. |
 | Maintenance window | No import between 00:00 and 01:00 UTC, when Frank Energie's service is in maintenance. |
 | Recorder | The import needs Home Assistant's recorder. Without it a warning is logged and nothing is imported. |

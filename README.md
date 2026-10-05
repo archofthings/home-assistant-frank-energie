@@ -113,7 +113,7 @@ Prices are fetched every hour, and every 15 minutes from 12:00 until tomorrow's 
 
 **Costs and invoices** 🔑: actual and expected monthly costs; the previous, current and upcoming invoice; the total of this year and last year (with an `invoices` attribute per period); and the price resolution of your contract.
 
-**Usage and costs** 🔑 (fetched every 3 hours):
+**Usage and costs** 🔑 (fetched every 3 hours, or every hour while yesterday's gas or electricity is not complete yet; version 1.8.4 or newer):
 
 | | Daily (yesterday) | Monthly (this month) |
 |---|---|---|
