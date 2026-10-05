@@ -33,6 +33,7 @@ A Home Assistant custom integration for [Frank Energie](https://www.frankenergie
 | Monthly costs, invoices, yearly totals | | ✓ |
 | Yesterday's and this month's usage, costs and feed-in | | ✓ |
 | Energy dashboard statistics (hourly usage and costs) | | ✓ |
+| [Feed-in price](Sensors#feed-in-price) sensor (off by default, version 1.8.4) | ✓ | ✓ |
 | Choice of delivery address | | ✓ |
 
 ## Requirements

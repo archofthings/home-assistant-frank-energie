@@ -86,6 +86,18 @@
                     }
                 },
                 "title": "Price analysis settings"
+            },
+            "feed_in": {
+                "title": "Feed-in price settings",
+                "description": "The feed-in price is calculated, because Frank Energie does not provide it: the market price including VAT, plus 15% with Smart feed-in when the price is positive, plus your feed-in markup. The netted energy tax is not included. Used by 'Current electricity feed-in price'.",
+                "data": {
+                    "feed_in_markup": "Feed-in markup (€/kWh)",
+                    "smart_feed_in": "Smart feed-in"
+                },
+                "data_description": {
+                    "feed_in_markup": "The 'Inkoopvergoeding teruglevering' per kWh from your contract letter, including VAT. It is usually negative, for example -0.01271, which lowers the feed-in price.",
+                    "smart_feed_in": "Turn on if you use Frank Energie's Smart feed-in ('Slim terugleveren'). Adds the announced 15% bonus to positive prices."
+                }
             }
         }
     },
@@ -137,6 +149,18 @@
                         }
                     }
                 }
+            },
+            "feed_in": {
+                "title": "Feed-in price settings",
+                "description": "The feed-in price is calculated, because Frank Energie does not provide it: the market price including VAT, plus 15% with Smart feed-in when the price is positive, plus your feed-in markup. The netted energy tax is not included. Used by 'Current electricity feed-in price'.",
+                "data": {
+                    "feed_in_markup": "Feed-in markup (€/kWh)",
+                    "smart_feed_in": "Smart feed-in"
+                },
+                "data_description": {
+                    "feed_in_markup": "The 'Inkoopvergoeding teruglevering' per kWh from your contract letter, including VAT. It is usually negative, for example -0.01271, which lowers the feed-in price.",
+                    "smart_feed_in": "Turn on if you use Frank Energie's Smart feed-in ('Slim terugleveren'). Adds the announced 15% bonus to positive prices."
+                }
             }
         },
         "error": {
@@ -164,7 +188,8 @@
                 "costs": "Costs and invoices",
                 "daily_usage": "Daily usage and costs (yesterday)",
                 "monthly_usage": "Monthly usage and costs",
-                "energy_statistics": "Energy dashboard statistics (hourly usage and costs)"
+                "energy_statistics": "Energy dashboard statistics (hourly usage and costs)",
+                "feed_in_price": "Feed-in price"
             }
         }
     },
@@ -196,6 +221,9 @@
             },
             "elec_tax_only": {
                 "name": "Current electricity tax only"
+            },
+            "elec_feed_in": {
+                "name": "Current electricity feed-in price"
             },
             "gas_markup": {
                 "name": "Current gas price (All-in)"

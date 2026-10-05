@@ -156,6 +156,51 @@ async def test_price_sensor_market_and_tax_breakdown(hass, mock_frank_energie_cl
     assert tax_only == pytest.approx(0.03)
 
 
+@pytest.mark.parametrize(
+    ("price", "markup", "smart", "expected"),
+    [
+        (0.10, -0.01271, False, 0.08729),
+        (0.10, -0.01271, True, 0.10229),
+        (-0.05, -0.01271, True, -0.06271),
+        (None, -0.01271, True, None),
+    ],
+    ids=["plain", "smart_bonus", "no_bonus_on_negative_price", "no_price"],
+)
+def test_feed_in_price(price, markup, smart, expected):
+    """The feed-in price is the price incl. VAT (+15% when smart and positive) plus the markup."""
+    assert sensor.feed_in_price(price, markup, smart) == expected
+
+
+async def test_feed_in_sensor_uses_options_for_state_and_prices_attribute(
+    hass, mock_frank_energie_class, config_entry, freezer
+):
+    """With the group enabled the sensor reports the formula for the current slot and for every slot."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to("2026-01-15 10:07:00+01:00")
+    hass.config_entries.async_update_entry(
+        config_entry,
+        options={
+            const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_FEED_IN_PRICE],
+            const.CONF_FEED_IN_MARKUP: -0.02,
+            const.CONF_SMART_FEED_IN: True,
+        },
+    )
+    electricity_today = [0.20] * 96
+    electricity_today[40] = 0.40  # price incl. VAT 0.30
+    electricity_today[41] = -0.40  # price incl. VAT -0.30
+    install_public_prices(mock_frank_energie_class, electricity_today, [1.0] * 96)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = state_for_key(hass, config_entry, "elec_feed_in")
+    assert float(state.state) == pytest.approx(0.325)
+    assert state.attributes["unit_of_measurement"] == "€/kWh"
+    prices = state.attributes["prices"]
+    assert prices[40]["price"] == pytest.approx(0.325)
+    assert prices[41]["price"] == pytest.approx(-0.32)
+
+
 async def test_min_max_avg_sensors_today(hass, mock_frank_energie_class, config_entry, freezer):
     """Min/max/avg sensors reflect today's price data."""
     await hass.config.async_set_time_zone("Europe/Amsterdam")

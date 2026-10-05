@@ -30,14 +30,19 @@ from .analysis import ClassifiedSlot, Window
 from .const import (
     ATTR_TIME,
     ATTRIBUTION,
+    CONF_FEED_IN_MARKUP,
+    CONF_SMART_FEED_IN,
     DATA_ELECTRICITY,
     DATA_GAS,
     DATA_INVOICES,
     DATA_MONTH_SUMMARY,
+    DEFAULT_FEED_IN_MARKUP,
+    DEFAULT_SMART_FEED_IN,
     ICON,
     PRICE_LEVELS,
     SERVICE_NAME_PRICES,
     SERVICE_NAME_COSTS,
+    SMART_FEED_IN_BONUS,
     enabled_groups,
     key_enabled,
 )
@@ -883,6 +888,8 @@ async def async_setup_entry(
         if (not description.authenticated or frank_coordinator.api.is_authenticated)
         and key_enabled(description.key, groups)
     ]
+    if key_enabled(FEED_IN_DESCRIPTION.key, groups):
+        entities.append(FrankEnergieFeedInSensor(frank_coordinator, FEED_IN_DESCRIPTION, config_entry))
     async_add_entities(entities, True)
 
     # price_analysis_coordinator is None when the price_analysis sensor group
@@ -1013,6 +1020,70 @@ class FrankEnergieSensor(CoordinatorEntity, SensorEntity):
 def _round_price(value: float | None) -> float | None:
     """Round a price to 5 decimals, for price analysis attributes."""
     return round(value, 5) if value is not None else None
+
+
+def feed_in_price(price_with_tax: float | None, markup: float, smart_feed_in: bool) -> float | None:
+    """Return the price received for exported electricity.
+
+    Market price including VAT (plus the Smart feed-in bonus when it is on and
+    the price is positive) plus the contract's feed-in markup.
+    """
+    if price_with_tax is None:
+        return None
+    base = price_with_tax
+    if smart_feed_in and base > 0:
+        base *= 1 + SMART_FEED_IN_BONUS
+    return _round_price(base + markup)
+
+
+FEED_IN_DESCRIPTION = FrankEnergieEntityDescription(
+    key="elec_feed_in",
+    native_unit_of_measurement=f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}",
+    suggested_display_precision=2,
+    state_class=SensorStateClass.MEASUREMENT,
+)
+
+
+class FrankEnergieFeedInSensor(FrankEnergieSensor):
+    """Current price received for electricity exported to the grid."""
+
+    def __init__(
+        self,
+        coordinator: FrankEnergieCoordinator,
+        description: FrankEnergieEntityDescription,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor with the feed-in options of the entry."""
+        self._markup = entry.options.get(CONF_FEED_IN_MARKUP, DEFAULT_FEED_IN_MARKUP)
+        self._smart_feed_in = entry.options.get(CONF_SMART_FEED_IN, DEFAULT_SMART_FEED_IN)
+        super().__init__(coordinator, description, entry)
+
+    def _compute_native_value(self) -> StateType:
+        """Compute the feed-in price of the current slot."""
+        try:
+            current = self.coordinator.data[DATA_ELECTRICITY].current_hour
+            return feed_in_price(_price_attr(current, "market_price_with_tax"), self._markup, self._smart_feed_in)
+        except _NO_DATA_ERRORS:
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the feed-in price of every slot."""
+        try:
+            # Built from the unrounded prices (asdict() rounds to 3 decimals), so the list matches the state.
+            tz = self.coordinator.prices_tzinfo
+            return {
+                "prices": [
+                    {
+                        "from": price.date_from.astimezone(tz),
+                        "till": price.date_till.astimezone(tz),
+                        "price": feed_in_price(price.market_price_with_tax, self._markup, self._smart_feed_in),
+                    }
+                    for price in self.coordinator.data[DATA_ELECTRICITY].price_data
+                ]
+            }
+        except _NO_DATA_ERRORS:
+            return {}
 
 
 def _round_kwh(value: float | None) -> float | None:
