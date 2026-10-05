@@ -826,6 +826,12 @@ async def test_reconfigure_no_sites_aborts_no_sites(
 # --------------------------------------------------------------------------
 
 
+FEED_IN_DEFAULTS = {
+    const.CONF_FEED_IN_MARKUP: const.DEFAULT_FEED_IN_MARKUP,
+    const.CONF_SMART_FEED_IN: const.DEFAULT_SMART_FEED_IN,
+}
+
+
 async def test_unauthenticated_flow_creates_entry_with_no_data_and_home_assistant_prices_timezone_option(
     hass, enable_custom_integrations
 ):
@@ -843,6 +849,7 @@ async def test_unauthenticated_flow_creates_entry_with_no_data_and_home_assistan
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
         const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT15M,
         const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS],
+        **FEED_IN_DEFAULTS,
     }
     assert result2["type"] == "create_entry"
     assert result2["data"] == {}
@@ -872,6 +879,7 @@ async def test_login_single_site_creates_entry_with_home_assistant_prices_timezo
     expected_options = {
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
         const.CONF_SENSOR_GROUPS: const.DEFAULT_SENSOR_GROUPS,
+        **FEED_IN_DEFAULTS,
     }
     assert result2["type"] == "create_entry"
     assert result2["options"] == expected_options
@@ -890,7 +898,7 @@ async def _start_public_settings(hass):
 
 
 async def test_public_flow_stores_chosen_resolution_and_groups(hass, enable_custom_integrations):
-    """The settings step stores the chosen time zone, price resolution and sensor groups in the entry options."""
+    """The settings step stores the chosen time zone, price resolution, sensor groups and feed-in settings."""
     result = await _start_public_settings(hass)
     result2 = await _submit_settings(
         hass,
@@ -899,6 +907,8 @@ async def test_public_flow_stores_chosen_resolution_and_groups(hass, enable_cust
             const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC,
             const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
             const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING, const.SENSOR_GROUP_DAILY_STATISTICS],
+            const.CONF_FEED_IN_MARKUP: -0.02,
+            const.CONF_SMART_FEED_IN: True,
         },
     )
 
@@ -907,6 +917,8 @@ async def test_public_flow_stores_chosen_resolution_and_groups(hass, enable_cust
         const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_UTC,
         const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
         const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_UPCOMING, const.SENSOR_GROUP_DAILY_STATISTICS],
+        const.CONF_FEED_IN_MARKUP: -0.02,
+        const.CONF_SMART_FEED_IN: True,
     }
 
 
@@ -980,6 +992,7 @@ async def test_settings_step_with_price_analysis_continues_to_analysis_step(hass
         const.CONF_SOLAR_THRESHOLD_KWH: 1.5,
         const.CONF_CHEAPEST_PERIOD_MINUTES: 120,
         const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: True,
+        **FEED_IN_DEFAULTS,
     }
     assert isinstance(result4["options"][const.CONF_CHEAPEST_PERIOD_MINUTES], int)
 
@@ -1051,6 +1064,8 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
             const.CONF_PRICES_TIMEZONE: const.PRICES_TIMEZONE_HOME_ASSISTANT,
             const.CONF_PUBLIC_PRICE_RESOLUTION: const.PUBLIC_PRICE_RESOLUTION_PT60M,
             const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_PRICE_ANALYSIS],
+            const.CONF_FEED_IN_MARKUP: -0.02,
+            const.CONF_SMART_FEED_IN: True,
         },
     )
     assert result2["type"] == "form"
@@ -1085,6 +1100,9 @@ async def test_options_flow_submit_updates_options_and_reloads_entry_to_loaded(
         const.CONF_CHEAPEST_PERIOD_MINUTES: const.DEFAULT_CHEAPEST_PERIOD_MINUTES,
         const.CONF_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP: True,
         const.CONF_SOLAR_THRESHOLD_KWH: const.DEFAULT_SOLAR_THRESHOLD_KWH,
+        # Feed-in settings survive the analysis page.
+        const.CONF_FEED_IN_MARKUP: -0.02,
+        const.CONF_SMART_FEED_IN: True,
     }
     assert entry.state is ConfigEntryState.LOADED
 
@@ -1103,6 +1121,8 @@ async def test_options_flow_without_price_analysis_creates_entry_directly_and_ke
             const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.45,
             const.CONF_CHEAPEST_PERIOD_MINUTES: 90,
             const.CONF_SOLAR_THRESHOLD_KWH: 2.0,
+            const.CONF_FEED_IN_MARKUP: -0.03,
+            const.CONF_SMART_FEED_IN: True,
         },
         unique_id="frank_energie",
     )
@@ -1133,6 +1153,8 @@ async def test_options_flow_without_price_analysis_creates_entry_directly_and_ke
         const.CONF_EXPENSIVE_PRICE_THRESHOLD: 0.45,
         const.CONF_CHEAPEST_PERIOD_MINUTES: 90,
         const.CONF_SOLAR_THRESHOLD_KWH: 2.0,
+        const.CONF_FEED_IN_MARKUP: -0.03,
+        const.CONF_SMART_FEED_IN: True,
     }
     assert entry.state is ConfigEntryState.LOADED
 

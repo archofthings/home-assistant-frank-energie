@@ -341,3 +341,28 @@ async def test_enabling_daily_usage_creates_coordinator_and_entities_disabling_r
 
     assert entry.runtime_data.usage is None
     assert entity_id_for_key(hass, entry, "sensor", "elec_usage_yesterday") is None
+
+
+async def test_feed_in_group_creates_sensor_without_login_and_disabling_removes_it(
+    hass, enable_custom_integrations, mock_frank_energie_class
+):
+    """The off-by-default feed-in price group needs no login; deselecting it removes the sensor again."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        data={"site_reference": "site-1"},
+        options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_FEED_IN_PRICE]},
+        unique_id="frank_energie",
+    )
+    entry.add_to_hass(hass)
+    mock_frank_energie_class.prices.return_value = build_market_prices(local_midnight(), [0.2] * 4, [1.0] * 4)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entity_id_for_key(hass, entry, "sensor", "elec_feed_in") is not None
+
+    hass.config_entries.async_update_entry(
+        entry, options={const.CONF_SENSOR_GROUPS: [const.SENSOR_GROUP_DAILY_STATISTICS]}
+    )
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entity_id_for_key(hass, entry, "sensor", "elec_feed_in") is None

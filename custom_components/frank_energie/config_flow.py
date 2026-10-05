@@ -38,15 +38,19 @@ from .const import (
     CONF_EXPENSIVE_PRICE_THRESHOLD,
     CONF_PRICES_TIMEZONE,
     CONF_PUBLIC_PRICE_RESOLUTION,
+    CONF_FEED_IN_MARKUP,
     CONF_SENSOR_GROUPS,
+    CONF_SMART_FEED_IN,
     CONF_SOLAR_FORECAST_ENTRY,
     CONF_SOLAR_THRESHOLD_KWH,
     DEFAULT_CHEAP_PRICE_THRESHOLD,
     DEFAULT_CHEAPEST_PERIOD_MINUTES,
     DEFAULT_CHEAPEST_PERIOD_ONLY_WHEN_CHEAP,
     DEFAULT_EXPENSIVE_PRICE_THRESHOLD,
+    DEFAULT_FEED_IN_MARKUP,
     DEFAULT_PUBLIC_PRICE_RESOLUTION,
     DEFAULT_SENSOR_GROUPS,
+    DEFAULT_SMART_FEED_IN,
     DEFAULT_SOLAR_THRESHOLD_KWH,
     DOMAIN,
     LEGACY_SENSOR_GROUPS,
@@ -98,10 +102,12 @@ def _merge_reauth_data(entry_data: Mapping[str, Any], new_data: dict, *, drop_si
     return {**base, **new_data}
 
 
-def _price_number_selector(step: float, unit: str) -> selector.NumberSelector:
-    """Build a box-mode NumberSelector for a price/threshold field."""
+def _price_number_selector(step: float | str, unit: str, **limits: float) -> selector.NumberSelector:
+    """Build a box-mode NumberSelector for a price/threshold field (optional min/max limits)."""
     return selector.NumberSelector(
-        selector.NumberSelectorConfig(mode=selector.NumberSelectorMode.BOX, step=step, unit_of_measurement=unit)
+        selector.NumberSelectorConfig(
+            mode=selector.NumberSelectorMode.BOX, step=step, unit_of_measurement=unit, **limits
+        )
     )
 
 
@@ -186,6 +192,15 @@ def _init_schema(options: Mapping[str, Any], logged_in: bool) -> vol.Schema:
             translation_key=CONF_SENSOR_GROUPS,
         )
     )
+    # The number selector only accepts steps >= 0.001, so "any" lets the markup have 5 decimals.
+    schema[
+        vol.Required(CONF_FEED_IN_MARKUP, default=options.get(CONF_FEED_IN_MARKUP, DEFAULT_FEED_IN_MARKUP))
+    ] = _price_number_selector(
+        "any", f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}", min=-1, max=1
+    )
+    schema[
+        vol.Required(CONF_SMART_FEED_IN, default=options.get(CONF_SMART_FEED_IN, DEFAULT_SMART_FEED_IN))
+    ] = selector.BooleanSelector()
     return vol.Schema(schema)
 
 
@@ -559,6 +574,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._entry_options = {
                 CONF_PRICES_TIMEZONE: user_input[CONF_PRICES_TIMEZONE],
                 CONF_SENSOR_GROUPS: list(user_input[CONF_SENSOR_GROUPS]),
+                CONF_FEED_IN_MARKUP: user_input[CONF_FEED_IN_MARKUP],
+                CONF_SMART_FEED_IN: user_input[CONF_SMART_FEED_IN],
             }
             if CONF_PUBLIC_PRICE_RESOLUTION in user_input:
                 self._entry_options[CONF_PUBLIC_PRICE_RESOLUTION] = user_input[CONF_PUBLIC_PRICE_RESOLUTION]
@@ -625,12 +642,17 @@ class OptionsFlowHandler(OptionsFlowWithReload):
         self._prices_timezone: str | None = None
         self._sensor_groups: list[str] | None = None
         self._public_price_resolution: str | None = None
+        self._feed_in: dict[str, Any] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the "init" step: prices_timezone and sensor_groups."""
         if user_input is not None:
             self._prices_timezone = user_input[CONF_PRICES_TIMEZONE]
             self._sensor_groups = list(user_input[CONF_SENSOR_GROUPS])
+            self._feed_in = {
+                CONF_FEED_IN_MARKUP: user_input[CONF_FEED_IN_MARKUP],
+                CONF_SMART_FEED_IN: user_input[CONF_SMART_FEED_IN],
+            }
             # Not shown for a logged-in entry: keep a stored value as is (None = nothing to save).
             self._public_price_resolution = user_input.get(
                 CONF_PUBLIC_PRICE_RESOLUTION, self.config_entry.options.get(CONF_PUBLIC_PRICE_RESOLUTION)
@@ -665,6 +687,7 @@ class OptionsFlowHandler(OptionsFlowWithReload):
         re-enabling the group later restores them.
         """
         data: dict[str, Any] = {CONF_PRICES_TIMEZONE: self._prices_timezone, CONF_SENSOR_GROUPS: self._sensor_groups}
+        data.update(self._feed_in)
         if self._public_price_resolution is not None:
             data[CONF_PUBLIC_PRICE_RESOLUTION] = self._public_price_resolution
         for key in (
@@ -694,6 +717,7 @@ class OptionsFlowHandler(OptionsFlowWithReload):
             data = dict(flat_input)
             data[CONF_PRICES_TIMEZONE] = self._prices_timezone
             data[CONF_SENSOR_GROUPS] = self._sensor_groups
+            data.update(self._feed_in)
             if self._public_price_resolution is not None:
                 data[CONF_PUBLIC_PRICE_RESOLUTION] = self._public_price_resolution
             return self.async_create_entry(data=data)

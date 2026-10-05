@@ -51,6 +51,13 @@ PRICE_LEVEL_NORMAL = "normal"
 PRICE_LEVEL_EXPENSIVE = "expensive"
 PRICE_LEVELS = (PRICE_LEVEL_CHEAP_SOLAR, PRICE_LEVEL_CHEAP, PRICE_LEVEL_NORMAL, PRICE_LEVEL_EXPENSIVE)
 
+# Feed-in price sensor (see sensor.feed_in_price).
+CONF_FEED_IN_MARKUP = "feed_in_markup"
+DEFAULT_FEED_IN_MARKUP = -0.01271
+CONF_SMART_FEED_IN = "smart_feed_in"
+DEFAULT_SMART_FEED_IN = False
+SMART_FEED_IN_BONUS = 0.15
+
 # Selectable sensor groups (see CONF_SENSOR_GROUPS below). "Current prices"
 # (elec_markup/market/tax/tax_vat/sourcing/tax_only and their gas
 # equivalents) are always created and are not part of any group.
@@ -62,6 +69,7 @@ SENSOR_GROUP_COSTS = "costs"
 SENSOR_GROUP_DAILY_USAGE = "daily_usage"
 SENSOR_GROUP_MONTHLY_USAGE = "monthly_usage"
 SENSOR_GROUP_ENERGY_STATISTICS = "energy_statistics"
+SENSOR_GROUP_FEED_IN_PRICE = "feed_in_price"
 SENSOR_GROUPS = (
     SENSOR_GROUP_DAILY_STATISTICS,
     SENSOR_GROUP_UPCOMING,
@@ -70,6 +78,7 @@ SENSOR_GROUPS = (
     SENSOR_GROUP_DAILY_USAGE,
     SENSOR_GROUP_MONTHLY_USAGE,
     SENSOR_GROUP_ENERGY_STATISTICS,
+    SENSOR_GROUP_FEED_IN_PRICE,
 )
 DEFAULT_SENSOR_GROUPS = [SENSOR_GROUP_DAILY_STATISTICS, SENSOR_GROUP_COSTS]
 
@@ -141,6 +150,7 @@ SENSOR_GROUP_BY_KEY: dict[str, str] = {
     "feed_in_revenue_month": SENSOR_GROUP_MONTHLY_USAGE,
     "fixed_costs_month": SENSOR_GROUP_MONTHLY_USAGE,
     "fixed_costs_month_until_now": SENSOR_GROUP_MONTHLY_USAGE,
+    "elec_feed_in": SENSOR_GROUP_FEED_IN_PRICE,
 }
 
 
