@@ -223,7 +223,7 @@ Tips:
 - If a card shows nothing at all, check the pasted `data_generator` code is complete; a truncated line stops the whole card.
 
 <details>
-<summary><b>Today card</b> (with an optional <i>Sell</i> line: price minus a fixed feed-in amount)</summary>
+<summary><b>Today card</b> (with an optional <i>Sell</i> line: the <a href="#feed-in-price">feed-in price</a>, version 1.8.4 or newer)</summary>
 
 ```yaml
 type: custom:apexcharts-card
@@ -267,7 +267,7 @@ series:
         const centeredX = new Date(p.from).getTime() + 30 * 60 * 1000;
         return { x: centeredX, y: p.price, fillColor: colorMap[p.level] };
       });
-  - entity: sensor.frank_energie_prices_electricity_price_analysis_today
+  - entity: sensor.frank_energie_prices_current_electricity_feed_in_price
     name: Sell
     type: line
     color: green
@@ -275,13 +275,15 @@ series:
     float_precision: 3
     stroke_width: 3
     data_generator: >
-      if (!entity.attributes.slots || entity.attributes.slots.length === 0) {
+      const prices = entity.attributes.prices;
+
+      if (!prices || prices.length === 0) {
         return [{ x: Date.now(), y: 0 }];
       }
 
-      return entity.attributes.slots.map((p) => {
+      return prices.map((p) => {
         const centeredX = new Date(p.from).getTime() + 30 * 60 * 1000;
-        return { x: centeredX, y: p.price - 0.11085 };
+        return { x: centeredX, y: p.price };
       });
   - entity: sensor.frank_energie_prices_electricity_price_analysis_today
     name: Solar forecast

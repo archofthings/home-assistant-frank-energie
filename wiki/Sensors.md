@@ -239,9 +239,38 @@ Group **Feed-in price** (version 1.8.4 or newer). No login needed. Off by defaul
 
 | Name | Entity ID ends with | State | Attributes |
 |---|---|---|---|
-| Current electricity feed-in price | `current_electricity_feed_in_price` | The price you receive per kWh for electricity returned to the grid, in the current slot | `prices`: every slot with `from`, `till` and `price`, like the other price sensors |
+| Current electricity feed-in price | `current_electricity_feed_in_price` | The price you receive per kWh for electricity returned to the grid, in the current slot | [`prices`](#attribute-prices-of-the-feed-in-price) |
 
 Use it in the Energy dashboard under *Return to grid* → **Use an entity with current price**, see [Energy dashboard statistics](Energy-dashboard-statistics#live-feed-in-price).
+
+### Attribute `prices` of the feed-in price
+
+Every known slot of today and tomorrow, with the feed-in price of that slot. Tomorrow's slots are added when tomorrow's prices are published.
+
+```yaml
+prices:
+  - from: "2026-10-05T12:00:00+02:00"
+    till: "2026-10-05T13:00:00+02:00"
+    price: 0.03335
+  - from: "2026-10-05T13:00:00+02:00"
+    till: "2026-10-05T14:00:00+02:00"
+    price: 0.04162
+```
+
+| Key | Meaning |
+|---|---|
+| `from` | Start of the slot, in the [time zone for price times](Configuration#time-zone-for-price-times) |
+| `till` | End of the slot |
+| `price` | The feed-in price in that slot in €/kWh (5 decimals), calculated with your settings in the same way as the state |
+
+- A slot is one hour or one quarter-hour, depending on your [price resolution](Configuration#price-resolution).
+- Like the other large attributes, `prices` is not stored in history; it exists only on the live state.
+- Use it for a chart line, see the *Sell* line in [Analysis today](Chart-gallery#analysis-today), or in templates, for example the highest feed-in price that is still to come:
+
+```jinja
+{{ state_attr('sensor.frank_energie_prices_current_electricity_feed_in_price', 'prices')
+   | selectattr('till', '>', now()) | map(attribute='price') | max }}
+```
 
 ### Settings
 
